@@ -17,10 +17,24 @@ struct device {
 	byte R0, R1, PC;
 };
 
+//////
+// Function Prototypes
+//////
+
 int run_program(struct device* program, int timeout);
+int init_program(struct device* program);
+int step_program(struct device* program, bool* programFinished);
+
+//////
+// Definitions
+//////
 
 #define MAX_LEVEL	11
-#define TIMEOUT		0x400
+#define TIMEOUT		0x800
+
+//////
+// Beginning of program code
+//////
 
 int main(int argc, char** argv) {
 	// use memcpy to copy devices
@@ -66,14 +80,29 @@ int main(int argc, char** argv) {
 */
 int run_program(struct device* program, int timeout) {
 	bool programFinished = false;
-	bool incPC = true;
 	int outputCount = 0;
-	program->R0 = program->R1 = program->PC = 0;
 
+   init_program(program);
 	while (!programFinished && timeout != 0) {
-		switch(program->memory[program->PC]) {
+      outputCount += step_program(program, &programFinished);
+		timeout--;
+	}
+
+	if(timeout == 0) return 0;
+	return outputCount;
+}
+
+int init_program(struct device* program) {
+   program->R0 = program->R1 = program->PC = 0;
+}
+
+int step_program(struct device* program, bool* programFinished) {
+   bool incPC = true;
+
+   int outputCount = 0;
+   switch(program->memory[program->PC]) {
 		case 0:
-			programFinished = true;
+			*programFinished = true;
 			break;
 
 		case 1:
@@ -159,13 +188,10 @@ int run_program(struct device* program, int timeout) {
 				incPC = false;
 			}
 			break;
-		}
-		// prepare for the next loop
-		if(incPC) program->PC = (program->PC + 1) & 0x0F;
-		incPC = true;
-		timeout--;
-	}
+   }
 
-	if(timeout == 0) return 0;
-	return outputCount;
+   // prepare for the next loop
+   if(incPC) program->PC = (program->PC + 1) & 0x0F;
+   return outputCount;
 }
+
