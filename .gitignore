@@ -1,10 +1,22 @@
+# Ignore all temporary files
 .*.swp
 *~
 
+# Ignore all library files
 *.o
+*.a
 
 longest_string
 
-# Cmake Files
+# Cmake Generated Files
 CMakeCache.txt
 CMakeFiles/
+Makefile
+cmake_install.cmake
+
+# Ignoring log files and out files
+*.log
+*.out
+
+# GDB Files
+.gdb_history
