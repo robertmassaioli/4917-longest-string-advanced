@@ -4,14 +4,25 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 
 using namespace std;
 
 void* acceptConnections(void* data);
+void* handleClient(void* data);
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
+
+struct acceptThreadData {
+   int listenSocket;
+};
+
+struct clientThreadData {
+   int connectionSocket;
+};
 
 #define MAX_CONNECTIONS 100
 
@@ -59,7 +70,9 @@ int main(int argc, char** argv) {
    listen(socketFD, MAX_CONNECTIONS);
 
    pthread_t acceptThread;
-   pthread_create(&acceptThread, NULL, acceptConnections, NULL);
+   struct acceptThreadData* data = (struct acceptThreadData*) malloc(sizeof(struct acceptThreadData));
+   data->listenSocket = socketFD;
+   pthread_create(&acceptThread, NULL, acceptConnections, (void*)data);
    pthread_join(acceptThread, NULL);
 
    close(socketFD);
@@ -72,6 +85,26 @@ int main(int argc, char** argv) {
  * on to be dealt with.
  */
 void* acceptConnections(void* data) {
+   struct acceptThreadData* acceptData = (struct acceptThreadData*) data;
    cout << "[Started accepting connections from clients]" << endl;
+   while(true) {
+      struct sockaddr client;
+      socklen_t clientAddrLen;
+      int newClient = accept(acceptData->listenSocket, &client, &clientAddrLen);
+      struct clientThreadData* clientData = (struct clientThreadData*) malloc(sizeof(struct clientThreadData));
+      clientData->connectionSocket = newClient;
+      pthread_t clientThread;
+      pthread_create(&clientThread, NULL, handleClient, (void*)data);
+      char result[200];
+      const char* res = inet_ntop(client.sa_family, &client, result, 200);
+      if(res != NULL) {
+         cout << "Accepted a new socket from: " << res << endl;
+      }
+      close(newClient);
+   }
    cout << "[Finished accepting connections from clients]" << endl;
+   free(data);
+}
+
+void* handleClient(void* data) {
 }

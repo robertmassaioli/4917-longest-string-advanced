@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 
 #include "processor.h"
 
@@ -50,7 +51,13 @@ int main(int argc, char** argv) {
    int socketFD = -1;
    struct addrinfo *rp = NULL;
    for(rp = result; rp != NULL; rp = rp->ai_next) {
-      cout << "Attempting to connect a socket...";
+      char result[200];
+      const char* inetRes = inet_ntop(rp->ai_socktype, rp->ai_addr, result, 200);
+      if(inetRes != NULL) {
+         cout << "Attempting to connect a socket at '" << inetRes << "'...";
+      } else {
+         cout << "Attempting to connect a socket...";
+      }
       socketFD = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
       if(socketFD == -1) {
          cout << "socket creation " << failed << endl;
