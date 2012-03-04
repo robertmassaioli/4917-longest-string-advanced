@@ -56,18 +56,22 @@ int main(int argc, char** argv) {
 			temp = (temp + 1) & 0x0F;
 			currentProgram.memory[counter] = temp;
 			counter++;
+         if(counter > 6) {
+            cout << "Reached: ";
+            for(int i = 0; i < 16; ++i) {
+               cout << (int) currentProgram.memory[i] << ' ';
+            }
+            cout << endl;
+         }
 		}
 		if(counter == MAX_LEVEL) break;
 
-		//memcpy(&runner, &currentProgram, sizeof(struct device));
-		//tempCount = run_program(&runner, TIMEOUT);
       tempCount = run_program_loop_check(&currentProgram);
 		if(tempCount > longestCount) {
 			longestCount = tempCount;
 			memcpy(&longestProgram, &currentProgram, sizeof(struct device));
 			cout << "New Longest: ";
 			for(int i = 0; i < 16; ++i) {
-				//if(longestProgram.memory[i] == 0) break;
 				cout << (int) longestProgram.memory[i] << ' ';
 			}
 			cout << " is the longest at " << longestCount << endl;
