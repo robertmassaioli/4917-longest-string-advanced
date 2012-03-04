@@ -22,8 +22,11 @@ struct device {
 //////
 
 int run_program(struct device* program, int timeout);
+int run_program_loop_check(struct device* program);
 int init_program(struct device* program);
 int step_program(struct device* program, bool* programFinished);
+void copy_program(struct device* dst, struct device* src);
+bool compare_programs(struct device* one, struct device* two);
 
 //////
 // Definitions
@@ -56,8 +59,9 @@ int main(int argc, char** argv) {
 		}
 		if(counter == MAX_LEVEL) break;
 
-		memcpy(&runner, &currentProgram, sizeof(struct device));
-		tempCount = run_program(&runner, TIMEOUT);
+		//memcpy(&runner, &currentProgram, sizeof(struct device));
+		//tempCount = run_program(&runner, TIMEOUT);
+      tempCount = run_program_loop_check(&currentProgram);
 		if(tempCount > longestCount) {
 			longestCount = tempCount;
 			memcpy(&longestProgram, &currentProgram, sizeof(struct device));
@@ -90,6 +94,30 @@ int run_program(struct device* program, int timeout) {
 
 	if(timeout == 0) return 0;
 	return outputCount;
+}
+
+/**
+ * This function promises not to make any edits to the program that is passed in.
+ */
+int run_program_loop_check(struct device* program) {
+   struct device slow_program, fast_program;
+
+   copy_program(&slow_program, program);
+   copy_program(&fast_program, program);
+
+   init_program(&slow_program);
+   init_program(&fast_program);
+   bool fastProgramFinished = false, slowProgramFinished = false;
+   int outputCount = 0;
+   while (!fastProgramFinished) {
+      step_program(&slow_program, &slowProgramFinished);
+      outputCount += step_program(&fast_program, &fastProgramFinished);
+      if(!fastProgramFinished) outputCount += step_program(&fast_program, &fastProgramFinished);
+      if(compare_programs(&slow_program, &fast_program)) {
+         return 0;
+      }
+   }
+   return outputCount;
 }
 
 int init_program(struct device* program) {
@@ -191,7 +219,32 @@ int step_program(struct device* program, bool* programFinished) {
    }
 
    // prepare for the next loop
-   if(incPC) program->PC = (program->PC + 1) & 0x0F;
+   if(incPC) {
+      program->PC = (program->PC + 1) & 0x0F;
+   }
    return outputCount;
 }
 
+/**
+ * Copy everything in the src program to the destination program
+ */
+void copy_program(struct device* dst, struct device* src) {
+   memcpy(dst, src, sizeof(struct device));
+}
+
+/**
+ * Compare the two program states exactly.
+ *
+ * return true if they are exactly equal and false if they are not.
+ */
+bool compare_programs(struct device* one, struct device* two) {
+   if(one->PC != two->PC) return false;
+   if(one->R0 != two->R0) return false;
+   if(one->R1 != two->R1) return false;
+
+   // There are sixteen memory locations, check all of them.
+   for(int i = 0; i < 0x0F; ++i) {
+      if(one->memory[i] != two->memory[i]) return false;
+   }
+   return true;
+}
