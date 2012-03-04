@@ -4,3 +4,7 @@
 *.o
 
 longest_string
+
+# Cmake Files
+CMakeCache.txt
+CMakeFiles/
