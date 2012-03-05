@@ -107,4 +107,8 @@ void* acceptConnections(void* data) {
 }
 
 void* handleClient(void* data) {
+   cout << "[Started dealing with another client]" << endl;
+   struct clientThreadData* clientData = (struct clientThreadData*) data;
+
+   // Start communicating with the client. Essentially wait for 
 }
