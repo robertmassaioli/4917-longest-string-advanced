@@ -1,52 +1,40 @@
-#include <iostream>
-#include <cstdlib>
 #include <stdint.h>
 #include <stack>
 
 #include "task_generator.h"
+#include <gtest/gtest.h>
 
 using namespace std;
 
-int testsFailed = 0;
-static const char* getTestResult(bool (*test)(void));
+TEST(GeneratorTest, Init) {
+   TaskGenerator gen;
 
-static bool testInitGenerator() {
-   bool result = true;
-   TaskGenerator* gen = new TaskGenerator();
-
-   result &= (gen->getNextTask() == 0);
-   result &= (gen->getNextTask() == 1);
-   result &= (gen->getNextTask() == 2);
-
-   delete gen;
-   return result;
+   EXPECT_EQ(0, gen.getNextTask());
+   EXPECT_EQ(1, gen.getNextTask());
+   EXPECT_EQ(2, gen.getNextTask());
 }
 
-static bool testFailedTest() {
-   bool result = true;
+TEST(GeneratorTest, FailedTask) {
    TaskGenerator gen;
 
    uint32_t task = 100;
    stack<uint32_t> grabbedItems;
 
    task = gen.getNextTask();
-   result &= task == 0;
+   EXPECT_EQ(0, task);
    grabbedItems.push(task);
    task = gen.getNextTask();
    grabbedItems.push(gen.getNextTask());
    grabbedItems.push(gen.getNextTask());
    grabbedItems.push(gen.getNextTask());
-   result &= grabbedItems.top() == 3;
+   EXPECT_EQ(3, grabbedItems.top());
    gen.returnFailedTask(grabbedItems.top());
    grabbedItems.pop();
    task = gen.getNextTask();
-   result &= task == 3;
-
-   return result;
+   EXPECT_EQ(3, task);
 }
 
-static bool testSimpleHaveNextTask() {
-   bool result = true;
+TEST(GeneratorTest, SimpleHaveNextTask) {
    TaskGenerator gen;
 
    uint32_t steps = 0;
@@ -54,41 +42,15 @@ static bool testSimpleHaveNextTask() {
    {
       gen.getNextTask();
       if(steps == 0xFFFFFF) {
-         result &= gen.haveNextTask() == false;
+         ASSERT_FALSE(gen.haveNextTask());
       } else {
-         result &= gen.haveNextTask() == true;
+         ASSERT_TRUE(gen.haveNextTask());
       }
       steps++;
-   } while (result && steps != 0);
-
-   return result;
+   } while (steps != 0);
 }
 
 int main(int argc, char** argv) {
-   cout << "[Starting Server Tests]" << endl;
-
-   cout << "== Running the TestGenerator tests ==" << endl;
-   cout << "Running testInitGenerator()..." << getTestResult(testInitGenerator) << endl;
-   cout << "Running testFailedTest()..." << getTestResult(testFailedTest) << endl;
-   cout << "Running testSimpleHaveNextTask()..." << getTestResult(testSimpleHaveNextTask) << endl;
-   cout << "== Finished the TestGenerator tests ==" << endl;
-
-   if(testsFailed > 0) {
-      cout << "Results: " << testsFailed << " tests failed." << endl;
-   } else {
-      cout << "Results: CONGRATULATIONS! All tests passed!" << endl;
-   }
-
-   cout << "[Ending Server Tests]" << endl;
-   return EXIT_SUCCESS;
+   ::testing::InitGoogleTest(&argc, argv);
+   return RUN_ALL_TESTS();
 }
-
-static const char* getTestResult(bool (*test)(void)) {
-   if(test()) {
-      return "PASSED";
-   } else {
-      testsFailed++;
-      return "FAILED";
-   }
-}
-
