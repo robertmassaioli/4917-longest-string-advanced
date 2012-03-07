@@ -8,6 +8,7 @@ class ProcessorTest : public ::testing::Test {
          end = (struct device*) malloc(sizeof(struct device));
 
          init_program(begin);
+         finished = false;
       }
 
       virtual void TearDown() {
@@ -17,6 +18,7 @@ class ProcessorTest : public ::testing::Test {
 
       struct device* begin;
       struct device* end;
+      bool finished;
 };
 
 
@@ -24,7 +26,6 @@ TEST_F(ProcessorTest, CommandZero) {
    begin->memory[0] = 0;
    copy_program(end, begin);
 
-   bool finished = false;
    step_program(end, &finished);
 
    // Expect the program to be finished after running zero
@@ -42,7 +43,6 @@ TEST_F(ProcessorTest, CommandOne) {
    begin->R1 = 7;
    copy_program(end, begin);
 
-   bool finished = false;
    step_program(end, &finished);
 
    EXPECT_FALSE(finished);
@@ -60,7 +60,6 @@ TEST_F(ProcessorTest, CommandOneWrap) {
    begin->R1 = 7;
    copy_program(end, begin);
 
-   bool finished = false;
    step_program(end, &finished);
 
    EXPECT_FALSE(finished);
@@ -78,7 +77,6 @@ TEST_F(ProcessorTest, CommandTwo) {
    begin->R1 = 2;
    copy_program(end, begin);
 
-   bool finished = false;
    step_program(end, &finished);
 
    EXPECT_FALSE(finished);
