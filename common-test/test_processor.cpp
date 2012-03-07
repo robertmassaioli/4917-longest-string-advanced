@@ -73,4 +73,19 @@ TEST_F(ProcessorTest, CommandOneWrap) {
 }
 
 TEST_F(ProcessorTest, CommandTwo) {
+   begin->memory[0] = 2;
+   begin->R0 = 6;
+   begin->R1 = 2;
+   copy_program(end, begin);
+
+   bool finished = false;
+   step_program(end, &finished);
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(4, end->R0);
+   EXPECT_EQ(2, end->R1);
+
+   end->PC = 0;
+   end->R0 = 6;
+   EXPECT_TRUE(compare_programs(begin, end));
 }
