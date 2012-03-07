@@ -6,7 +6,7 @@
 
 using namespace std;
 
-TEST(GeneratorTest, Init) {
+TEST(GeneratorTest, InitTask) {
    TaskGenerator gen;
 
    EXPECT_EQ(0, gen.getNextTask());

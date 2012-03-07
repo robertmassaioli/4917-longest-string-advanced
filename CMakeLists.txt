@@ -10,3 +10,6 @@ add_subdirectory(server)
 #add_subdirectory(common-test)
 #add_subdirectory(client-test)
 add_subdirectory(server-test)
+
+enable_testing()
+add_test(NAME ServerTests COMMAND server-test/server-test)
