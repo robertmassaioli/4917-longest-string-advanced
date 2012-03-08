@@ -292,6 +292,63 @@ TEST_F(ProcessorTest, CommandThirteenReal) {
 TEST_F(ProcessorTest, CommandFourteenConditionFalse) {
    begin->memory[0] = 14;
    begin->memory[1] = 12;
+   begin->R0 = 5;
+   copy_program(end, begin);
+
+   EXPECT_EQ(0, step_program(end, &finished));
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(2, end->PC);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   EXPECT_TRUE(compare_programs(begin, end));
 }
+
 TEST_F(ProcessorTest, CommandFourteenConditionTrue) {
+   begin->memory[0] = 14;
+   begin->memory[1] = 12;
+   begin->R0 = 0;
+   copy_program(end, begin);
+
+   EXPECT_EQ(0, step_program(end, &finished));
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(12, end->PC);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   EXPECT_TRUE(compare_programs(begin, end));
+}
+
+TEST_F(ProcessorTest, CommandFifteenConditionFalse) {
+   begin->memory[0] = 15;
+   begin->memory[1] = 12;
+   begin->R0 = 0;
+   copy_program(end, begin);
+
+   EXPECT_EQ(0, step_program(end, &finished));
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(2, end->PC);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   EXPECT_TRUE(compare_programs(begin, end));
+}
+
+TEST_F(ProcessorTest, CommandFifteenConditionTrue) {
+   begin->memory[0] = 15;
+   begin->memory[1] = 12;
+   begin->R0 = 8;
+   copy_program(end, begin);
+
+   EXPECT_EQ(0, step_program(end, &finished));
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(12, end->PC);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   EXPECT_TRUE(compare_programs(begin, end));
 }
