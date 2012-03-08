@@ -49,6 +49,7 @@ TEST_F(ProcessorTest, CommandOne) {
    EXPECT_EQ(10, end->R0);
    EXPECT_EQ(7, end->R1);
 
+   EXPECT_FALSE(compare_programs(begin, end));
    end->PC = 0;
    end->R0 = 3;
    EXPECT_TRUE(compare_programs(begin, end));
@@ -66,6 +67,7 @@ TEST_F(ProcessorTest, CommandOneWrap) {
    EXPECT_EQ(1, end->R0);
    EXPECT_EQ(7, end->R1);
 
+   EXPECT_FALSE(compare_programs(begin, end));
    end->PC = 0;
    end->R0 = 10;
    EXPECT_TRUE(compare_programs(begin, end));
@@ -83,7 +85,68 @@ TEST_F(ProcessorTest, CommandTwo) {
    EXPECT_EQ(4, end->R0);
    EXPECT_EQ(2, end->R1);
 
+   EXPECT_FALSE(compare_programs(begin, end));
    end->PC = 0;
    end->R0 = 6;
+   EXPECT_TRUE(compare_programs(begin, end));
+}
+
+TEST_F(ProcessorTest, CommandThree) {
+   begin->memory[0] = 3;
+   copy_program(end, begin);
+
+   step_program(end, &finished);
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(1, end->R0);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   end->R0 = 0;
+   EXPECT_TRUE(compare_programs(begin, end));
+}
+
+TEST_F(ProcessorTest, CommandFour) {
+   begin->memory[0] = 4;
+   copy_program(end, begin);
+
+   step_program(end, &finished);
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(1, end->R1);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   end->R1 = 0;
+   EXPECT_TRUE(compare_programs(begin, end));
+}
+
+TEST_F(ProcessorTest, CommandFive) {
+   begin->memory[0] = 5;
+   copy_program(end, begin);
+
+   step_program(end, &finished);
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(15, end->R0);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   end->R0 = 0;
+   EXPECT_TRUE(compare_programs(begin, end));
+}
+
+TEST_F(ProcessorTest, CommandSix) {
+   begin->memory[0] = 6;
+   copy_program(end, begin);
+
+   step_program(end, &finished);
+
+   EXPECT_FALSE(finished);
+   EXPECT_EQ(15, end->R1);
+
+   EXPECT_FALSE(compare_programs(begin, end));
+   end->PC = 0;
+   end->R1 = 0;
    EXPECT_TRUE(compare_programs(begin, end));
 }
