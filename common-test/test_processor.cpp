@@ -353,4 +353,20 @@ namespace {
       end->PC = 0;
       EXPECT_TRUE(compare_programs(begin, end));
    }
+
+   TEST_F(ProcessorTest, SimpleProgram) {
+      begin->memory[0] = 8;
+      begin->memory[1] = 0;
+      begin->memory[2] = 8;
+      begin->memory[3] = 10;
+      
+      EXPECT_EQ(3, run_program_loop_check(begin));
+   }
+
+   TEST_F(ProcessorTest, InfiniteProgram) {
+      begin->memory[0] = 13;
+      begin->memory[1] = 0;
+
+      EXPECT_EQ(0, run_program_loop_check(begin));
+   }
 }
