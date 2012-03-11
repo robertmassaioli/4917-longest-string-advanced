@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <signal.h>
+#include <poll.h>
 
 #include <boost/thread/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -109,34 +110,49 @@ int main(int argc, char** argv) {
  * on to be dealt with.
  */
 void acceptConnections(void* data) {
+   // Grab the accept data
    AcceptThreadData* acceptData = (AcceptThreadData*) data;
    data = NULL;
    cout << "[Started accepting connections from clients]" << endl;
+   
+   // Setup the shouldLoop variable
    runningLock.lock();
    bool shouldLoop = !stopRunning;
    runningLock.unlock();
+
+   const nfds_t fdCount = 1;
+   struct pollfd* fds = (struct pollfd*) malloc(sizeof(struct pollfd) * fdCount);
+   fds[0].fd = acceptData->listenSocket;
+   fds[0].events = POLLIN;
+
+   const int timeout = 1000;
    char tmpStr[200];
    while(shouldLoop) {
-      struct sockaddr client;
-      socklen_t clientAddrLen;
-      int newClient = accept(acceptData->listenSocket, &client, &clientAddrLen);
-      if(newClient > -1) {
-         ClientThreadData* clientData = new ClientThreadData();
-         clientData->connectionSocket = newClient;
-         boost::thread* clientThread = new boost::thread(handleClient, clientData);
-         if(clientThread != NULL) {
-            clientPool.add_thread(clientThread);
+      int pollResponse = poll(fds, fdCount, timeout);
+      if(pollResponse > 0) {
+         struct sockaddr client;
+         socklen_t clientAddrLen;
+         int newClient = accept(acceptData->listenSocket, &client, &clientAddrLen);
+         if(newClient > -1) {
+            ClientThreadData* clientData = new ClientThreadData();
+            clientData->connectionSocket = newClient;
+            boost::thread* clientThread = new boost::thread(handleClient, clientData);
+            if(clientThread != NULL) {
+               clientPool.add_thread(clientThread);
+            }
+            const char* res = inet_ntop(client.sa_family, &client, tmpStr, 200);
+            if(res != NULL) {
+               cout << "Accepted a new socket from: " << res << endl;
+            }
+         } else {
+            perror("Error while attempting to accept socket.");
+            cout << "Shutting down server..." << endl;
+            runningLock.lock();
+            stopRunning = true;
+            runningLock.unlock();
          }
-         const char* res = inet_ntop(client.sa_family, &client, tmpStr, 200);
-         if(res != NULL) {
-            cout << "Accepted a new socket from: " << res << endl;
-         }
-      } else {
-         perror("Error while attempting to accept socket.");
-         cout << "Shutting down server..." << endl;
-         runningLock.lock();
-         stopRunning = true;
-         runningLock.unlock();
+      } else if(pollResponse < 0) {
+         perror("There was an error with the poller");
       }
 
       runningLock.lock();
