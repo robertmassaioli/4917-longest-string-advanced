@@ -369,4 +369,15 @@ namespace {
 
       EXPECT_EQ(0, run_program_loop_check(begin));
    }
+
+   TEST_F(ProcessorTest, StandardResult) {
+      begin->memory[0] = 4; 
+      begin->memory[1] = 8; 
+      begin->memory[2] = 8; 
+      begin->memory[3] = 13; 
+      begin->memory[4] = 2; 
+      begin->memory[5] = 15;
+
+      EXPECT_EQ(93, run_program_loop_check(begin));
+   }
 }

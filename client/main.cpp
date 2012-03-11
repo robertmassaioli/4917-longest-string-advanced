@@ -76,8 +76,22 @@ int main(int argc, char** argv) {
       exit(EXIT_FAILURE);
    }
 
+   // Now ask for a task
+   const size_t buffLen = 100;
+   byte buffer[buffLen];
+   buffer[0] = 1; // TODO this is the message type. Create a shared enum
+   buffer[1] = 5; // This is the number of tasks being requested. Make nicer.
+   send(socketFD, buffer, 2, 0); // send two bytes down the pipe
+
+   // Temporary code to start doing the networking work.
+   close(socketFD);
+   exit(0);
+
 	// use memcpy to copy devices
    //pthread_mutex_t longestEditMutex = PTHREAD_MUTEX_INITIALIZER;
+
+   // TODO this is the task solving code. Throw it into a new thread so that we can run it really
+   // efficiently. It should also be in its own function
 	struct device runner, currentProgram, longestProgram;
 	int longestCount = 0, tempCount;
 

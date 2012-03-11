@@ -1,32 +1,53 @@
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <pthread.h>
+#include <signal.h>
+
+#include <boost/thread/thread.hpp>
+#include <boost/thread/mutex.hpp>
 
 using namespace std;
 
-void* acceptConnections(void* data);
-void* handleClient(void* data);
+typedef unsigned char byte;
+
+void acceptConnections(void* data);
+void handleClient(void* data);
+void closeServer(int value);
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
 
-struct acceptThreadData {
-   int listenSocket;
+static boost::mutex runningLock;
+static bool stopRunning;
+
+static boost::thread_group clientPool;
+
+class AcceptThreadData {
+   public:
+      int listenSocket;
 };
 
-struct clientThreadData {
-   int connectionSocket;
+class ClientThreadData {
+   public:
+      int connectionSocket;
 };
 
 #define MAX_CONNECTIONS 100
 
 int main(int argc, char** argv) {
+   //signal(SIGTERM, closeServer);
+   signal(SIGINT, closeServer);
+
+   runningLock.lock();
+   stopRunning = false;
+   runningLock.unlock();
+
    cout << "[Starting the server]" << endl;
    struct addrinfo hints;
    memset(&hints, 0, sizeof(struct addrinfo));
@@ -51,14 +72,14 @@ int main(int argc, char** argv) {
       cout << "Attempting to connect a socket...";
       socketFD = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
       if(socketFD == -1) {
-         cout << "socket creation " << failed << endl;
+         perror("Failed to create a socket");
          continue;
       }
       if(bind(socketFD, rp->ai_addr, rp->ai_addrlen) == 0) {
-         cout << success << endl;
+         cout << "socket bind " << success << endl;
          break;
       }
-      cout << "socket bind " << failed << endl;
+      perror("Failed to bind a socket.");
       close(socketFD);
    }
 
@@ -67,15 +88,18 @@ int main(int argc, char** argv) {
       exit(EXIT_FAILURE);
    }
 
-   listen(socketFD, MAX_CONNECTIONS);
+   if(listen(socketFD, MAX_CONNECTIONS) != 0) {
+      perror("Failed to open a listening socket");
+      exit(EXIT_FAILURE);
+   }
 
-   pthread_t acceptThread;
-   struct acceptThreadData* data = (struct acceptThreadData*) malloc(sizeof(struct acceptThreadData));
-   data->listenSocket = socketFD;
-   pthread_create(&acceptThread, NULL, acceptConnections, (void*)data);
-   pthread_join(acceptThread, NULL);
+   AcceptThreadData* acceptData = new AcceptThreadData();
+   acceptData->listenSocket = socketFD;
+   boost::thread* acceptThread = new boost::thread(acceptConnections, acceptData);
+   acceptThread->join();
+   delete acceptThread;
+   clientPool.join_all();
 
-   close(socketFD);
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
 }
@@ -84,31 +108,96 @@ int main(int argc, char** argv) {
  * This function is completely in charge of accepting new connections in the server and passing them
  * on to be dealt with.
  */
-void* acceptConnections(void* data) {
-   struct acceptThreadData* acceptData = (struct acceptThreadData*) data;
+void acceptConnections(void* data) {
+   AcceptThreadData* acceptData = (AcceptThreadData*) data;
+   data = NULL;
    cout << "[Started accepting connections from clients]" << endl;
-   while(true) {
+   runningLock.lock();
+   bool shouldLoop = !stopRunning;
+   runningLock.unlock();
+   char tmpStr[200];
+   while(shouldLoop) {
       struct sockaddr client;
       socklen_t clientAddrLen;
       int newClient = accept(acceptData->listenSocket, &client, &clientAddrLen);
-      struct clientThreadData* clientData = (struct clientThreadData*) malloc(sizeof(struct clientThreadData));
-      clientData->connectionSocket = newClient;
-      pthread_t clientThread;
-      pthread_create(&clientThread, NULL, handleClient, (void*)data);
-      char result[200];
-      const char* res = inet_ntop(client.sa_family, &client, result, 200);
-      if(res != NULL) {
-         cout << "Accepted a new socket from: " << res << endl;
+      if(newClient > -1) {
+         ClientThreadData* clientData = new ClientThreadData();
+         clientData->connectionSocket = newClient;
+         boost::thread* clientThread = new boost::thread(handleClient, clientData);
+         if(clientThread != NULL) {
+            clientPool.add_thread(clientThread);
+         }
+         const char* res = inet_ntop(client.sa_family, &client, tmpStr, 200);
+         if(res != NULL) {
+            cout << "Accepted a new socket from: " << res << endl;
+         }
+      } else {
+         perror("Error while attempting to accept socket.");
+         cout << "Shutting down server..." << endl;
+         runningLock.lock();
+         stopRunning = true;
+         runningLock.unlock();
       }
-      close(newClient);
+
+      runningLock.lock();
+      shouldLoop = !stopRunning;
+      runningLock.unlock();
    }
    cout << "[Finished accepting connections from clients]" << endl;
-   free(data);
+   close(acceptData->listenSocket);
+   delete acceptData;
 }
 
-void* handleClient(void* data) {
-   cout << "[Started dealing with another client]" << endl;
-   struct clientThreadData* clientData = (struct clientThreadData*) data;
+enum ServerState { WAITING_START, TASK_SENT, FINISHED_CONNECTION };
 
-   // Start communicating with the client. Essentially wait for 
+void handleClient(void* data) {
+   cout << "[Started dealing with another client]" << endl;
+   ClientThreadData* clientData = (ClientThreadData*) data;
+   data = NULL;
+   ServerState serverState = WAITING_START;
+
+   // Start communicating with the client. Essentially wait for the client to ask you a question
+   const size_t readBufLen = 100;
+   byte readBuf[readBufLen];
+   while (serverState != FINISHED_CONNECTION) {
+      ssize_t readLen = 0;
+      // For now I expect the first message to fit into one buffer call.
+      readLen = recv(clientData->connectionSocket, readBuf, readBufLen, 0);
+      if(readLen == 0) {
+         cout << "The client has shut down on the other end of the line." << endl;
+         break;
+      }
+      if(readLen > 20) {
+         cout << "A client tried to" << endl;
+         break;
+      }
+      char tempStr[5];
+      switch(readBuf[0]) {
+         case 1:
+            sprintf(tempStr, "%d", readBuf[1]);
+            cout << "Client is asking for another " << tempStr << " task/s" << endl;
+            break;
+         default:
+            sprintf(tempStr, "%d", readBuf[0]);
+            cout << "Did not understand the incoming data..." << tempStr << endl;
+            break;
+      }
+      // TODO debugging code.
+      serverState = FINISHED_CONNECTION;
+      // Expect one of two messages "Can I have N tasks?" or "Sorry, quitting"
+      // Send the required response or close the connection.
+      // Wait for the results to be sent back but do not busy wait so that you can occasionally ping.
+      // Recieve the results and update my own data.
+   }
+
+   cout << "Closed the client." << endl;
+   close(clientData->connectionSocket);
+   delete clientData;
+}
+
+void closeServer(int value) {
+   cout << "Shutting down the server now." << endl;
+   runningLock.lock();
+   stopRunning = true;
+   runningLock.unlock();
 }

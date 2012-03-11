@@ -3,6 +3,7 @@ project(LS)
 
 find_package(GTest REQUIRED)
 find_package(Threads REQUIRED)
+find_package(Boost COMPONENTS thread)
 
 add_subdirectory(common)
 add_subdirectory(client)
