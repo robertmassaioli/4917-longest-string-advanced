@@ -13,13 +13,6 @@
 using namespace std;
 
 //////
-// Function Prototypes
-//////
-
-static void serverConnect(void* details);
-static void solveTask(void);
-
-//////
 // Private Classes
 //////
 
@@ -29,11 +22,19 @@ class ServerDetails {
 };
 
 //////
+// Function Prototypes
+//////
+
+static void serverConnect(ServerDetails* details);
+static void solveTask(void);
+
+//////
 // Definitions
 //////
 
 #define MAX_LEVEL	11
 #define DEFAULT_THREAD_COUNT 2
+#define DEFAULT_TASK_REQUEST_COUNT 5
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
@@ -105,7 +106,7 @@ int main(int argc, char** argv) {
    serverDetails->socketFD = socketFD;
    boost::thread serverConnection(serverConnect, serverDetails);
 
-   const int threadCount = 3;
+   const int threadCount = DEFAULT_THREAD_COUNT;
    boost::thread_group workers;
    for(int i = 0; i < threadCount; ++i) {
       workers.create_thread(solveTask);
@@ -121,7 +122,6 @@ int main(int argc, char** argv) {
 }
 
 static void serverConnect(ServerDetails* details) {
-   ServerDetails* serverDetails = (ServerDetails*) details;
 
    delete details;
 }
