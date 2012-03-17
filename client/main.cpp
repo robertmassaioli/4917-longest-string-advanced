@@ -8,18 +8,32 @@
 
 #include "processor.h"
 
+#include <boost/thread.hpp>
+
 using namespace std;
 
 //////
 // Function Prototypes
 //////
 
+static void serverConnect(void* details);
+static void solveTask(void);
+
+//////
+// Private Classes
+//////
+
+class ServerDetails {
+   public:
+      int socketFD;
+};
 
 //////
 // Definitions
 //////
 
 #define MAX_LEVEL	11
+#define DEFAULT_THREAD_COUNT 2
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
@@ -87,11 +101,35 @@ int main(int argc, char** argv) {
    close(socketFD);
    exit(0);
 
-	// use memcpy to copy devices
-   //pthread_mutex_t longestEditMutex = PTHREAD_MUTEX_INITIALIZER;
+   ServerDetails* serverDetails = new ServerDetails();
+   serverDetails->socketFD = socketFD;
+   boost::thread serverConnection(serverConnect, serverDetails);
 
+   const int threadCount = 3;
+   boost::thread_group workers;
+   for(int i = 0; i < threadCount; ++i) {
+      workers.create_thread(solveTask);
+   }
+
+   // Wait for all of the workers to end then shut down the server.
+   workers.join_all();
+   serverConnection.join();
+
+	cout << "Program has completed!" << endl;
+
+	return EXIT_SUCCESS;
+}
+
+static void serverConnect(ServerDetails* details) {
+   ServerDetails* serverDetails = (ServerDetails*) details;
+
+   delete details;
+}
+
+static void solveTask(void) {
    // TODO this is the task solving code. Throw it into a new thread so that we can run it really
-   // efficiently. It should also be in its own function
+   // efficiently. It should also be in its own function. This can probably be executed really well
+   // by using boost futures in the boost::thread library.
 	struct device runner, currentProgram, longestProgram;
 	int longestCount = 0, tempCount;
 
@@ -127,9 +165,4 @@ int main(int argc, char** argv) {
 			cout << " is the longest at " << longestCount << endl;
 		}
 	}
-
-	cout << "Program has completed!" << endl;
-
-	return EXIT_SUCCESS;
 }
-

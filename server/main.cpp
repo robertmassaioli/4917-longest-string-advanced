@@ -192,6 +192,8 @@ void handleClient(void* data) {
          case 1:
             sprintf(tempStr, "%d", readBuf[1]);
             cout << "Client is asking for another " << tempStr << " task/s" << endl;
+            // TODO Look inside endian.h and pack_processor.h to see how to send this
+            // response data over the line.
             break;
          default:
             sprintf(tempStr, "%d", readBuf[0]);
