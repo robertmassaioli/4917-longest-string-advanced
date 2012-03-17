@@ -1,16 +1,21 @@
 #include <iostream>
 #include <cstdlib>
 #include <cstring>
+#include <queue>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 
 #include "processor.h"
+#include "task_queue.h"
 
 #include <boost/thread.hpp>
+#include <boost/smart_ptr/shared_ptr.hpp>
+#include <boost/smart_ptr/make_shared.hpp>
 
 using namespace std;
+using namespace boost;
 
 //////
 // Private Classes
@@ -19,6 +24,7 @@ using namespace std;
 class ServerDetails {
    public:
       int socketFD;
+      shared_ptr<TaskQueue> taskQueue;
 };
 
 //////
@@ -102,8 +108,11 @@ int main(int argc, char** argv) {
    close(socketFD);
    exit(0);
 
+   shared_ptr<TaskQueue> tasks = make_shared<TaskQueue>();
+
    ServerDetails* serverDetails = new ServerDetails();
    serverDetails->socketFD = socketFD;
+   serverDetails->taskQueue = tasks;
    boost::thread serverConnection(serverConnect, serverDetails);
 
    const int threadCount = DEFAULT_THREAD_COUNT;
@@ -121,7 +130,26 @@ int main(int argc, char** argv) {
 	return EXIT_SUCCESS;
 }
 
+static bool closeClient = false;
+static boost::mutex closeClientLock;
+static bool serverDisconnect = false;
+static boost::mutex serverDisconnectLock;
+
+static bool continueRunningServer() {
+   closeClientLock.lock();
+   serverDisconnectLock.lock();
+   bool continueRunning = !(closeClient || serverDisconnect);
+   closeClientLock.unlock();
+   serverDisconnectLock.unlock();
+   return continueRunning;
+}
+
 static void serverConnect(ServerDetails* details) {
+   // Until the server connection dies or the user aborts the client
+   while(continueRunningServer()) {
+      // If you need more tasks then ask for them
+      // Listen to the responses from the server and process them
+   }
 
    delete details;
 }
