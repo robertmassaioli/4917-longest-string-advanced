@@ -148,6 +148,8 @@ static void serverConnect(ServerDetails* details) {
    // Until the server connection dies or the user aborts the client
    while(continueRunningServer()) {
       // If you need more tasks then ask for them
+      if(details->taskQueue->requiresMoreTasks()) {
+      }
       // Listen to the responses from the server and process them
    }
 
