@@ -3,7 +3,7 @@ link_directories(${LS_BINARY_DIR}/common)
 
 add_library(task_queue task_queue.cpp)
 
-add_executable(client main.cpp)
+add_executable(client client.cpp)
 target_link_libraries(client 
    ${CMAKE_THREAD_LIBS_INIT}
    ${Boost_LIBRARIES}
