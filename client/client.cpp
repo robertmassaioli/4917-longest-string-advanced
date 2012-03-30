@@ -11,11 +11,13 @@
 #include "task_queue.h"
 
 #include <boost/thread.hpp>
+#include <boost/program_options.hpp>
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/make_shared.hpp>
 
 using namespace std;
 using namespace boost;
+namespace po = boost::program_options;
 
 //////
 // Private Classes
@@ -50,6 +52,22 @@ static const char* failed = "FAILED!";
 //////
 
 int main(int argc, char** argv) {
+   // parse the program options
+   po::options_description desc("Program options");
+   desc.add_options()
+      ("help,h", "produce help message")
+      ("threads,n", "the number of threads on this computer to use for calculation")
+      ;
+
+   po::variables_map vm;
+   po::store(po::parse_command_line(argc, argv, desc), vm);
+   po::notify(vm);
+
+   if (vm.count("help")) {
+      cout << desc << endl;
+      return EXIT_SUCCESS;
+   }
+
    // TODO Request which part you would like to do.
    cout << "[Starting Server Connection Attempt]" << endl;
    struct addrinfo hints;
