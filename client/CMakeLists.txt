@@ -9,4 +9,5 @@ target_link_libraries(client
    ${Boost_LIBRARIES}
    task_queue
    processor 
+   common
    )

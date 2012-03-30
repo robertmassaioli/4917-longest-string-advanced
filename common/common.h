@@ -1,0 +1,10 @@
+#ifndef __RM_COMMON
+#define __RM_COMMON
+
+// This file is supposed to contain a whole bunch of common helper functions.
+#include <cstring>
+#include <boost/optional.hpp>
+
+boost::optional<std::string> get_env(std::string const &name);
+
+#endif

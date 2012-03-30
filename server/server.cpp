@@ -10,6 +10,10 @@
 #include <signal.h>
 #include <poll.h>
 
+#include "consts.h"
+#include "common.h"
+
+#include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/thread/mutex.hpp>
@@ -45,12 +49,30 @@ class ClientThreadData {
 #define DEFAULT_PORT       "9999"
 
 int main(int argc, char** argv) {
+   boost::optional<string> username = get_env("USER");
+   if(username) {
+      cout << "Welcome " << *username << " to the 4917 distributed server!" << endl;
+   }
+
    // parse the program options
-   po::options_description desc("Program options");
+   int max_connections;
+   string port;
+   po::options_description desc("Program options", DESCRIPTION_WIDTH);
    desc.add_options()
-      ("help,h", "produce help message")
-      ("max-connections,n", po::value<int>(), "the maximum number of client connections to make at any one time")
-      ("port,p", po::value<string>(), "the port to start the server on")
+      (
+         "help,h", 
+         "produce help message"
+      )
+      (
+         "max-connections,n", 
+         po::value<int>(&max_connections)->default_value(MAX_CONNECTIONS), 
+         "the maximum number of client connections to make at any one time"
+      )
+      (
+         "port,p", 
+         po::value<string>(&port)->default_value(DEFAULT_PORT), 
+         "the port to start the server on"
+      )
       ;
 
    po::variables_map vm;
@@ -62,16 +84,8 @@ int main(int argc, char** argv) {
       return EXIT_SUCCESS;
    }
 
-   int max_connections = MAX_CONNECTIONS;
-   if(vm.count("max-connections")) {
-      max_connections = vm["max-connections"].as<int>();
+   if(max_connections != MAX_CONNECTIONS) {
       cout << "Max connections set to: " << max_connections << endl;
-   }
-
-   string port(DEFAULT_PORT);
-   if(vm.count("port")) {
-      port.assign(vm["port"].as<string>());
-      cout << "Using port " << port << endl;
    }
 
    //signal(SIGTERM, closeServer);
@@ -146,6 +160,7 @@ void acceptConnections(void* data) {
    AcceptThreadData* acceptData = (AcceptThreadData*) data;
    data = NULL;
    cout << "[Started accepting connections from clients]" << endl;
+   cout << "[Please press Ctrl-C or send SIG_TERM to shutdown gracefully.]" << endl;
    
    // Setup the shouldLoop variable
    runningLock.lock();

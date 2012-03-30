@@ -9,8 +9,11 @@
 
 #include "processor.h"
 #include "task_queue.h"
+#include "consts.h"
+#include "common.h"
 
 #include <boost/thread.hpp>
+#include <boost/optional.hpp>
 #include <boost/program_options.hpp>
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/make_shared.hpp>
@@ -52,11 +55,24 @@ static const char* failed = "FAILED!";
 //////
 
 int main(int argc, char** argv) {
+   boost::optional<string> username = get_env("USER");
+   if(username) {
+      cout << "Welcome " << *username << " to the 4917 distributed client!" << endl;
+   }
+
    // parse the program options
-   po::options_description desc("Program options");
+   int thread_count;
+   po::options_description desc("Program options", DESCRIPTION_WIDTH);
    desc.add_options()
-      ("help,h", "produce help message")
-      ("threads,n", "the number of threads on this computer to use for calculation")
+      (
+         "help,h", 
+         "produce help message"
+      )
+      (
+         "threads,n", 
+         po::value<int>(&thread_count)->default_value(DEFAULT_THREAD_COUNT),
+         "the number of threads on this computer to use for calculation"
+      )
       ;
 
    po::variables_map vm;
@@ -133,9 +149,8 @@ int main(int argc, char** argv) {
    serverDetails->taskQueue = tasks;
    boost::thread serverConnection(serverConnect, serverDetails);
 
-   const int threadCount = DEFAULT_THREAD_COUNT;
    boost::thread_group workers;
-   for(int i = 0; i < threadCount; ++i) {
+   for(int i = 0; i < thread_count; ++i) {
       workers.create_thread(solveTask);
    }
 
