@@ -10,10 +10,12 @@
 #include <signal.h>
 #include <poll.h>
 
+#include <boost/program_options.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/thread/mutex.hpp>
 
 using namespace std;
+namespace po = boost::program_options;
 
 typedef unsigned char byte;
 
@@ -39,9 +41,39 @@ class ClientThreadData {
       int connectionSocket;
 };
 
-#define MAX_CONNECTIONS 100
+#define MAX_CONNECTIONS    100
+#define DEFAULT_PORT       "9999"
 
 int main(int argc, char** argv) {
+   // parse the program options
+   po::options_description desc("Program options");
+   desc.add_options()
+      ("help,h", "produce help message")
+      ("max-connections,n", po::value<int>(), "the maximum number of client connections to make at any one time")
+      ("port,p", po::value<string>(), "the port to start the server on")
+      ;
+
+   po::variables_map vm;
+   po::store(po::parse_command_line(argc, argv, desc), vm);
+   po::notify(vm);
+
+   if (vm.count("help")) {
+      cout << desc << endl;
+      return EXIT_SUCCESS;
+   }
+
+   int max_connections = MAX_CONNECTIONS;
+   if(vm.count("max-connections")) {
+      max_connections = vm["max-connections"].as<int>();
+      cout << "Max connections set to: " << max_connections << endl;
+   }
+
+   string port(DEFAULT_PORT);
+   if(vm.count("port")) {
+      port.assign(vm["port"].as<string>());
+      cout << "Using port " << port << endl;
+   }
+
    //signal(SIGTERM, closeServer);
    signal(SIGINT, closeServer);
 
@@ -49,7 +81,7 @@ int main(int argc, char** argv) {
    stopRunning = false;
    runningLock.unlock();
 
-   cout << "[Starting the server]" << endl;
+   cout << "[Starting the server on port " << port << "]" << endl;
    struct addrinfo hints;
    memset(&hints, 0, sizeof(struct addrinfo));
    hints.ai_family = AF_UNSPEC;
@@ -61,7 +93,7 @@ int main(int argc, char** argv) {
    hints.ai_next = NULL;
 
    struct addrinfo *result = NULL;
-   int error = getaddrinfo(NULL, argv[1], &hints, &result);
+   int error = getaddrinfo(NULL, port.c_str(), &hints, &result);
    if(error != 0) {
       cerr << "getaddrinfo: " << gai_strerror(error) << endl;
       exit(EXIT_FAILURE);
