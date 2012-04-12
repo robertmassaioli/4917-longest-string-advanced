@@ -9,10 +9,10 @@ int run_program(struct device* program, int timeout) {
 	int outputCount = 0;
 
    init_program(program);
-	while (!programFinished && timeout != 0) {
+   do {
       outputCount += step_program(program, &programFinished);
 		timeout--;
-	}
+	} while (!programFinished && timeout != 0);
 
 	if(timeout == 0) return 0;
 	return outputCount;
@@ -31,14 +31,14 @@ int run_program_loop_check(struct device* program) {
    init_program(&fast_program);
    bool fastProgramFinished = false, slowProgramFinished = false;
    int outputCount = 0;
-   while (!fastProgramFinished) {
+   do {
       step_program(&slow_program, &slowProgramFinished);
       outputCount += step_program(&fast_program, &fastProgramFinished);
       if(!fastProgramFinished) outputCount += step_program(&fast_program, &fastProgramFinished);
       if(compare_programs(&slow_program, &fast_program)) {
          return 0;
       }
-   }
+   } while (!fastProgramFinished);
    return outputCount;
 }
 
@@ -47,10 +47,10 @@ int init_program(struct device* program) {
 }
 
 int step_program(struct device* program, bool* programFinished) {
-   bool incPC = true;
-
    int outputCount = 0;
-   switch(program->memory[program->PC]) {
+   byte instruction = program->memory[program->PC];
+	program->PC = (program->PC + 1) & 0x0F;
+   switch(instruction) {
 		case 0:
 			*programFinished = true;
 			break;
@@ -89,61 +89,47 @@ int step_program(struct device* program, bool* programFinished) {
 			break;
 
 		case 8:
-			program->PC = (program->PC + 1) & 0x0F;
 			if(program->memory[program->PC] > 9) {
 				outputCount += 2;
 			} else {
 				outputCount++;
 			}
+			program->PC = (program->PC + 1) & 0x0F;
 			break;
 
 		case 9:
-			program->PC = (program->PC + 1) & 0x0F;
 			program->R0 = program->memory[program->memory[program->PC]];
+			program->PC = (program->PC + 1) & 0x0F;
 			break;
 
 		case 10:
-			program->PC = (program->PC + 1) & 0x0F;
 			program->R1 = program->memory[program->memory[program->PC]];
+			program->PC = (program->PC + 1) & 0x0F;
 			break;
 
 		case 11:
-			program->PC = (program->PC + 1) & 0x0F;
 			program->memory[program->memory[program->PC]] = program->R0;
+			program->PC = (program->PC + 1) & 0x0F;
 			break;
 
 		case 12:
-			program->PC = (program->PC + 1) & 0x0F;
 			program->memory[program->memory[program->PC]] = program->R1;
+			program->PC = (program->PC + 1) & 0x0F;
 			break;
 
 		case 13:
-			program->PC = (program->PC + 1) & 0x0F;
 			program->PC = program->memory[program->PC];
-			incPC = false;
 			break;
 
 		case 14:
-			program->PC = (program->PC + 1) & 0x0F;
-			if(program->R0 == 0) {
-				program->PC = program->memory[program->PC];
-				incPC = false;
-			}
+         program->PC = (program->R0 == 0) ? program->memory[program->PC] : ((program->PC + 1) & 0x0F);
 			break;
 
 		case 15:
-			program->PC = (program->PC + 1) & 0x0F;
-			if(program->R0 != 0) {
-				program->PC = program->memory[program->PC];
-				incPC = false;
-			}
+         program->PC = (program->R0 != 0) ? program->memory[program->PC] : ((program->PC + 1) & 0x0F);
 			break;
    }
 
-   // prepare for the next loop
-   if(incPC) {
-      program->PC = (program->PC + 1) & 0x0F;
-   }
    return outputCount;
 }
 
