@@ -55,6 +55,32 @@ class ClientThreadData {
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
 
+class accepting_server {
+   public:
+      accepting_server(asio::io_service& io_service, short port) 
+         : accept_(io_service, ip::tcp::endpoint(ip::tcp::v6(), port)) {
+         queue_accept();
+      }
+
+   private:
+      void queue_accept() {
+         // create a new connection and put it on the waiting queue so that the next one
+         // can be handled. Don't do this anymore if the program is quitting.
+         ip::tcp::socket mysock(accept_.io_service());
+         accept_.async_accept(mysock, boost::bind(&accepting_server::handle_accept, this, asio::placeholders::error));
+      }
+
+      void handle_accept(const boost::system::error_code& error) {
+         if(!error) {
+            cout << "Got a new connection" << endl;
+         }
+
+         queue_accept();
+      }
+
+      ip::tcp::acceptor accept_;
+};
+
 int main(int argc, char** argv) {
    boost::optional<string> username = get_env("USER");
    if(username) {
