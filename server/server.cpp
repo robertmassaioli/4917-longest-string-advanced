@@ -29,6 +29,12 @@ namespace ip = boost::asio::ip;
 
 typedef unsigned char byte;
 
+enum ClientToServer {
+   REQUESTING_TASKS,
+   POSTING_BACK,
+   STATUS_UPDATE
+};
+
 void acceptConnections(void* data);
 void handleClient(void* data);
 void closeServer(int value);
@@ -182,12 +188,26 @@ void handleClient(void* data) {
       }
       char tempStr[5];
       switch(readBuf[0]) {
-         case 1:
+         case REQUESTING_TASKS:
             sprintf(tempStr, "%d", readBuf[1]);
             cout << "Client is asking for another " << tempStr << " task/s" << endl;
             // TODO Look inside endian.h and pack_processor.h to see how to send this
             // response data over the line.
             break;
+         case POSTING_BACK:
+            // TODO implement complicated logic.
+            // Step 1: Parse into data structure.
+            // Step 2: Pass into helper function that does the processing.
+            // No need to send anything back to the client. If we don't get it then we
+            // will time out eventually.
+            break;
+
+         case STATUS_UPDATE:
+            // TODO record the status update
+            // For the here and now just reset the timeout on that particular client.
+            // In the future we will actually display the data usefully on the server.
+            break;
+
          default:
             sprintf(tempStr, "%d", readBuf[0]);
             cout << "Did not understand the incoming data..." << tempStr << endl;
