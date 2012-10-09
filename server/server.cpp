@@ -36,17 +36,14 @@ enum ClientToServer {
    STATUS_UPDATE
 };
 
-void acceptConnections(void* data);
 void handleClient(void* data);
-void closeServer(int value);
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
 
-static boost::mutex runningLock;
-static bool stopRunning;
-
 static boost::thread_group clientPool;
+
+static asio::io_service* global_service_handle;
 
 class ClientThreadData {
    public:
@@ -168,47 +165,17 @@ int main(int argc, char** argv) {
       cout << "Max connections set to: " << max_connections << endl;
    }
 
-   //signal(SIGTERM, closeServer);
-   signal(SIGINT, closeServer);
-
-   runningLock.lock();
-   stopRunning = false;
-   runningLock.unlock();
-
    asio::io_service io_service;
    const short shortPort = (short) atoi(port.c_str());
    accepting_server::pointer server = 
       accepting_server::pointer(new accepting_server(io_service, shortPort));
 
+   asio::signal_set signals(io_service, SIGINT);
+   signals.async_wait(boost::bind(&asio::io_service::stop, &io_service));
    io_service.run();
 
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
-}
-
-/**
- * This function is completely in charge of accepting new connections in the server and passing them
- * on to be dealt with.
- */
-void acceptConnections(void* data) {
-   // Grab the accept data
-   cout << "[Started accepting connections from clients]" << endl;
-   cout << "[Please press Ctrl-C or send SIG_TERM to shutdown gracefully.]" << endl;
-   
-   // Setup the shouldLoop variable
-   runningLock.lock();
-   bool shouldLoop = !stopRunning;
-   runningLock.unlock();
-
-   const int timeout = 1000;
-   char tmpStr[200];
-   while(shouldLoop) {
-
-      runningLock.lock();
-      shouldLoop = !stopRunning;
-      runningLock.unlock();
-   }
-   cout << "[Finished accepting connections from clients]" << endl;
 }
 
 enum ServerState { WAITING_START, TASK_SENT, FINISHED_CONNECTION };
@@ -272,11 +239,4 @@ void handleClient(void* data) {
    cout << "Closed the client." << endl;
    close(clientData->connectionSocket);
    delete clientData;
-}
-
-void closeServer(int value) {
-   cout << "Shutting down the server now." << endl;
-   runningLock.lock();
-   stopRunning = true;
-   runningLock.unlock();
 }

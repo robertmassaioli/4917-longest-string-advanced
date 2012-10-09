@@ -15,3 +15,9 @@ To see all of the cool programs that come out of this exploration and to actuall
  - Stateful (Must be able to save / load server state in the event of a server shutdown or backup)
  - Must be able to delegate work quickly and efficiently.
  - Must be correct! There is absolutely no point doing this if it is not correct.
+
+## Dependancies
+
+This code requires:
+
+ - Boost (Version 1.4.7 or higher)
