@@ -23,6 +23,7 @@
 #include <boost/thread/mutex.hpp>
 
 using namespace std;
+using boost::asio::ip::tcp;
 namespace po = boost::program_options;
 namespace asio = boost::asio;
 namespace ip = boost::asio::ip;
@@ -48,6 +49,69 @@ class ClientThreadData {
 
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
+
+class client_connection {
+   public:
+      static boost::shared_ptr<client_connection> create(asio::io_service& io_service) {
+         return boost::shared_ptr<client_connection>(new client_connection(io_service));
+      }
+
+      tcp::socket& socket() {
+         return socket_;
+      }
+
+      void run() {
+         // This essentially runs the client and attempts to keep it in contact with the target
+         // machine. In here is where we do all of the complicated messaging and handling.
+         cout << "Running a client" << endl;
+      }
+
+   private:
+      client_connection(asio::io_service& io_service)
+         : socket_(io_service) 
+      {
+      }
+
+      ip::tcp::socket socket_;
+      // TODO data structure representing last ping
+      // list of the current tasks that it has been assigned so that we can reap them when the
+      // client disconnects.
+};
+
+class accepting_server {
+   public:
+      accepting_server(asio::io_service& io_service, short port) 
+         : acceptor_(io_service, tcp::endpoint(tcp::v6(), port))
+      {
+         run_accept();
+      }
+
+
+   private: 
+      void run_accept() 
+      {
+         boost::shared_ptr<client_connection> new_connection = 
+            client_connection::create(acceptor_.get_io_service());
+
+         acceptor_.async_accept(new_connection->socket(), 
+            boost::bind(&accepting_server::handle_accept, 
+               this, 
+               new_connection,
+               asio::placeholders::error));
+      }
+
+      void handle_accept(boost::shared_ptr<client_connection> new_connection, 
+            const boost::system::error_code& error) 
+      {
+         if(!error) {
+            new_connection->run();
+         }
+
+         run_accept();
+      }
+
+      tcp::acceptor acceptor_;
+};
 
 int main(int argc, char** argv) {
    boost::optional<string> username = get_env("USER");
