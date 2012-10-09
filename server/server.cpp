@@ -56,10 +56,14 @@ class ClientThreadData {
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
 
-class client_connection {
+class client_connection 
+   : public boost::enable_shared_from_this<client_connection>
+{
    public:
-      static boost::shared_ptr<client_connection> create(asio::io_service& io_service) {
-         return boost::shared_ptr<client_connection>(new client_connection(io_service));
+      typedef boost::shared_ptr<client_connection> pointer;
+
+      static pointer create(asio::io_service& io_service) {
+         return pointer(new client_connection(io_service));
       }
 
       tcp::socket& socket() {
@@ -86,9 +90,12 @@ class client_connection {
 
 class accepting_server {
    public:
+      typedef boost::shared_ptr<accepting_server> pointer;
+
       accepting_server(asio::io_service& io_service, short port) 
          : acceptor_(io_service, tcp::endpoint(tcp::v6(), port))
       {
+         cout << "[Starting the server on port " << port << "]" << endl;
          run_accept();
       }
 
@@ -96,7 +103,7 @@ class accepting_server {
    private: 
       void run_accept() 
       {
-         boost::shared_ptr<client_connection> new_connection = 
+         client_connection::pointer new_connection = 
             client_connection::create(acceptor_.get_io_service());
 
          acceptor_.async_accept(new_connection->socket(), 
@@ -169,36 +176,11 @@ int main(int argc, char** argv) {
    runningLock.unlock();
 
    asio::io_service io_service;
-   ip::tcp::endpoint endpoint(ip::tcp::v6(), atoi(port.c_str()));
-   boost::shared_ptr<ip::tcp::acceptor> acceptor = 
-      boost::make_shared<ip::tcp::acceptor>(
-            boost::ref(io_service)
-         );
+   const short shortPort = (short) atoi(port.c_str());
+   accepting_server::pointer server = 
+      accepting_server::pointer(new accepting_server(io_service, shortPort));
 
-   boost::system::error_code ec;
-   acceptor->open(endpoint.protocol(), ec);
-   if(ec) {
-      cout << ec << endl;
-      return 1;
-   }
-   acceptor->bind(endpoint, ec);
-   if(ec) {
-      cout << ec << endl;
-      return 2;
-   }
-   acceptor->listen(asio::socket_base::max_connections, ec);
-   if(ec) {
-      cout << ec << endl;
-      return 3;
-   }
-
-   cout << "[Starting the server on port " << port << "]" << endl;
-
-   void* value = NULL;
-   boost::thread* acceptThread = new boost::thread(acceptConnections, value);
-   acceptThread->join();
-   delete acceptThread;
-   clientPool.join_all();
+   io_service.run();
 
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
