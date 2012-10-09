@@ -111,6 +111,8 @@ class accepting_server {
       {
          if(!error) {
             new_connection->run();
+         } else {
+            cout << "There was an error: " << error << endl;
          }
 
          run_accept();
