@@ -12,6 +12,7 @@
 
 #include "consts.h"
 #include "common.h"
+#include "message.h"
 
 #include <boost/ref.hpp>
 #include <boost/asio.hpp>
@@ -23,6 +24,7 @@
 #include <boost/thread/mutex.hpp>
 
 using namespace std;
+using boost::asio::ip::tcp;
 namespace po = boost::program_options;
 namespace asio = boost::asio;
 namespace ip = boost::asio::ip;
@@ -35,25 +37,115 @@ enum ClientToServer {
    STATUS_UPDATE
 };
 
-void acceptConnections(void* data);
-void handleClient(void* data);
-void closeServer(int value);
+//void handleClient(void* data);
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
 
-static boost::mutex runningLock;
-static bool stopRunning;
-
-static boost::thread_group clientPool;
-
-class ClientThreadData {
-   public:
-      int connectionSocket;
-};
-
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
+
+class client_connection 
+   : public boost::enable_shared_from_this<client_connection>
+{
+   public:
+      typedef boost::shared_ptr<client_connection> pointer;
+
+      static pointer create(asio::io_service& io_service) {
+         return pointer(new client_connection(io_service));
+      }
+
+      tcp::socket& socket() {
+         return socket_;
+      }
+
+      void run() {
+         // This essentially runs the client and attempts to keep it in contact with the target
+         // machine. In here is where we do all of the complicated messaging and handling.
+
+         cout << "Running a client" << endl;
+         
+
+         // Wait until the client decides to close and ping the client every so often to make sure
+         // that we remain updated with its progress.
+      }
+
+   private:
+      client_connection(asio::io_service& io_service)
+         : socket_(io_service) 
+      {
+         asio::async_read(socket_, asio::buffer(raw_header_data_), 
+               boost::bind(&client_connection::handle_header, this, )
+      }
+
+      void handle_header(const boost::system::error_code& ec, size_t bytes_transferred) {
+      }
+
+      void handle_data(const boost::system::error_code& ec, size_t bytes_transferred) {
+      }
+
+      void handle_task_request() {
+         // The client is requesting more tasks. Give them more.
+      }
+
+      void handle_results() {
+         // The client is handing us the results, deal with them. This is a reduce function.
+      }
+
+      void handle_status_update() {
+         // The client has given us a status update. Deal with it and save that data.
+      }
+
+      // TODO work out why people use this enum trick?
+      enum { header_length = 4 };
+
+      ip::tcp::socket socket_;
+      char raw_header_data_[header_length];
+      // TODO data structure representing last ping
+      // list of the current tasks that it has been assigned so that we can reap them when the
+      // client disconnects.
+};
+
+class accepting_server {
+   public:
+      typedef boost::shared_ptr<accepting_server> pointer;
+
+      accepting_server(asio::io_service& io_service, short port) 
+         : acceptor_(io_service, tcp::endpoint(tcp::v6(), port))
+      {
+         cout << "[Starting the server on port " << port << "]" << endl;
+         cout << "[Maximum Concurrent Connections: " << acceptor_.max_connections << "]" << endl;
+         run_accept();
+      }
+
+
+   private: 
+      void run_accept() 
+      {
+         client_connection::pointer new_connection = 
+            client_connection::create(acceptor_.get_io_service());
+
+         acceptor_.async_accept(new_connection->socket(), 
+            boost::bind(&accepting_server::handle_accept, 
+               this, 
+               new_connection,
+               asio::placeholders::error));
+      }
+
+      void handle_accept(boost::shared_ptr<client_connection> new_connection, 
+            const boost::system::error_code& error) 
+      {
+         if(!error) {
+            new_connection->run();
+         } else {
+            cout << "There was an error: " << error << endl;
+         }
+
+         run_accept();
+      }
+
+      tcp::acceptor acceptor_;
+};
 
 class accepting_server {
    public:
@@ -118,82 +210,28 @@ int main(int argc, char** argv) {
    }
 
    if(max_connections != MAX_CONNECTIONS) {
+      // Currently boost asio seems to ignore this.
       cout << "Max connections set to: " << max_connections << endl;
    }
 
-   //signal(SIGTERM, closeServer);
-   signal(SIGINT, closeServer);
-
-   runningLock.lock();
-   stopRunning = false;
-   runningLock.unlock();
-
    asio::io_service io_service;
-   ip::tcp::endpoint endpoint(ip::tcp::v6(), atoi(port.c_str()));
-   boost::shared_ptr<ip::tcp::acceptor> acceptor = 
-      boost::make_shared<ip::tcp::acceptor>(
-            boost::ref(io_service)
-         );
+   const short shortPort = (short) atoi(port.c_str());
+   accepting_server::pointer server = 
+      accepting_server::pointer(new accepting_server(io_service, shortPort));
 
-   boost::system::error_code ec;
-   acceptor->open(endpoint.protocol(), ec);
-   if(ec) {
-      cout << ec << endl;
-      return 1;
-   }
-   acceptor->bind(endpoint, ec);
-   if(ec) {
-      cout << ec << endl;
-      return 2;
-   }
-   acceptor->listen(asio::socket_base::max_connections, ec);
-   if(ec) {
-      cout << ec << endl;
-      return 3;
-   }
-
-   cout << "[Starting the server on port " << port << "]" << endl;
-
-   void* value = NULL;
-   boost::thread* acceptThread = new boost::thread(acceptConnections, value);
-   acceptThread->join();
-   delete acceptThread;
-   clientPool.join_all();
+   asio::signal_set signals(io_service, SIGINT);
+   signals.async_wait(boost::bind(&asio::io_service::stop, &io_service));
+   io_service.run();
 
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
 }
 
-/**
- * This function is completely in charge of accepting new connections in the server and passing them
- * on to be dealt with.
- */
-void acceptConnections(void* data) {
-   // Grab the accept data
-   cout << "[Started accepting connections from clients]" << endl;
-   cout << "[Please press Ctrl-C or send SIG_TERM to shutdown gracefully.]" << endl;
-   
-   // Setup the shouldLoop variable
-   runningLock.lock();
-   bool shouldLoop = !stopRunning;
-   runningLock.unlock();
-
-   const int timeout = 1000;
-   char tmpStr[200];
-   while(shouldLoop) {
-
-      runningLock.lock();
-      shouldLoop = !stopRunning;
-      runningLock.unlock();
-   }
-   cout << "[Finished accepting connections from clients]" << endl;
-}
-
 enum ServerState { WAITING_START, TASK_SENT, FINISHED_CONNECTION };
 
+/*
 void handleClient(void* data) {
    cout << "[Started dealing with another client]" << endl;
-   ClientThreadData* clientData = (ClientThreadData*) data;
    data = NULL;
    ServerState serverState = WAITING_START;
 
@@ -203,7 +241,7 @@ void handleClient(void* data) {
    while (serverState != FINISHED_CONNECTION) {
       ssize_t readLen = 0;
       // For now I expect the first message to fit into one buffer call.
-      readLen = recv(clientData->connectionSocket, readBuf, readBufLen, 0);
+      readLen = recv(NULL, readBuf, readBufLen, 0);
       if(readLen == 0) {
          cout << "The client has shut down on the other end of the line." << endl;
          break;
@@ -251,10 +289,4 @@ void handleClient(void* data) {
    close(clientData->connectionSocket);
    delete clientData;
 }
-
-void closeServer(int value) {
-   cout << "Shutting down the server now." << endl;
-   runningLock.lock();
-   stopRunning = true;
-   runningLock.unlock();
-}
+*/
