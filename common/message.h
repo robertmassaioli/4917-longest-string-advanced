@@ -1,6 +1,8 @@
 #ifndef __4917_MESSAGE
 #define __4917_MESSAGE
 
+#include <vector>
+
 class message_header
 {
    public:
@@ -16,6 +18,33 @@ class message_header
       {
          ar & type;
       }
+};
+
+
+class message_task_request 
+{
+   public:
+      template<class Archive>
+      void serialize(Archive& ar, const unsigned int version)
+      {
+         ar & tasksRequested_;
+      }
+
+   private:
+      short tasksRequested_;
+};
+
+class message_task_response
+{
+   public:
+      template<class Archive>
+      void serialize(Archive& ar, const unsigned int version)
+      {
+         ar & tasks_;
+      }
+
+   private:
+      std::vector<uint32_t> tasks_;
 };
 
 #endif

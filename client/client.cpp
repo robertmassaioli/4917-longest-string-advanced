@@ -15,12 +15,13 @@
 #include <boost/thread.hpp>
 #include <boost/optional.hpp>
 #include <boost/program_options.hpp>
+#include <boost/asio.hpp>
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/make_shared.hpp>
 
 using namespace std;
-using namespace boost;
 namespace po = boost::program_options;
+namespace asio = boost::asio;
 
 //////
 // Private Classes
@@ -29,7 +30,7 @@ namespace po = boost::program_options;
 class ServerDetails {
    public:
       int socketFD;
-      shared_ptr<TaskQueue> taskQueue;
+      boost::shared_ptr<TaskQueue> taskQueue;
 };
 
 //////
@@ -83,6 +84,11 @@ int main(int argc, char** argv) {
       cout << desc << endl;
       return EXIT_SUCCESS;
    }
+
+   asio::io_service io_service;
+
+   // TODO create a client that runs with this IO Service and is restrained to a class.
+   io_service.run();
 
    // TODO Request which part you would like to do.
    cout << "[Starting Server Connection Attempt]" << endl;
@@ -142,7 +148,7 @@ int main(int argc, char** argv) {
    close(socketFD);
    exit(0);
 
-   shared_ptr<TaskQueue> tasks = make_shared<TaskQueue>();
+   boost::shared_ptr<TaskQueue> tasks = boost::make_shared<TaskQueue>();
 
    ServerDetails* serverDetails = new ServerDetails();
    serverDetails->socketFD = socketFD;
