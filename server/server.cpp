@@ -12,6 +12,7 @@
 
 #include "consts.h"
 #include "common.h"
+#include "message.h"
 
 #include <boost/ref.hpp>
 #include <boost/asio.hpp>
@@ -36,19 +37,10 @@ enum ClientToServer {
    STATUS_UPDATE
 };
 
-void handleClient(void* data);
+//void handleClient(void* data);
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
-
-static boost::thread_group clientPool;
-
-static asio::io_service* global_service_handle;
-
-class ClientThreadData {
-   public:
-      int connectionSocket;
-};
 
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
@@ -70,16 +62,45 @@ class client_connection
       void run() {
          // This essentially runs the client and attempts to keep it in contact with the target
          // machine. In here is where we do all of the complicated messaging and handling.
+
          cout << "Running a client" << endl;
+         
+
+         // Wait until the client decides to close and ping the client every so often to make sure
+         // that we remain updated with its progress.
       }
 
    private:
       client_connection(asio::io_service& io_service)
          : socket_(io_service) 
       {
+         asio::async_read(socket_, asio::buffer(raw_header_data_), 
+               boost::bind(&client_connection::handle_header, this, )
       }
 
+      void handle_header(const boost::system::error_code& ec, size_t bytes_transferred) {
+      }
+
+      void handle_data(const boost::system::error_code& ec, size_t bytes_transferred) {
+      }
+
+      void handle_task_request() {
+         // The client is requesting more tasks. Give them more.
+      }
+
+      void handle_results() {
+         // The client is handing us the results, deal with them. This is a reduce function.
+      }
+
+      void handle_status_update() {
+         // The client has given us a status update. Deal with it and save that data.
+      }
+
+      // TODO work out why people use this enum trick?
+      enum { header_length = 4 };
+
       ip::tcp::socket socket_;
+      char raw_header_data_[header_length];
       // TODO data structure representing last ping
       // list of the current tasks that it has been assigned so that we can reap them when the
       // client disconnects.
@@ -93,6 +114,7 @@ class accepting_server {
          : acceptor_(io_service, tcp::endpoint(tcp::v6(), port))
       {
          cout << "[Starting the server on port " << port << "]" << endl;
+         cout << "[Maximum Concurrent Connections: " << acceptor_.max_connections << "]" << endl;
          run_accept();
       }
 
@@ -162,6 +184,7 @@ int main(int argc, char** argv) {
    }
 
    if(max_connections != MAX_CONNECTIONS) {
+      // Currently boost asio seems to ignore this.
       cout << "Max connections set to: " << max_connections << endl;
    }
 
@@ -180,9 +203,9 @@ int main(int argc, char** argv) {
 
 enum ServerState { WAITING_START, TASK_SENT, FINISHED_CONNECTION };
 
+/*
 void handleClient(void* data) {
    cout << "[Started dealing with another client]" << endl;
-   ClientThreadData* clientData = (ClientThreadData*) data;
    data = NULL;
    ServerState serverState = WAITING_START;
 
@@ -192,7 +215,7 @@ void handleClient(void* data) {
    while (serverState != FINISHED_CONNECTION) {
       ssize_t readLen = 0;
       // For now I expect the first message to fit into one buffer call.
-      readLen = recv(clientData->connectionSocket, readBuf, readBufLen, 0);
+      readLen = recv(NULL, readBuf, readBufLen, 0);
       if(readLen == 0) {
          cout << "The client has shut down on the other end of the line." << endl;
          break;
@@ -240,3 +263,4 @@ void handleClient(void* data) {
    close(clientData->connectionSocket);
    delete clientData;
 }
+*/
