@@ -10,7 +10,7 @@ class message_header
       {
          REQUESTING_TASKS = 1,
          POST_BACK_DATA = 2,
-         STATUS_UPTATE = 3
+         STATUS_UPDATE = 3
       } type;
 
       template<class Archive>
@@ -20,7 +20,7 @@ class message_header
       }
 };
 
-
+// The task responses
 class message_task_request 
 {
    public:
@@ -45,6 +45,22 @@ class message_task_response
 
    private:
       std::vector<uint32_t> tasks_;
+};
+
+// post back data
+class message_result_request
+{
+   public:
+      template<class Archive>
+      void serialize(Archive& ar, const unsigned int version) 
+      {
+         ar & task_;
+         ar & topResults_;
+      }
+
+   private:
+      uint32_t task_;
+      std::vector<uint32_t> topResults_;
 };
 
 #endif

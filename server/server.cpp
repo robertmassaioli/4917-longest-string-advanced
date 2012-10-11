@@ -22,6 +22,7 @@
 #include <boost/program_options.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/archive/text_oarchive.hpp>
 
 using namespace std;
 using boost::asio::ip::tcp;
@@ -30,12 +31,6 @@ namespace asio = boost::asio;
 namespace ip = boost::asio::ip;
 
 typedef unsigned char byte;
-
-enum ClientToServer {
-   REQUESTING_TASKS,
-   POSTING_BACK,
-   STATUS_UPDATE
-};
 
 //void handleClient(void* data);
 
@@ -64,6 +59,17 @@ class client_connection
          // machine. In here is where we do all of the complicated messaging and handling.
 
          cout << "Running a client" << endl;
+         asio::streambuf buffer;
+         std::ostream output(&buffer);
+
+         message_header header;
+         header.type = message_header::STATUS_UPDATE;
+
+         boost::archive::text_oarchive outArchive(output);
+         outArchive << header;
+
+         size_t dataSent = socket_.send(buffer.data());
+         buffer.consume(dataSent);
          
 
          // Wait until the client decides to close and ping the client every so often to make sure
@@ -156,6 +162,16 @@ int main(int argc, char** argv) {
       cout << "Welcome " << *username << " to the 4917 distributed server!" << endl;
    }
 
+   asio::streambuf buffer;
+   std::ostream stream(&buffer);
+   message_header header;
+   header.type = message_header::REQUESTING_TASKS;
+
+   boost::archive::text_oarchive outArchive(stream);
+   outArchive << header;
+
+   cout << stream.rdbuf() << endl;
+
    // parse the program options
    int max_connections;
    string port;
@@ -203,8 +219,6 @@ int main(int argc, char** argv) {
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
 }
-
-enum ServerState { WAITING_START, TASK_SENT, FINISHED_CONNECTION };
 
 /*
 void handleClient(void* data) {

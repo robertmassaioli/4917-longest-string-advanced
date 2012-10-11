@@ -20,6 +20,7 @@
 #include <boost/smart_ptr/make_shared.hpp>
 
 using namespace std;
+using boost::asio::ip::tcp;
 namespace po = boost::program_options;
 namespace asio = boost::asio;
 
@@ -55,6 +56,28 @@ static const char* failed = "FAILED!";
 // Beginning of program code
 //////
 
+class server_connection
+{
+   public:
+      server_connection(asio::io_service& io_service,
+                        tcp::resolver::iterator endpoint_iterator)
+         : io_service_(io_service), socket_(io_service)
+      {
+          boost::asio::async_connect(socket_, endpoint_iterator,
+              boost::bind(&server_connection::handle_connect, this,
+                boost::asio::placeholders::error));
+      }
+
+   private:
+      void handle_connect(const boost::system::error_code& error) {
+         cout << "We made a connection to the server! Success!" << endl;
+      }
+
+      // The underlying socket that we use for communication.
+      tcp::socket socket_;
+      asio::io_service& io_service_;
+};
+
 int main(int argc, char** argv) {
    boost::optional<string> username = get_env("USER");
    if(username) {
@@ -85,84 +108,17 @@ int main(int argc, char** argv) {
       return EXIT_SUCCESS;
    }
 
+
    asio::io_service io_service;
+
+   tcp::resolver resolver(io_service);
+   tcp::resolver::query query(argv[1], argv[2]);
+   tcp::resolver::iterator iterator = resolver.resolve(query);
+
+   server_connection connection(io_service, iterator);
 
    // TODO create a client that runs with this IO Service and is restrained to a class.
    io_service.run();
-
-   // TODO Request which part you would like to do.
-   cout << "[Starting Server Connection Attempt]" << endl;
-   struct addrinfo hints;
-   memset(&hints, 0, sizeof(struct addrinfo));
-   hints.ai_family = AF_UNSPEC;
-   hints.ai_socktype = SOCK_STREAM;
-   hints.ai_protocol = 0;
-   hints.ai_flags = AI_PASSIVE;
-   hints.ai_canonname = NULL;
-   hints.ai_addr = NULL;
-   hints.ai_next = NULL;
-
-   struct addrinfo *result = NULL;
-   int error = getaddrinfo(argv[1], argv[2], &hints, &result);
-   if(error != 0) {
-      cerr << "getaddrinfo: " << gai_strerror(error) << endl;
-      exit(EXIT_FAILURE);
-   }
-
-   int socketFD = -1;
-   struct addrinfo *rp = NULL;
-   for(rp = result; rp != NULL; rp = rp->ai_next) {
-      char result[200];
-      const char* inetRes = inet_ntop(rp->ai_socktype, rp->ai_addr, result, 200);
-      if(inetRes != NULL) {
-         cout << "Attempting to connect a socket at '" << inetRes << "'...";
-      } else {
-         cout << "Attempting to connect a socket...";
-      }
-      socketFD = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-      if(socketFD == -1) {
-         cout << "socket creation " << failed << endl;
-         continue;
-      }
-      if(connect(socketFD, rp->ai_addr, rp->ai_addrlen) == 0) {
-         cout << success << endl;
-         break;
-      }
-      cout << "connection " << failed << endl;
-      close(socketFD);
-   }
-
-   if(rp == NULL) {
-      cerr << "Did not manage to bind any sockets or ports." << endl;
-      exit(EXIT_FAILURE);
-   }
-
-   // Now ask for a task
-   const size_t buffLen = 100;
-   byte buffer[buffLen];
-   buffer[0] = 1; // TODO this is the message type. Create a shared enum
-   buffer[1] = 5; // This is the number of tasks being requested. Make nicer.
-   send(socketFD, buffer, 2, 0); // send two bytes down the pipe
-
-   // Temporary code to start doing the networking work.
-   close(socketFD);
-   exit(0);
-
-   boost::shared_ptr<TaskQueue> tasks = boost::make_shared<TaskQueue>();
-
-   ServerDetails* serverDetails = new ServerDetails();
-   serverDetails->socketFD = socketFD;
-   serverDetails->taskQueue = tasks;
-   boost::thread serverConnection(serverConnect, serverDetails);
-
-   boost::thread_group workers;
-   for(int i = 0; i < thread_count; ++i) {
-      workers.create_thread(solveTask);
-   }
-
-   // Wait for all of the workers to end then shut down the server.
-   workers.join_all();
-   serverConnection.join();
 
 	cout << "Program has completed!" << endl;
 

@@ -3,7 +3,13 @@ project(LS)
 
 find_package(GTest REQUIRED)
 find_package(Threads REQUIRED)
-find_package(Boost REQUIRED COMPONENTS thread program_options system regex)
+find_package(Boost REQUIRED COMPONENTS 
+   thread 
+   program_options 
+   system 
+   regex
+   serialization
+   )
 
 add_subdirectory(common)
 add_subdirectory(client)
