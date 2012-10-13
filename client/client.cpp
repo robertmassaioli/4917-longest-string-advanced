@@ -86,7 +86,14 @@ class server_connection
 
       void handle_request(const boost::system::error_code& error)
       {
-         cout << "Header Type: " << header.type << endl;
+         if(error) 
+         {
+            cout << "There was a problem reading the data..." << endl;
+         }
+         else 
+         {
+            cout << "Header Type: " << header.type << endl;
+         }
       }
 
       // The underlying socket that we use for communication.

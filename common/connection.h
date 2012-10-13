@@ -29,13 +29,14 @@ class connection
          std::ostringstream data_stream;
          boost::archive::text_oarchive archive(data_stream);
          archive << data;
+         outbound_data_ = data_stream.str();
 
          // build the header of the message
          std::ostringstream header_stream;
          header_stream 
             << std::setw(header_length) 
             << std::hex
-            << data_stream.str().size();
+            << outbound_data_.size();
          if(!header_stream || header_stream.str().size() != header_length) 
          {
             // something went wrong so display an error message.
@@ -43,19 +44,26 @@ class connection
             socket_.get_io_service().post(boost::bind(handler, error));
             return;
          }
+         outbound_header_ = header_stream.str();
+
+         std::cout << "Header Stream: ";
+         for(int i = header_length - 1; i >= 0; --i) 
+         {
+            std::cout << std::hex << (int)outbound_header_[i] << ' ';
+         }
+         std::cout << std::endl;
+         std::cout << "Data Stream: " << outbound_data_ << std::endl;
 
          // write out the header and data
          std::vector<boost::asio::const_buffer> buffers;
-         buffers.push_back(boost::asio::buffer(header_stream.str()));
-         buffers.push_back(boost::asio::buffer(data_stream.str()));
+         buffers.push_back(boost::asio::buffer(outbound_header_));
+         buffers.push_back(boost::asio::buffer(outbound_data_));
          boost::asio::async_write(socket_, buffers, handler);
-
       }
 
       template<typename T, typename Handler>
       void async_read(T& data, Handler handler) 
       {
-         
          void (connection::*f)(
                const boost::system::error_code&,
                const std::size_t&,
@@ -99,7 +107,13 @@ class connection
          } 
          else 
          {
-            std::istringstream header_in(std::string(inbound_header_, header_length));
+            std::string input(inbound_header_, header_length);
+            std::cout << "Incoming Header: ";
+            for(int i = header_length - 1; i >= 0; --i) {
+               std::cout << std::hex << (int) input[i] << ' ';
+            }
+            std::cout << std::endl;
+            std::istringstream header_in(input);
             std::size_t inbound_data_size = 0;
             if(!(header_in >> std::hex >> inbound_data_size)) 
             {
@@ -171,6 +185,8 @@ class connection
 
       char inbound_header_[header_length];
       std::vector<char> inbound_data_;
+
+      std::string outbound_header_, outbound_data_;
 };
 
 #endif
