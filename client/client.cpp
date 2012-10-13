@@ -11,6 +11,7 @@
 #include "task_queue.h"
 #include "consts.h"
 #include "common.h"
+#include "message.h"
 
 #include <boost/thread.hpp>
 #include <boost/optional.hpp>
@@ -18,6 +19,7 @@
 #include <boost/asio.hpp>
 #include <boost/smart_ptr/shared_ptr.hpp>
 #include <boost/smart_ptr/make_shared.hpp>
+#include <boost/archive/text_oarchive.hpp>
 
 using namespace std;
 using boost::asio::ip::tcp;
@@ -71,6 +73,19 @@ class server_connection
    private:
       void handle_connect(const boost::system::error_code& error) {
          cout << "We made a connection to the server! Success!" << endl;
+         // Start waiting for the server to tell us stuff.
+         // Request some tasks.
+         message_header header;
+         header.type = message_header::REQUESTING_TASKS;
+
+         asio::streambuf buffer;
+         std::ostream output(&buffer);
+
+         boost::archive::text_oarchive outArchive(output);
+         outArchive << header;
+
+         size_t dataSent = socket_.send(buffer.data());
+         buffer.consume(dataSent);
       }
 
       // The underlying socket that we use for communication.

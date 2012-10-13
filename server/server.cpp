@@ -13,6 +13,7 @@
 #include "consts.h"
 #include "common.h"
 #include "message.h"
+#include "connection.h"
 
 #include <boost/ref.hpp>
 #include <boost/asio.hpp>
@@ -51,65 +52,72 @@ class client_connection
       }
 
       tcp::socket& socket() {
-         return socket_;
+         return connection_.socket();
       }
 
       void run() {
          // This essentially runs the client and attempts to keep it in contact with the target
          // machine. In here is where we do all of the complicated messaging and handling.
-
-         cout << "Running a client" << endl;
-         asio::streambuf buffer;
-         std::ostream output(&buffer);
-
          message_header header;
-         header.type = message_header::STATUS_UPDATE;
+         header.type = message_header::REQUESTING_TASKS;
 
-         boost::archive::text_oarchive outArchive(output);
-         outArchive << header;
+         connection_.async_write(header, 
+               boost::bind(
+                  &client_connection::handle_write,
+                  this,
+                  boost::asio::placeholders::error));
+         cout << "Sent a message back to the client: " << header.type << endl;
 
-         size_t dataSent = socket_.send(buffer.data());
-         buffer.consume(dataSent);
-         
-
-         // Wait until the client decides to close and ping the client every so often to make sure
-         // that we remain updated with its progress.
+         // Kick off a read async task for anything that the client might want to send us
+         // Kick off a periodic status update task that the client can return to us
       }
+
 
    private:
       client_connection(asio::io_service& io_service)
-         : socket_(io_service) 
+         : connection_(io_service) 
       {
-         asio::async_read(socket_, asio::buffer(raw_header_data_), 
-               boost::bind(&client_connection::handle_header,
+         connection_.async_read(header, 
+               boost::bind(
+                  &client_connection::handle_header,
                   this,
-                  asio::placeholders::error,
-                  asio::placeholders::bytes_transferred));
+                  asio::placeholders::error
+               ));
       }
 
-      void handle_header(const boost::system::error_code& ec, size_t bytes_transferred) {
+      void handle_header(const boost::system::error_code& ec)
+      {
       }
 
-      void handle_data(const boost::system::error_code& ec, size_t bytes_transferred) {
+      void handle_data(const boost::system::error_code& ec)
+      {
       }
 
-      void handle_task_request() {
+      void handle_write(const boost::system::error_code& ec) 
+      {
+         // do nothing for now
+      }
+
+      void handle_task_request() 
+      {
          // The client is requesting more tasks. Give them more.
       }
 
-      void handle_results() {
+      void handle_results() 
+      {
          // The client is handing us the results, deal with them. This is a reduce function.
       }
 
-      void handle_status_update() {
+      void handle_status_update() 
+      {
          // The client has given us a status update. Deal with it and save that data.
       }
 
       // TODO work out why people use this enum trick?
       enum { header_length = 4 };
 
-      ip::tcp::socket socket_;
-      char raw_header_data_[header_length];
+      connection connection_;
+      message_header header;
       // TODO data structure representing last ping
       // list of the current tasks that it has been assigned so that we can reap them when the
       // client disconnects.
@@ -161,16 +169,6 @@ int main(int argc, char** argv) {
    if(username) {
       cout << "Welcome " << *username << " to the 4917 distributed server!" << endl;
    }
-
-   asio::streambuf buffer;
-   std::ostream stream(&buffer);
-   message_header header;
-   header.type = message_header::REQUESTING_TASKS;
-
-   boost::archive::text_oarchive outArchive(stream);
-   outArchive << header;
-
-   cout << stream.rdbuf() << endl;
 
    // parse the program options
    int max_connections;
