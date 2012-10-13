@@ -29,37 +29,38 @@ class connection
          std::ostringstream data_stream;
          boost::archive::text_oarchive archive(data_stream);
          archive << data;
-         outbound_data_ = data_stream.str();
 
+         std::ostream out(&outbound_);
          // build the header of the message
-         std::ostringstream header_stream;
-         header_stream 
+         out
             << std::setw(header_length) 
             << std::hex
-            << outbound_data_.size();
-         if(!header_stream || header_stream.str().size() != header_length) 
+            << data_stream.str().size();
+         if(!out)  //|| header_stream.str().size() != header_length) 
          {
             // something went wrong so display an error message.
             boost::system::error_code error(boost::asio::error::invalid_argument);
             socket_.get_io_service().post(boost::bind(handler, error));
             return;
          }
-         outbound_header_ = header_stream.str();
+         out << data_stream.str();
 
-         std::cout << "Header Stream: ";
-         for(int i = header_length - 1; i >= 0; --i) 
-         {
-            std::cout << std::hex << (int)outbound_header_[i] << ' ';
-         }
-         std::cout << std::endl;
-         std::cout << "Data Stream: " << outbound_data_ << std::endl;
+         void (connection::*f)(
+               const boost::system::error_code&,
+               const std::size_t,
+               boost::tuple<Handler> handler)
+            = &connection::write_handler<Handler>;
 
          // write out the header and data
-         std::vector<boost::asio::const_buffer> buffers;
-         buffers.push_back(boost::asio::buffer(outbound_header_));
-         buffers.push_back(boost::asio::buffer(outbound_data_));
-         boost::asio::async_write(socket_, buffers, handler);
+         boost::asio::async_write(socket_, outbound_,
+               boost::bind(f,
+                  this,
+                  boost::asio::placeholders::error,
+                  boost::asio::placeholders::bytes_transferred,
+                  boost::make_tuple(handler)
+                  ));
       }
+
 
       template<typename T, typename Handler>
       void async_read(T& data, Handler handler) 
@@ -91,6 +92,17 @@ class connection
       }
 
    private:
+      template<typename Handler>
+      void write_handler(
+            const boost::system::error_code& error, 
+            const std::size_t bytes_transferred, 
+            boost::tuple<Handler> handler
+            ) 
+      {
+         outbound_.consume(bytes_transferred);
+         boost::get<0>(handler)(error, bytes_transferred);
+      }
+
       template<typename T, typename Handler>
       void handle_read_header(
             const boost::system::error_code& error,
@@ -186,7 +198,7 @@ class connection
       char inbound_header_[header_length];
       std::vector<char> inbound_data_;
 
-      std::string outbound_header_, outbound_data_;
+      boost::asio::streambuf outbound_;
 };
 
 #endif
