@@ -12,6 +12,7 @@
 #include "consts.h"
 #include "common.h"
 #include "message.h"
+#include "connection.h"
 
 #include <boost/thread.hpp>
 #include <boost/optional.hpp>
@@ -63,9 +64,9 @@ class server_connection
    public:
       server_connection(asio::io_service& io_service,
                         tcp::resolver::iterator endpoint_iterator)
-         : io_service_(io_service), socket_(io_service)
+         : io_service_(io_service), connection_(io_service)
       {
-          boost::asio::async_connect(socket_, endpoint_iterator,
+          boost::asio::async_connect(connection_.socket(), endpoint_iterator,
               boost::bind(&server_connection::handle_connect, this,
                 boost::asio::placeholders::error));
       }
@@ -75,22 +76,23 @@ class server_connection
          cout << "We made a connection to the server! Success!" << endl;
          // Start waiting for the server to tell us stuff.
          // Request some tasks.
-         message_header header;
-         header.type = message_header::REQUESTING_TASKS;
+         connection_.async_read(header, 
+               boost::bind(
+                  &server_connection::handle_request,
+                  this,
+                  boost::asio::placeholders::error
+                  ));
+      }
 
-         asio::streambuf buffer;
-         std::ostream output(&buffer);
-
-         boost::archive::text_oarchive outArchive(output);
-         outArchive << header;
-
-         size_t dataSent = socket_.send(buffer.data());
-         buffer.consume(dataSent);
+      void handle_request(const boost::system::error_code& error)
+      {
+         cout << "Header Type: " << header.type << endl;
       }
 
       // The underlying socket that we use for communication.
-      tcp::socket socket_;
+      connection connection_;
       asio::io_service& io_service_;
+      message_header header;
 };
 
 int main(int argc, char** argv) {
