@@ -1,10 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(LS)
 
-message(${GTEST_ROOT})
-
 enable_testing()
-find_package(GTest REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED COMPONENTS 
    thread 
@@ -14,6 +11,7 @@ find_package(Boost REQUIRED COMPONENTS
    serialization
    )
 
+add_subdirectory(gtest)
 add_subdirectory(common)
 add_subdirectory(client)
 add_subdirectory(server)
