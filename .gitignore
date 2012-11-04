@@ -6,6 +6,7 @@
 *.o
 *.a
 
+# Ignore symlinks to the binary
 longest_string
 
 # Cmake Generated Files
@@ -17,6 +18,9 @@ cmake_install.cmake
 # Ignoring log files and out files
 *.log
 *.out
+
+# Ignore Generated Files
+cscope.*
 
 # GDB Files
 .gdb_history
