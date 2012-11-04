@@ -6,6 +6,7 @@
 
 class TaskGenerator {
    public:
+      TaskGenerator();
       uint32_t getNextTask(void);
       void returnFailedTask(uint32_t failedTask);
       bool haveNextTask(void);
@@ -13,6 +14,7 @@ class TaskGenerator {
    private:
       std::stack<uint32_t> failedTasks;
       uint32_t nextTask;
+      bool finished;
 };
 
 #endif

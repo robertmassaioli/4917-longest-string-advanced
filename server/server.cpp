@@ -68,6 +68,8 @@ class client_connection
                   boost::asio::placeholders::error));
          cout << "Sent a message back to the client: " << header.type << endl;
 
+
+
          // Kick off a read async task for anything that the client might want to send us
          // Kick off a periodic status update task that the client can return to us
       }
@@ -213,6 +215,8 @@ int main(int argc, char** argv) {
    asio::signal_set signals(io_service, SIGINT);
    signals.async_wait(boost::bind(&asio::io_service::stop, &io_service));
    io_service.run();
+
+   cout << "[TODO] Save the current progress to a file to be loaded next time." << endl;
 
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
