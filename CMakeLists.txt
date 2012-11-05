@@ -29,5 +29,9 @@ set(TESTFILES
    )
 
 foreach(TESTFILE ${TESTFILES})
-   add_test("${TESTFILE}" "${TESTFILE}" "--gtest_output=xml:${TESTFILE}.xml")
+   add_test("${TESTFILE}" 
+      "${TESTFILE}" 
+      "--gtest_output=xml:${TESTFILE}.xml"
+      "--gtest_color=yes"
+      )
 endforeach()
