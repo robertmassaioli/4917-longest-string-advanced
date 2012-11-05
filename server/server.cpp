@@ -58,15 +58,19 @@ class client_connection
       void run() {
          // This essentially runs the client and attempts to keep it in contact with the target
          // machine. In here is where we do all of the complicated messaging and handling.
-         message_header header;
-         header.type = message_header::REQUESTING_TASKS;
+         message_queue outbound_queue;
 
-         connection_.async_write(header, 
+         message_header* header = new message_header();
+         header->type = message_header::STATUS_UPDATE;
+         message_container* container = new message_container(header, NULL);
+         outbound_queue.add(container);
+
+         connection_.async_write(*header, 
                boost::bind(
                   &client_connection::handle_write,
                   this,
                   boost::asio::placeholders::error));
-         cout << "Sent a message back to the client: " << header.type << endl;
+         cout << "Sent a message back to the client: " << header->type << endl;
 
 
 

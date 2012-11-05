@@ -38,6 +38,8 @@ TEST(GeneratorTest, FailedTask) {
    EXPECT_EQ(3, task);
 }
 
+//TEST(GeneratorTest, 
+
 /*
  * TODO This test takes far too long. Find a way to speed it up.
 TEST(GeneratorTest, SimpleHaveNextTask) {

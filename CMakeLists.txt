@@ -19,6 +19,15 @@ add_subdirectory(common-test)
 #add_subdirectory(client-test)
 add_subdirectory(server-test)
 
-add_test(NAME ServerTests COMMAND server-test/server-test)
-add_test(NAME ProcessorTests COMMAND common-test/test_processor)
-add_test(NAME PackerTests COMMAND common-test/test_packer)
+set($ENV{GTEST_COLOR} "yes")
+
+
+set(TESTFILES 
+   "server-test/server-test"
+   "common-test/test_processor"
+   "common-test/test_packer"
+   )
+
+foreach(TESTFILE ${TESTFILES})
+   add_test("${TESTFILE}" "${TESTFILE}" "--gtest_output=xml:${TESTFILE}.xml")
+endforeach()
