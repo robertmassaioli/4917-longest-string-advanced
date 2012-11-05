@@ -1,9 +1,6 @@
 #include <cstring>
 #include "processor.h"
 
-/*
-	This is runs the program and prints out the result.
-*/
 int run_program(struct device* program, int timeout) {
 	bool programFinished = false;
 	int outputCount = 0;
@@ -18,9 +15,6 @@ int run_program(struct device* program, int timeout) {
 	return outputCount;
 }
 
-/**
- * This function promises not to make any edits to the program that is passed in.
- */
 int run_program_loop_check(struct device* program) {
    struct device slow_program, fast_program;
 
@@ -147,18 +141,10 @@ int step_program(struct device* program, bool* programFinished) {
    return outputCount;
 }
 
-/**
- * Copy everything in the src program to the destination program
- */
 void copy_program(struct device* dst, struct device* src) {
    memcpy(dst, src, sizeof(struct device));
 }
 
-/**
- * Compare the two program states exactly.
- *
- * return true if they are exactly equal and false if they are not.
- */
 bool compare_programs(struct device* one, struct device* two) {
    if(one->PC != two->PC) return false;
    if(one->R0 != two->R0) return false;
