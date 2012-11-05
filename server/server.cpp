@@ -12,41 +12,159 @@
 
 #include "consts.h"
 #include "common.h"
+#include "message.h"
+#include "connection.h"
 
+#include <boost/ref.hpp>
+#include <boost/asio.hpp>
 #include <boost/optional.hpp>
+#include <boost/smart_ptr.hpp>
+#include <boost/make_shared.hpp>
 #include <boost/program_options.hpp>
 #include <boost/thread/thread.hpp>
 #include <boost/thread/mutex.hpp>
+#include <boost/archive/text_oarchive.hpp>
 
 using namespace std;
+using boost::asio::ip::tcp;
 namespace po = boost::program_options;
+namespace asio = boost::asio;
+namespace ip = boost::asio::ip;
 
 typedef unsigned char byte;
 
-void acceptConnections(void* data);
-void handleClient(void* data);
-void closeServer(int value);
+//void handleClient(void* data);
 
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
 
-static boost::mutex runningLock;
-static bool stopRunning;
-
-static boost::thread_group clientPool;
-
-class AcceptThreadData {
-   public:
-      int listenSocket;
-};
-
-class ClientThreadData {
-   public:
-      int connectionSocket;
-};
-
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
+
+class client_connection 
+   : public boost::enable_shared_from_this<client_connection>
+{
+   public:
+      typedef boost::shared_ptr<client_connection> pointer;
+
+      static pointer create(asio::io_service& io_service) {
+         return pointer(new client_connection(io_service));
+      }
+
+      tcp::socket& socket() {
+         return connection_.socket();
+      }
+
+      void run() {
+         // This essentially runs the client and attempts to keep it in contact with the target
+         // machine. In here is where we do all of the complicated messaging and handling.
+         message_header header;
+         header.type = message_header::REQUESTING_TASKS;
+
+         connection_.async_write(header, 
+               boost::bind(
+                  &client_connection::handle_write,
+                  this,
+                  boost::asio::placeholders::error));
+         cout << "Sent a message back to the client: " << header.type << endl;
+
+
+
+         // Kick off a read async task for anything that the client might want to send us
+         // Kick off a periodic status update task that the client can return to us
+      }
+
+
+   private:
+      client_connection(asio::io_service& io_service)
+         : connection_(io_service) 
+      {
+         connection_.async_read(header, 
+               boost::bind(
+                  &client_connection::handle_header,
+                  this,
+                  asio::placeholders::error
+               ));
+      }
+
+      void handle_header(const boost::system::error_code& ec)
+      {
+      }
+
+      void handle_data(const boost::system::error_code& ec)
+      {
+      }
+
+      void handle_write(const boost::system::error_code& ec) 
+      {
+         // do nothing for now
+      }
+
+      void handle_task_request() 
+      {
+         // The client is requesting more tasks. Give them more.
+      }
+
+      void handle_results() 
+      {
+         // The client is handing us the results, deal with them. This is a reduce function.
+      }
+
+      void handle_status_update() 
+      {
+         // The client has given us a status update. Deal with it and save that data.
+      }
+
+      // TODO work out why people use this enum trick?
+      enum { header_length = 4 };
+
+      connection connection_;
+      message_header header;
+      // TODO data structure representing last ping
+      // list of the current tasks that it has been assigned so that we can reap them when the
+      // client disconnects.
+};
+
+class accepting_server {
+   public:
+      typedef boost::shared_ptr<accepting_server> pointer;
+
+      accepting_server(asio::io_service& io_service, short port) 
+         : acceptor_(io_service, tcp::endpoint(tcp::v6(), port))
+      {
+         cout << "[Starting the server on port " << port << "]" << endl;
+         cout << "[Maximum Concurrent Connections: " << acceptor_.max_connections << "]" << endl;
+         run_accept();
+      }
+
+
+   private: 
+      void run_accept() 
+      {
+         client_connection::pointer new_connection = 
+            client_connection::create(acceptor_.get_io_service());
+
+         acceptor_.async_accept(new_connection->socket(), 
+            boost::bind(&accepting_server::handle_accept, 
+               this, 
+               new_connection,
+               asio::placeholders::error));
+      }
+
+      void handle_accept(boost::shared_ptr<client_connection> new_connection, 
+            const boost::system::error_code& error) 
+      {
+         if(!error) {
+            new_connection->run();
+         } else {
+            cout << "There was an error: " << error << endl;
+         }
+
+         run_accept();
+      }
+
+      tcp::acceptor acceptor_;
+};
 
 int main(int argc, char** argv) {
    boost::optional<string> username = get_env("USER");
@@ -85,137 +203,28 @@ int main(int argc, char** argv) {
    }
 
    if(max_connections != MAX_CONNECTIONS) {
+      // Currently boost asio seems to ignore this.
       cout << "Max connections set to: " << max_connections << endl;
    }
 
-   //signal(SIGTERM, closeServer);
-   signal(SIGINT, closeServer);
+   asio::io_service io_service;
+   const short shortPort = (short) atoi(port.c_str());
+   accepting_server::pointer server = 
+      accepting_server::pointer(new accepting_server(io_service, shortPort));
 
-   runningLock.lock();
-   stopRunning = false;
-   runningLock.unlock();
+   asio::signal_set signals(io_service, SIGINT);
+   signals.async_wait(boost::bind(&asio::io_service::stop, &io_service));
+   io_service.run();
 
-   cout << "[Starting the server on port " << port << "]" << endl;
-   struct addrinfo hints;
-   memset(&hints, 0, sizeof(struct addrinfo));
-   hints.ai_family = AF_UNSPEC;
-   hints.ai_socktype = SOCK_STREAM;
-   hints.ai_protocol = 0;
-   hints.ai_flags = AI_PASSIVE;
-   hints.ai_canonname = NULL;
-   hints.ai_addr = NULL;
-   hints.ai_next = NULL;
-
-   struct addrinfo *result = NULL;
-   int error = getaddrinfo(NULL, port.c_str(), &hints, &result);
-   if(error != 0) {
-      cerr << "getaddrinfo: " << gai_strerror(error) << endl;
-      exit(EXIT_FAILURE);
-   }
-
-   int socketFD = -1;
-   struct addrinfo *rp = NULL;
-   for(rp = result; rp != NULL; rp = rp->ai_next) {
-      cout << "Attempting to connect a socket...";
-      socketFD = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-      if(socketFD == -1) {
-         perror("Failed to create a socket");
-         continue;
-      }
-      if(bind(socketFD, rp->ai_addr, rp->ai_addrlen) == 0) {
-         cout << "socket bind " << success << endl;
-         break;
-      }
-      perror("Failed to bind a socket.");
-      close(socketFD);
-   }
-
-   if(rp == NULL) {
-      cerr << "Did not manage to bind any sockets or ports." << endl;
-      exit(EXIT_FAILURE);
-   }
-
-   if(listen(socketFD, MAX_CONNECTIONS) != 0) {
-      perror("Failed to open a listening socket");
-      exit(EXIT_FAILURE);
-   }
-
-   AcceptThreadData* acceptData = new AcceptThreadData();
-   acceptData->listenSocket = socketFD;
-   boost::thread* acceptThread = new boost::thread(acceptConnections, acceptData);
-   acceptThread->join();
-   delete acceptThread;
-   clientPool.join_all();
+   cout << "[TODO] Save the current progress to a file to be loaded next time." << endl;
 
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
 }
 
-/**
- * This function is completely in charge of accepting new connections in the server and passing them
- * on to be dealt with.
- */
-void acceptConnections(void* data) {
-   // Grab the accept data
-   AcceptThreadData* acceptData = (AcceptThreadData*) data;
-   data = NULL;
-   cout << "[Started accepting connections from clients]" << endl;
-   cout << "[Please press Ctrl-C or send SIG_TERM to shutdown gracefully.]" << endl;
-   
-   // Setup the shouldLoop variable
-   runningLock.lock();
-   bool shouldLoop = !stopRunning;
-   runningLock.unlock();
-
-   const nfds_t fdCount = 1;
-   struct pollfd* fds = (struct pollfd*) malloc(sizeof(struct pollfd) * fdCount);
-   fds[0].fd = acceptData->listenSocket;
-   fds[0].events = POLLIN;
-
-   const int timeout = 1000;
-   char tmpStr[200];
-   while(shouldLoop) {
-      int pollResponse = poll(fds, fdCount, timeout);
-      if(pollResponse > 0) {
-         struct sockaddr client;
-         socklen_t clientAddrLen;
-         int newClient = accept(acceptData->listenSocket, &client, &clientAddrLen);
-         if(newClient > -1) {
-            ClientThreadData* clientData = new ClientThreadData();
-            clientData->connectionSocket = newClient;
-            boost::thread* clientThread = new boost::thread(handleClient, clientData);
-            if(clientThread != NULL) {
-               clientPool.add_thread(clientThread);
-            }
-            const char* res = inet_ntop(client.sa_family, &client, tmpStr, 200);
-            if(res != NULL) {
-               cout << "Accepted a new socket from: " << res << endl;
-            }
-         } else {
-            perror("Error while attempting to accept socket.");
-            cout << "Shutting down server..." << endl;
-            runningLock.lock();
-            stopRunning = true;
-            runningLock.unlock();
-         }
-      } else if(pollResponse < 0) {
-         perror("There was an error with the poller");
-      }
-
-      runningLock.lock();
-      shouldLoop = !stopRunning;
-      runningLock.unlock();
-   }
-   cout << "[Finished accepting connections from clients]" << endl;
-   close(acceptData->listenSocket);
-   delete acceptData;
-}
-
-enum ServerState { WAITING_START, TASK_SENT, FINISHED_CONNECTION };
-
+/*
 void handleClient(void* data) {
    cout << "[Started dealing with another client]" << endl;
-   ClientThreadData* clientData = (ClientThreadData*) data;
    data = NULL;
    ServerState serverState = WAITING_START;
 
@@ -225,7 +234,7 @@ void handleClient(void* data) {
    while (serverState != FINISHED_CONNECTION) {
       ssize_t readLen = 0;
       // For now I expect the first message to fit into one buffer call.
-      readLen = recv(clientData->connectionSocket, readBuf, readBufLen, 0);
+      readLen = recv(NULL, readBuf, readBufLen, 0);
       if(readLen == 0) {
          cout << "The client has shut down on the other end of the line." << endl;
          break;
@@ -236,12 +245,26 @@ void handleClient(void* data) {
       }
       char tempStr[5];
       switch(readBuf[0]) {
-         case 1:
+         case REQUESTING_TASKS:
             sprintf(tempStr, "%d", readBuf[1]);
             cout << "Client is asking for another " << tempStr << " task/s" << endl;
             // TODO Look inside endian.h and pack_processor.h to see how to send this
             // response data over the line.
             break;
+         case POSTING_BACK:
+            // TODO implement complicated logic.
+            // Step 1: Parse into data structure.
+            // Step 2: Pass into helper function that does the processing.
+            // No need to send anything back to the client. If we don't get it then we
+            // will time out eventually.
+            break;
+
+         case STATUS_UPDATE:
+            // TODO record the status update
+            // For the here and now just reset the timeout on that particular client.
+            // In the future we will actually display the data usefully on the server.
+            break;
+
          default:
             sprintf(tempStr, "%d", readBuf[0]);
             cout << "Did not understand the incoming data..." << tempStr << endl;
@@ -259,10 +282,4 @@ void handleClient(void* data) {
    close(clientData->connectionSocket);
    delete clientData;
 }
-
-void closeServer(int value) {
-   cout << "Shutting down the server now." << endl;
-   runningLock.lock();
-   stopRunning = true;
-   runningLock.unlock();
-}
+*/

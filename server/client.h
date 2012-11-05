@@ -1,7 +1,6 @@
 #ifndef __4917_CLIENT
 #define __4917_CLIENT
 
-
 /**
  * This is the client class, it is supposed to represent a connection to the client
  * and manage all of that data correctly. It should do as little processing as possible
