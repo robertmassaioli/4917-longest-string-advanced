@@ -27,21 +27,6 @@ using boost::asio::ip::tcp;
 namespace po = boost::program_options;
 namespace asio = boost::asio;
 
-//////
-// Private Classes
-//////
-
-class ServerDetails {
-   public:
-      int socketFD;
-      boost::shared_ptr<TaskQueue> taskQueue;
-};
-
-//////
-// Function Prototypes
-//////
-
-static void serverConnect(ServerDetails* details);
 static void solveTask(void);
 
 //////
@@ -76,12 +61,40 @@ class server_connection
          cout << "We made a connection to the server! Success!" << endl;
          // Start waiting for the server to tell us stuff.
          // Request some tasks.
+         wait_for_server();
+      }
+
+      void wait_for_server() {
          connection_.async_read(header, 
                boost::bind(
                   &server_connection::handle_request,
                   this,
                   boost::asio::placeholders::error
                   ));
+      }
+
+      void handle_message_task_response(const boost::system::error_code& error, message_task_response* mtr) 
+      {
+         if(error)
+         {
+            cout << "There was a problem reading the message_task_response." << endl;
+         } 
+         else
+         {
+            cout << "Successfully read the message task response." << endl;
+
+            int tasks = mtr->getTasks().size();
+            cout << "The server gave us " << tasks << " tasks to perform:" << endl;
+            for(int i = 0; i < tasks; ++i) 
+            {
+               cout << " - " << mtr->getTasks()[i] << endl;
+            }
+
+            // once you are done wait for the server again
+            wait_for_server();
+         }
+
+         // TODO once you are done with the mtr remember to delete it.
       }
 
       void handle_request(const boost::system::error_code& error)
@@ -93,6 +106,35 @@ class server_connection
          else 
          {
             cout << "Header Type: " << header.type << endl;
+            // Keep in mind that this message is from the server to this client.
+            message_task_response* mtr = NULL;
+            switch(header.type) {
+               case message_header::REQUESTING_TASKS:
+                  cout << "The server has given us some tasks to perform." << endl;
+                  // Parse the message body
+                  mtr = new message_task_response;
+                  connection_.async_read(*mtr, 
+                        boost::bind(
+                           &server_connection::handle_message_task_response,
+                           this,
+                           boost::asio::placeholders::error,
+                           mtr
+                           ));
+                  break;
+
+               case message_header::POST_BACK_DATA:
+                  cerr << "Somebody has made a dunce mistake. You cannot post result data to the client. That makes no sense." << endl;
+                  break;
+
+               case message_header::STATUS_UPDATE:
+                  cout << "Server Requested Status Update." << endl;
+                  // We do not expect any more information. This message only has a body.
+                  break;
+
+               default:
+                  cerr << "[ERROR] The server send us a header with type '" << header.type << "' which we don't know how to deal with. Closing." << endl;
+                  break;
+            }
          }
       }
 
@@ -147,32 +189,6 @@ int main(int argc, char** argv) {
 	cout << "Program has completed!" << endl;
 
 	return EXIT_SUCCESS;
-}
-
-static bool closeClient = false;
-static boost::mutex closeClientLock;
-static bool serverDisconnect = false;
-static boost::mutex serverDisconnectLock;
-
-static bool continueRunningServer() {
-   closeClientLock.lock();
-   serverDisconnectLock.lock();
-   bool continueRunning = !(closeClient || serverDisconnect);
-   closeClientLock.unlock();
-   serverDisconnectLock.unlock();
-   return continueRunning;
-}
-
-static void serverConnect(ServerDetails* details) {
-   // Until the server connection dies or the user aborts the client
-   while(continueRunningServer()) {
-      // If you need more tasks then ask for them
-      if(details->taskQueue->requiresMoreTasks()) {
-      }
-      // Listen to the responses from the server and process them
-   }
-
-   delete details;
 }
 
 static void solveTask(void) {

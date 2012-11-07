@@ -42,6 +42,7 @@ class message_task_request : public serial
       short tasksRequested_;
 };
 
+// TODO Specify these as a set of ranges. Makes it easier and smaller in the long run.
 class message_task_response : public serial
 {
    public:
@@ -49,6 +50,11 @@ class message_task_response : public serial
       void serialize(Archive& ar, const unsigned int version)
       {
          ar & tasks_;
+      }
+
+      std::vector<uint32_t> getTasks() 
+      {
+         return tasks_;
       }
 
    private:
