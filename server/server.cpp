@@ -62,7 +62,7 @@ class client_connection
 
          message_header* header = new message_header();
          header->type = message_header::STATUS_UPDATE;
-         message_container* container = new message_container(header, NULL);
+         message_container* container = new message_container(header);
          outbound_queue.add(container);
 
          connection_.async_write(*header, 

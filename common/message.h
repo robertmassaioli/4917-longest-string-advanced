@@ -1,8 +1,10 @@
 #ifndef __4917_MESSAGE
 #define __4917_MESSAGE
 
+#include <sstream>
 #include <queue>
 #include <vector>
+#include <boost/archive/text_oarchive.hpp>
 
 class serial 
 {
@@ -78,30 +80,29 @@ class message_result_request : serial
 };
 
 
-class message_container : public serial
+class message_container
 {
    private:
-      serial *header, *body;
+      std::ostringstream data;
 
    public:
-      message_container(serial* header, serial* body) 
+      template<class Header>
+      message_container(Header* header) 
       {
-         this->header = header;
-         this->body = body;
+         boost::archive::text_oarchive archive(data);
+         archive << *header;
       };
 
-      serial* getHeader() {
-         return header;
-      }
+      template<class Header, class Body>
+      message_container(Header* header, Body* body) 
+      {
+         boost::archive::text_oarchive archive(data);
+         archive << *header;
+         archive << *body;
+      };
 
-      serial* getBody() {
-         return body;
-      }
-
-      template<class Archive>
-      void serialize(Archive& ar, const unsigned int version) {
-         ar & *header;
-         ar & *body;
+      std::ostringstream* getData() {
+         return &data;
       }
 };
 

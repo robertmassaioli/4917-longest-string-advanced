@@ -95,6 +95,7 @@ class server_connection
          }
 
          // TODO once you are done with the mtr remember to delete it.
+         delete mtr;
       }
 
       void handle_request(const boost::system::error_code& error)

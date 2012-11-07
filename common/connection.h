@@ -23,14 +23,9 @@ class connection
          return socket_;
       }
 
-      template<typename T, typename Handler>
-      void async_write(const T& data, Handler handler) 
+      template<class Handler>
+      void async_write_archive(std::ostringstream& data_stream, Handler handler)
       {
-         // serialize the data
-         std::ostringstream data_stream;
-         boost::archive::text_oarchive archive(data_stream);
-         archive << data;
-
          std::ostream out(&outbound_);
          // build the header of the message
          out
@@ -60,6 +55,17 @@ class connection
                   boost::asio::placeholders::bytes_transferred,
                   boost::make_tuple(handler)
                   ));
+      }
+
+      template<typename T, typename Handler>
+      void async_write(const T& data, Handler handler) 
+      {
+         // serialize the data
+         std::ostringstream data_stream;
+         boost::archive::text_oarchive archive(data_stream);
+         archive << data;
+
+         async_write_archive<Handler>(data_stream, handler);
       }
 
 
