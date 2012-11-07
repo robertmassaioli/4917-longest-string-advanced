@@ -1,10 +1,15 @@
 #ifndef __4917_MESSAGE
 #define __4917_MESSAGE
 
+#include "connection.h"
+
 #include <sstream>
 #include <queue>
 #include <vector>
 #include <boost/archive/text_oarchive.hpp>
+#include <boost/thread.hpp>
+#include <boost/bind.hpp>
+#include <boost/asio.hpp>
 
 class serial 
 {
@@ -112,24 +117,52 @@ class message_queue
 {
    private:
       std::queue<message_container*> queue;
+      connection* connection_;
+      bool sendingMessage; // The sending message object should be locked.
+      boost::recursive_mutex mutex;
 
    public:
-      message_queue() {
+      message_queue(connection* connection) {
+         this->connection_ = connection;
          // init the queue and take in all of the objects that you are going to need to
          // manage the messages. I am not sure which way we currently want to 
       }
 
       bool add(message_container* message) {
+         boost::lock_guard<boost::recursive_mutex> lock(mutex);
+
          queue.push(message);
+         pop_message();
          return true;
       }
 
-      message_container* getNext() {
-         return queue.front();
+      void pop_message() {
+         boost::lock_guard<boost::recursive_mutex> lock(mutex);
+
+         if(!sendingMessage && !queue.empty()) 
+         {
+            message_container* container = queue.front();
+            connection_->async_write_archive(*(container->getData()),
+                  boost::bind(
+                     &message_queue::empty_queue,
+                     this,
+                     boost::asio::placeholders::error
+                     ));
+            sendingMessage = true;
+            delete container;
+            queue.pop();
+         }
       }
 
-      void pop() {
-         queue.pop();
+      void empty_queue(const boost::system::error_code& ec) {
+         boost::lock_guard<boost::recursive_mutex> lock(mutex);
+
+         sendingMessage = false; // Setting this to false should be the first thing you do.
+         if(ec) {
+            std::cout << "The message queue had a problem sending a message. It is not sending any more now." << std::endl;
+         } else {
+            pop_message();
+         }
       }
 };
 

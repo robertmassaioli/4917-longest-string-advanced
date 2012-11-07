@@ -33,17 +33,19 @@ namespace ip = boost::asio::ip;
 
 typedef unsigned char byte;
 
-//void handleClient(void* data);
-
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
 
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
 
+// TODO the message_queue is not thread safe at all. Make it so that it is.
 class client_connection 
    : public boost::enable_shared_from_this<client_connection>
 {
+   private:
+      message_queue outbound_queue;
+
    public:
       typedef boost::shared_ptr<client_connection> pointer;
 
@@ -58,21 +60,12 @@ class client_connection
       void run() {
          // This essentially runs the client and attempts to keep it in contact with the target
          // machine. In here is where we do all of the complicated messaging and handling.
-         message_queue outbound_queue;
-
          message_header* header = new message_header();
          header->type = message_header::STATUS_UPDATE;
          message_container* container = new message_container(header);
          outbound_queue.add(container);
 
-         connection_.async_write(*header, 
-               boost::bind(
-                  &client_connection::handle_write,
-                  this,
-                  boost::asio::placeholders::error));
          cout << "Sent a message back to the client: " << header->type << endl;
-
-
 
          // Kick off a read async task for anything that the client might want to send us
          // Kick off a periodic status update task that the client can return to us
@@ -81,7 +74,7 @@ class client_connection
 
    private:
       client_connection(asio::io_service& io_service)
-         : connection_(io_service) 
+         : connection_(io_service), outbound_queue(&connection_) 
       {
          connection_.async_read(header, 
                boost::bind(
