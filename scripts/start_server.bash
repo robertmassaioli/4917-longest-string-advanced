@@ -4,7 +4,8 @@ port=${1:-9999}
 build_dir=${2:-localbuild}
 screen_name="longest-string-server"
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DIR="$SCRIPTS_DIR/.."
 
 cd "$DIR/${build_dir}"
 echo "Recompiling the code in:"
