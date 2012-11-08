@@ -103,6 +103,7 @@ class server_connection
          if(error) 
          {
             cout << "There was a problem reading the data..." << endl;
+            cout << error << endl;
          }
          else 
          {
@@ -129,6 +130,7 @@ class server_connection
 
                case message_header::STATUS_UPDATE:
                   cout << "Server Requested Status Update." << endl;
+                  wait_for_server();
                   // We do not expect any more information. This message only has a body.
                   break;
 

@@ -18,6 +18,12 @@ class connection
       {
       }
 
+      ~connection() 
+      {
+         socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+         socket_.close();
+      }
+
       boost::asio::ip::tcp::socket& socket()
       {
          return socket_;
