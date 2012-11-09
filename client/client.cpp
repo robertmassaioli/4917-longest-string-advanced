@@ -64,8 +64,8 @@ class server_connection
          cout << "We made a connection to the server! Success!" << endl;
          // Start waiting for the server to tell us stuff.
          // Request some tasks.
-         requestTasks();
          wait_for_server();
+         requestTasks();
       }
 
       void wait_for_server() 
@@ -114,7 +114,7 @@ class server_connection
       {
          if(error) 
          {
-            cout << "There was a problem reading the data: " << error.message() << endl;
+            cout << "There was a problem reading the header: " << error.message() << endl;
          }
          else 
          {

@@ -80,7 +80,7 @@ class client_connection
                client_strand.wrap(
                   boost::bind(
                      &client_connection::handle_header,
-                     this,
+                     shared_from_this(),
                      asio::placeholders::error
                   )
                ));
@@ -164,6 +164,7 @@ class accepting_server {
             const boost::system::error_code& error) 
       {
          if(!error) {
+            cout << "Accepting a new client connection" << endl;
             new_connection->run();
          } else {
             cout << "There was an error: " << error.message() << endl;
