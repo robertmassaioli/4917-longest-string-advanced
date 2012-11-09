@@ -77,13 +77,14 @@ class client_connection
       {
          cout << "# Started waiting for a request" << endl;
          connection_.async_read(header, 
-               client_strand.wrap(
+               //client_strand.wrap(
                   boost::bind(
                      &client_connection::handle_header,
                      shared_from_this(),
                      asio::placeholders::error
                   )
-               ));
+               //)
+            );
       }
 
       void handle_header(const boost::system::error_code& ec)
@@ -95,6 +96,31 @@ class client_connection
          else
          {
             cout << "Recieved header type: " << header.type << endl;
+            if(header.type == message_header::REQUESTING_TASKS)
+            {
+                  cout << "The client is requesting tasks." << endl;
+                  boost::shared_ptr<message_task_request> mtr(new message_task_request);
+                  connection_.async_read(*mtr.get(),
+                        boost::bind(
+                           &client_connection::handle_task_request,
+                           shared_from_this(),
+                           mtr,
+                           asio::placeholders::error
+                           )
+                        );
+            }
+            else if(header.type == message_header::POST_BACK_DATA)
+            {
+               cout << "The client is posting us their results" << endl;
+            }
+            else if (header.type == message_header::STATUS_UPDATE)
+            {
+               cout << "The client is giving us a status update." << endl;
+            } 
+            else
+            {
+               cout << "Not a valid header type: " << header.type << endl;
+            }
          }
       }
 
@@ -107,9 +133,17 @@ class client_connection
          // do nothing for now
       }
 
-      void handle_task_request() 
+      void handle_task_request(boost::shared_ptr<message_task_request> mtr, const boost::system::error_code& ec) 
       {
          // The client is requesting more tasks. Give them more.
+         if(ec) 
+         {
+            cout << "There was an error parsing the task request: " << ec.message() << endl;
+         }
+         else
+         {
+            cout << "We got the task request: " << mtr->getTasksRequested() << endl;
+         }
       }
 
       void handle_results() 

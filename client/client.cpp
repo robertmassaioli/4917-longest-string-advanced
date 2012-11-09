@@ -81,8 +81,10 @@ class server_connection
 
       void requestTasks() {
          message_header tempHeader;
-         tempHeader.type = message_header::STATUS_UPDATE;
-         outbound_queue.add(new message_container(&tempHeader));
+         tempHeader.type = message_header::REQUESTING_TASKS;
+         message_task_request mtr(5);
+         boost::shared_ptr<message_container> mc(new message_container(&tempHeader, &mtr));
+         outbound_queue.add(mc);
       }
 
       void handle_message_task_response(const boost::system::error_code& error, message_task_response* mtr) 

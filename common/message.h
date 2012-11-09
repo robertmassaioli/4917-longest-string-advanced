@@ -39,10 +39,26 @@ class message_header : public serial
 class message_task_request : public serial
 {
    public:
+      const static int INVALID_REQUEST = -1;
+
+      message_task_request() 
+      {
+         tasksRequested_ = INVALID_REQUEST; 
+      }
+
+      message_task_request(int tasksRequested) 
+      {
+         tasksRequested_ = tasksRequested;
+      }
+
       template<class Archive>
       void serialize(Archive& ar, const unsigned int version)
       {
          ar & tasksRequested_;
+      }
+
+      short getTasksRequested() {
+         return tasksRequested_;
       }
 
    private:
@@ -88,26 +104,33 @@ class message_result_request : serial
 class message_container
 {
    private:
-      std::ostringstream data;
+      std::ostringstream header_data, body_data;
 
    public:
       template<class Header>
       message_container(Header* header) 
       {
-         boost::archive::text_oarchive archive(data);
+         boost::archive::text_oarchive archive(header_data);
          archive << *header;
       };
 
       template<class Header, class Body>
       message_container(Header* header, Body* body) 
       {
-         boost::archive::text_oarchive archive(data);
-         archive << *header;
-         archive << *body;
+         boost::archive::text_oarchive header_archive(header_data);
+         header_archive << *header;
+         boost::archive::text_oarchive body_archive(body_data);
+         body_archive << *body;
       };
 
-      std::ostringstream* getData() {
-         return &data;
+      std::ostringstream* getHeader() 
+      {
+         return &header_data;
+      }
+
+      std::ostringstream* getBody() 
+      {
+         return &body_data;
       }
 };
 
@@ -116,7 +139,7 @@ class message_container
 class message_queue
 {
    private:
-      std::queue<message_container*> queue;
+      std::queue<boost::shared_ptr<message_container> > queue;
       connection* connection_;
       boost::asio::strand* send_strand;
       bool sendingMessage; // The sending message object should be locked. Feels like it currently is not.
@@ -131,7 +154,7 @@ class message_queue
          // manage the messages. I am not sure which way we currently want to 
       }
 
-      bool add(message_container* message) 
+      bool add(boost::shared_ptr<message_container> message) 
       {
          queue.push(message);
          pop_message();
@@ -144,20 +167,39 @@ class message_queue
          {
             if(connection_->socket().is_open()) 
             {
-               message_container* container = queue.front();
                sendingMessage = true;
-               connection_->async_write_archive(*(container->getData()),
+               connection_->async_write_archive(*(queue.front()->getHeader()),
                      send_strand->wrap(
                         boost::bind(
-                           &message_queue::empty_queue,
+                           &message_queue::send_body,
                            this,
+                           queue.front(),
                            boost::asio::placeholders::error
                         )
                      )
                   );
-               delete container;
                queue.pop();
             }
+         }
+      }
+
+      void send_body(boost::shared_ptr<message_container> mc, const boost::system::error_code& ec)
+      {
+         if(ec) 
+         {
+            std::cout << "There was a problem sending the header: " << ec.message() << std::endl;
+         }
+         else 
+         {
+            connection_->async_write_archive(*(mc->getBody()),
+                  //send_strand->wrap(
+                     boost::bind(
+                        &message_queue::empty_queue,
+                        this,
+                        boost::asio::placeholders::error
+                     )
+                  //)
+               );
          }
       }
 

@@ -185,6 +185,7 @@ class connection
          } 
          else 
          {
+            std::cout << "The data was read." << std::endl;
             try 
             {
                std::string archive_data(&inbound_data_[0], inbound_data_.size());
