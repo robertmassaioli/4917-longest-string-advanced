@@ -14,6 +14,8 @@
 #include "common.h"
 #include "message.h"
 #include "connection.h"
+#include "task_generator.h"
+#include "task_manager.h"
 
 #include <boost/ref.hpp>
 #include <boost/asio.hpp>
@@ -46,8 +48,8 @@ class client_connection
    public:
       typedef boost::shared_ptr<client_connection> pointer;
 
-      static pointer create(asio::io_service& io_service) {
-         return pointer(new client_connection(io_service));
+      static pointer create(asio::io_service& io_service, boost::shared_ptr<TaskGenerator> tg) {
+         return pointer(new client_connection(io_service, tg));
       }
 
       tcp::socket& socket() {
@@ -65,10 +67,11 @@ class client_connection
 
 
    private:
-      client_connection(asio::io_service& io_service)
+      client_connection(asio::io_service& io_service, boost::shared_ptr<TaskGenerator> taskGenerator)
          : connection_(io_service)
          , client_strand(io_service)
          , outbound_queue(&client_strand, &connection_) 
+         , taskManager(new task_manager(taskGenerator))
       {
          // WARNING: The client is not connected here. They only connect as of the run function.
       }
@@ -133,7 +136,7 @@ class client_connection
          // do nothing for now
       }
 
-      void handle_task_request(boost::shared_ptr<message_task_request> mtr, const boost::system::error_code& ec) 
+      void handle_task_request(boost::shared_ptr<message_task_request> mt_request, const boost::system::error_code& ec) 
       {
          // The client is requesting more tasks. Give them more.
          if(ec) 
@@ -142,7 +145,12 @@ class client_connection
          }
          else
          {
-            cout << "We got the task request: " << mtr->getTasksRequested() << endl;
+            cout << "We got the task request: " << mt_request->getTasksRequested() << endl;
+
+            // Get the tasks for the client.
+            // Set it up so that if the client fails then all of the tasks are returned to the queue
+            boost::shared_ptr<message_task_response> mt_response = taskManager->acquireTasks(mt_request->getTasksRequested());
+            cout << "Responding with tasks: " << mt_response->getTasks().size() << endl;
          }
       }
 
@@ -163,6 +171,7 @@ class client_connection
       message_queue outbound_queue;
       message_header header;
       boost::asio::strand client_strand;
+      boost::shared_ptr<task_manager> taskManager;
       // TODO data structure representing last ping
       // list of the current tasks that it has been assigned so that we can reap them when the
       // client disconnects.
@@ -172,9 +181,11 @@ class accepting_server {
    public:
       typedef boost::shared_ptr<accepting_server> pointer;
 
-      accepting_server(asio::io_service& io_service, short port) 
+      accepting_server(asio::io_service& io_service, short port, boost::shared_ptr<TaskGenerator> taskGenerator) 
          : acceptor_(io_service, tcp::endpoint(tcp::v6(), port))
       {
+         this->taskGenerator = taskGenerator;
+
          cout << "[Starting the server on port " << port << "]" << endl;
          cout << "[Maximum Concurrent Connections: " << acceptor_.max_connections << "]" << endl;
          run_accept();
@@ -185,7 +196,7 @@ class accepting_server {
       void run_accept() 
       {
          client_connection::pointer new_connection = 
-            client_connection::create(acceptor_.get_io_service());
+            client_connection::create(acceptor_.get_io_service(), taskGenerator);
 
          acceptor_.async_accept(new_connection->socket(), 
             boost::bind(&accepting_server::handle_accept, 
@@ -208,6 +219,7 @@ class accepting_server {
       }
 
       tcp::acceptor acceptor_;
+      boost::shared_ptr<TaskGenerator> taskGenerator;
 };
 
 int main(int argc, char** argv) {
@@ -251,10 +263,12 @@ int main(int argc, char** argv) {
       cout << "Max connections set to: " << max_connections << endl;
    }
 
+   boost::shared_ptr<TaskGenerator> taskGenerator = boost::make_shared<TaskGenerator>();
+
    asio::io_service io_service;
    const short shortPort = (short) atoi(port.c_str());
    accepting_server::pointer server = 
-      accepting_server::pointer(new accepting_server(io_service, shortPort));
+      accepting_server::pointer(new accepting_server(io_service, shortPort, taskGenerator));
 
    asio::signal_set signals(io_service, SIGINT);
    signals.async_wait(boost::bind(&asio::io_service::stop, &io_service));

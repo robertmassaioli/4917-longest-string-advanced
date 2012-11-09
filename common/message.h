@@ -75,6 +75,11 @@ class message_task_response : public serial
          ar & tasks_;
       }
 
+      void addTask(uint32_t task) 
+      {
+         tasks_.push_back(task);
+      }
+
       std::vector<uint32_t> getTasks() 
       {
          return tasks_;
