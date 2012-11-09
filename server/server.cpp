@@ -55,15 +55,9 @@ class client_connection
       }
 
       void run() {
+         wait_for_request();
          // This essentially runs the client and attempts to keep it in contact with the target
          // machine. In here is where we do all of the complicated messaging and handling.
-         message_header header;
-         header.type = message_header::STATUS_UPDATE;
-         outbound_queue.add(new message_container(&header));
-         outbound_queue.add(new message_container(&header));
-         outbound_queue.add(new message_container(&header));
-
-         cout << "Sent a message back to the client: " << header.type << endl;
 
          // Kick off a read async task for anything that the client might want to send us
          // Kick off a periodic status update task that the client can return to us
@@ -76,6 +70,12 @@ class client_connection
          , client_strand(io_service)
          , outbound_queue(&client_strand, &connection_) 
       {
+         // WARNING: The client is not connected here. They only connect as of the run function.
+      }
+
+      void wait_for_request() 
+      {
+         cout << "# Started waiting for a request" << endl;
          connection_.async_read(header, 
                client_strand.wrap(
                   boost::bind(
@@ -88,6 +88,14 @@ class client_connection
 
       void handle_header(const boost::system::error_code& ec)
       {
+         if(ec) 
+         {
+            cout << "Error parsing the header: " << ec.message() << endl;
+         }
+         else
+         {
+            cout << "Recieved header type: " << header.type << endl;
+         }
       }
 
       void handle_data(const boost::system::error_code& ec)
@@ -158,7 +166,7 @@ class accepting_server {
          if(!error) {
             new_connection->run();
          } else {
-            cout << "There was an error: " << error << endl;
+            cout << "There was an error: " << error.message() << endl;
          }
 
          run_accept();

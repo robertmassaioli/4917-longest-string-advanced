@@ -49,7 +49,10 @@ class server_connection
    public:
       server_connection(asio::io_service& io_service,
                         tcp::resolver::iterator endpoint_iterator)
-         : io_service_(io_service), connection_(io_service)
+         : io_service_(io_service), 
+           connection_(io_service), 
+           sender_strand(io_service_),
+           outbound_queue(&sender_strand, &connection_)
       {
           boost::asio::async_connect(connection_.socket(), endpoint_iterator,
               boost::bind(&server_connection::handle_connect, this,
@@ -61,16 +64,25 @@ class server_connection
          cout << "We made a connection to the server! Success!" << endl;
          // Start waiting for the server to tell us stuff.
          // Request some tasks.
+         requestTasks();
          wait_for_server();
       }
 
-      void wait_for_server() {
+      void wait_for_server() 
+      {
+         cout << "Started waiting for the server to tell me something." << endl;
          connection_.async_read(header, 
                boost::bind(
                   &server_connection::handle_request,
                   this,
                   boost::asio::placeholders::error
                   ));
+      }
+
+      void requestTasks() {
+         message_header tempHeader;
+         tempHeader.type = message_header::STATUS_UPDATE;
+         outbound_queue.add(new message_container(&tempHeader));
       }
 
       void handle_message_task_response(const boost::system::error_code& error, message_task_response* mtr) 
@@ -102,8 +114,7 @@ class server_connection
       {
          if(error) 
          {
-            cout << "There was a problem reading the data..." << endl;
-            cout << error << endl;
+            cout << "There was a problem reading the data: " << error.message() << endl;
          }
          else 
          {
@@ -135,7 +146,11 @@ class server_connection
                   break;
 
                default:
-                  cerr << "[ERROR] The server send us a header with type '" << header.type << "' which we don't know how to deal with. Closing." << endl;
+                  cerr 
+                     << "[ERROR] The server sent us a header with type '" 
+                     << header.type 
+                     << "' which we don't know how to deal with. Closing." 
+                     << endl;
                   break;
             }
          }
@@ -145,6 +160,8 @@ class server_connection
       connection connection_;
       asio::io_service& io_service_;
       message_header header;
+      message_queue outbound_queue;
+      asio::strand sender_strand;
 };
 
 int main(int argc, char** argv) {
