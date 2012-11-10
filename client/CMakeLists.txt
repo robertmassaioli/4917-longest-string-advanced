@@ -10,4 +10,5 @@ target_link_libraries(client
    task_queue
    processor 
    common
+   clientresults
    )

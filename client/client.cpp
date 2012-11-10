@@ -8,11 +8,13 @@
 #include <arpa/inet.h>
 
 #include "processor.h"
+#include "pack_processor.h"
 #include "task_queue.h"
 #include "consts.h"
 #include "common.h"
 #include "message.h"
 #include "connection.h"
+#include "client_results.cpp"
 
 #include <boost/thread.hpp>
 #include <boost/optional.hpp>
@@ -27,13 +29,13 @@ using boost::asio::ip::tcp;
 namespace po = boost::program_options;
 namespace asio = boost::asio;
 
-static void solveTask(void);
+static void print_program(struct device* program);
+static boost::shared_ptr<client_results> solveTask(uint32_t task);
 
 //////
 // Definitions
 //////
 
-#define MAX_LEVEL	11
 #define DEFAULT_THREAD_COUNT 2
 #define DEFAULT_TASK_REQUEST_COUNT 5
 
@@ -101,7 +103,16 @@ class server_connection
             cout << "The server gave us " << tasks << " tasks to perform:" << endl;
             for(int i = 0; i < tasks; ++i) 
             {
-               cout << " - " << mtr->getTasks()[i] << endl;
+               uint32_t currentTask = mtr->getTasks()[i];
+               cout << " - " << currentTask << endl;
+               // post each of the tasks
+               io_service_.post(
+                     boost::bind(
+                        &server_connection::perform_task,
+                        this,
+                        currentTask)
+                     );
+
             }
 
             // once you are done wait for the server again
@@ -110,6 +121,21 @@ class server_connection
 
          // TODO once you are done with the mtr remember to delete it.
          delete mtr;
+      }
+
+      void perform_task(uint32_t task) {
+         cout << "Running task: " << task << endl;
+
+         boost::shared_ptr<client_results> result = solveTask(task);
+
+         for(int i = 1; i <= 16; ++i) 
+         {
+            cout << "Program Length " << i
+                 << " | Longest " << result->getLongestProgram(i)
+                 << " | Characters " << result->getLongestCharactersPrinted(i) << endl;
+         }
+         // Generate the base program that needs to be run
+         //
       }
 
       void handle_request(const boost::system::error_code& error)
@@ -213,43 +239,46 @@ int main(int argc, char** argv) {
 	return EXIT_SUCCESS;
 }
 
-static void solveTask(void) {
+#define MAX_LEVEL	16
+
+static boost::shared_ptr<client_results> solveTask(uint32_t task) {
    // TODO this is the task solving code. Throw it into a new thread so that we can run it really
    // efficiently. It should also be in its own function. This can probably be executed really well
    // by using boost futures in the boost::thread library.
-	struct device runner, currentProgram, longestProgram;
-	int longestCount = 0, tempCount;
+	struct device currentProgram;
+   boost::shared_ptr<client_results> clientResults = boost::make_shared<client_results>(task);
 
+   // Setup the current program
 	memset(&currentProgram, 0, sizeof(struct device));
-	currentProgram.memory[MAX_LEVEL - 1] = 1;
+   unpack_half_device(&currentProgram, task);
 
 	while(true) {
-		int counter = 0;
+		int counter = 8;
 		int temp = 0;
 		while(temp == 0 && counter < MAX_LEVEL) {
 			temp = currentProgram.memory[counter];
 			temp = (temp + 1) & 0x0F;
 			currentProgram.memory[counter] = temp;
 			counter++;
-         if(counter > 6) {
+         if(counter > 14) {
             cout << "Reached: ";
-            for(int i = 0; i < 16; ++i) {
-               cout << (int) currentProgram.memory[i] << ' ';
-            }
+            print_program(&currentProgram);
             cout << endl;
          }
 		}
 		if(counter == MAX_LEVEL) break;
 
-      tempCount = run_program_loop_check(&currentProgram);
-		if(tempCount > longestCount) {
-			longestCount = tempCount;
-			memcpy(&longestProgram, &currentProgram, sizeof(struct device));
-			cout << "New Longest: ";
-			for(int i = 0; i < 16; ++i) {
-				cout << (int) longestProgram.memory[i] << ' ';
-			}
-			cout << " is the longest at " << longestCount << endl;
-		}
+      int charactersPrinted = run_program_loop_check(&currentProgram);
+      clientResults->addResult(&currentProgram, charactersPrinted);
 	}
+
+   return clientResults;
+}
+
+static void print_program(struct device* program)
+{
+   for(int i = 0; i < 16; ++i) 
+   {
+      cout << (int) program->memory[i] << ' ';
+   }
 }

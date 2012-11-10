@@ -156,3 +156,13 @@ bool compare_programs(struct device* one, struct device* two) {
    }
    return true;
 }
+
+int program_length(struct device* program)
+{
+   for(int i = 15; i <= 0; --i)
+   {
+      if(program->memory[i] != 0) return i + 1;
+   }
+   
+   return 0;
+}

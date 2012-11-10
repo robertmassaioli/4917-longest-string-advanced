@@ -17,6 +17,7 @@ struct device {
 	byte R0, R1, PC;
 };
 
+// TODO run_program should return a long and not an int. Be prepared for anything.
 /**
  * Run the emulator until the timeout (in steps) has been reached.
  *
@@ -72,5 +73,12 @@ void copy_program(struct device* dst, struct device* src);
  * False otherwise.
  */
 bool compare_programs(struct device* one, struct device* two);
+
+/**
+ * Given a program it gives you the length of that program.
+ *
+ * \param program The program to find the length of.
+ */
+int program_length(struct device* program);
 
 #endif

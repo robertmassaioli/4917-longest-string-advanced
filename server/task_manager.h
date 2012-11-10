@@ -7,6 +7,8 @@
 #include "message.h"
 
 /**
+ * \brief Manage the tasks for a client.
+ *
  * The purpose of this task is to manage the tasks that a client is currently supposed to
  * be processing.
  */
