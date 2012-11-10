@@ -126,16 +126,21 @@ class server_connection
       void perform_task(uint32_t task) {
          cout << "Running task: " << task << endl;
 
+         // Solve the task that you have been given
          boost::shared_ptr<client_results> result = solveTask(task);
 
+         // Dummy code to print the result to the screen
          for(int i = 1; i <= 16; ++i) 
          {
             cout << "Program Length " << i
                  << " | Longest " << result->getLongestProgram(i)
                  << " | Characters " << result->getLongestCharactersPrinted(i) << endl;
          }
-         // Generate the base program that needs to be run
-         //
+
+         // Now send the data back to the client.
+         message_header results_header(message_header::POST_BACK_DATA);
+         boost::shared_ptr<message_container> mc = boost::make_shared<message_container>(&results_header, result.get());
+         outbound_queue.add(mc);
       }
 
       void handle_request(const boost::system::error_code& error)

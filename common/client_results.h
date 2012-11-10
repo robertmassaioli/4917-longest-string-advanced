@@ -3,10 +3,18 @@
 
 #include <stdint.h>
 
-struct run_result
+class run_result
 {
-   uint64_t trial;
-   int charactersPrinted;
+   public:
+      uint64_t trial;
+      int charactersPrinted;
+
+      template<class Archive>
+      void serialize(Archive& ar, const unsigned int version) 
+      {
+         ar & trial;
+         ar & charactersPrinted;
+      }
 };
 
 class client_results
@@ -18,6 +26,13 @@ class client_results
       uint32_t getTask();
       uint64_t getLongestProgram(int programLength);
       int getLongestCharactersPrinted(int programLength);
+
+      template<class Archive>
+      void serialize(Archive& ar, const unsigned int version) 
+      {
+         ar & task;
+         ar & results;
+      }
 
    private:
       uint32_t task;
