@@ -148,9 +148,16 @@ class client_connection
             cout << "We got the task request: " << mt_request->getTasksRequested() << endl;
 
             // Get the tasks for the client.
-            // Set it up so that if the client fails then all of the tasks are returned to the queue
             boost::shared_ptr<message_task_response> mt_response = taskManager->acquireTasks(mt_request->getTasksRequested());
             cout << "Responding with tasks: " << mt_response->getTasks().size() << endl;
+
+            // Send the tasks back to the client
+            message_header mt_response_header(message_header::REQUESTING_TASKS);
+            boost::shared_ptr<message_container> mc 
+               = boost::make_shared<message_container>(&mt_response_header, mt_response.get());
+            outbound_queue.add(mc);
+
+            wait_for_request();
          }
       }
 

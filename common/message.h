@@ -23,10 +23,21 @@ class message_header : public serial
    public:
       enum message_type
       {
+         INVALID_HEADER = 0,
          REQUESTING_TASKS = 1,
          POST_BACK_DATA = 2,
          STATUS_UPDATE = 3
       } type;
+
+      message_header()
+      {
+         type = INVALID_HEADER;
+      }
+
+      message_header(message_type type) 
+      {
+         this->type = type;
+      }
 
       template<class Archive>
       void serialize(Archive& ar, const unsigned int version) 
