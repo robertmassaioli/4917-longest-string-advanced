@@ -11,4 +11,5 @@ target_link_libraries(server
    common
    taskgenerator
    taskmanager
+   clientresults
 )

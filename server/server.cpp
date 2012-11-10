@@ -16,6 +16,7 @@
 #include "connection.h"
 #include "task_generator.h"
 #include "task_manager.h"
+#include "client_results.h"
 
 #include <boost/ref.hpp>
 #include <boost/asio.hpp>
@@ -115,6 +116,15 @@ class client_connection
             else if(header.type == message_header::POST_BACK_DATA)
             {
                cout << "The client is posting us their results" << endl;
+               boost::shared_ptr<client_results> cr(new client_results(0));
+               connection_.async_read(*cr.get(),
+                     boost::bind(
+                        &client_connection::handle_results,
+                        shared_from_this(),
+                        cr,
+                        asio::placeholders::error
+                        )
+                     );
             }
             else if (header.type == message_header::STATUS_UPDATE)
             {
@@ -161,9 +171,25 @@ class client_connection
          }
       }
 
-      void handle_results() 
+      void handle_results(boost::shared_ptr<client_results> clientResults, const boost::system::error_code& ec) 
       {
          // The client is handing us the results, deal with them. This is a reduce function.
+         if(ec)
+         {
+            cout << "There was an error parsing the results: " << ec.message() << endl;
+         }
+         else
+         {
+            // Try and sift the results to find the best results
+            for(int i = 1; i <= 16; ++i) 
+            {
+               cout << "Program Length " << i
+                    << " | Longest " << clientResults->getLongestProgram(i)
+                    << " | Characters " << clientResults->getLongestCharactersPrinted(i) << endl;
+            }
+            
+            // mark this task as done
+         } 
       }
 
       void handle_status_update() 
