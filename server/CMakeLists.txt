@@ -5,14 +5,17 @@ add_library(taskgenerator task_generator.cpp)
 add_library(taskmanager task_manager.cpp)
 
 add_library(clientconnection SHARED client_connection.cpp)
+target_link_libraries(clientconnection
+   ${Boost_LIBRARIES}
+   clientresults
+   taskmanager
+   taskgenerator
+   )
 
 add_executable(server server.cpp)
 target_link_libraries(server 
    ${CMAKE_THREAD_LIBS_INIT}
    ${Boost_LIBRARIES}
-   taskgenerator
-   taskmanager
    clientconnection
-   clientresults
    boosthelpers
 )
