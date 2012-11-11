@@ -38,6 +38,7 @@ class connection
             << std::setw(header_length) 
             << std::hex
             << data_stream.str().size();
+         std::cout << "Sending header of size: " << data_stream.str().size() << std::endl;
          if(!out)  //|| header_stream.str().size() != header_length) 
          {
             // something went wrong so display an error message.
@@ -147,6 +148,8 @@ class connection
                boost::get<0>(handler)(error);
                return;
             }
+
+            std::cout << "Size: " << inbound_data_size << std::endl;
 
             inbound_data_.resize(inbound_data_size);
 

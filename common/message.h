@@ -159,6 +159,7 @@ class message_queue
       connection* connection_;
       boost::asio::strand* send_strand;
       bool sendingMessage; // The sending message object should be locked. Feels like it currently is not.
+      boost::recursive_mutex queue_mutex;
 
    public:
       message_queue(boost::asio::strand* send_strand, connection* connection) 
@@ -172,6 +173,8 @@ class message_queue
 
       bool add(boost::shared_ptr<message_container> message) 
       {
+         boost::recursive_mutex::scoped_lock lock(queue_mutex);
+
          queue.push(message);
          pop_message();
          return true;
@@ -179,20 +182,22 @@ class message_queue
 
       void pop_message() 
       {
+         boost::recursive_mutex::scoped_lock lock(queue_mutex);
+
          if(!sendingMessage && !queue.empty()) 
          {
             if(connection_->socket().is_open()) 
             {
                sendingMessage = true;
                connection_->async_write_archive(*(queue.front()->getHeader()),
-                     send_strand->wrap(
+                     //send_strand->wrap(
                         boost::bind(
                            &message_queue::send_body,
                            this,
                            queue.front(),
                            boost::asio::placeholders::error
                         )
-                     )
+                     //)
                   );
                queue.pop();
             }

@@ -31,6 +31,7 @@ namespace asio = boost::asio;
 
 static void print_program(struct device* program);
 static boost::shared_ptr<client_results> solveTask(uint32_t task);
+static void runClient(asio::io_service& io_service);
 
 //////
 // Definitions
@@ -84,7 +85,8 @@ class server_connection
       void requestTasks() {
          message_header tempHeader;
          tempHeader.type = message_header::REQUESTING_TASKS;
-         message_task_request mtr(5);
+         // TODO configure how many tasks will be requested somewhere.
+         message_task_request mtr(2);
          boost::shared_ptr<message_container> mc(new message_container(&tempHeader, &mtr));
          outbound_queue.add(mc);
       }
@@ -128,6 +130,13 @@ class server_connection
 
          // Solve the task that you have been given
          boost::shared_ptr<client_results> result = solveTask(task);
+
+
+         // Change the data in a stupid way; please remove TODO
+         struct device pretendDevice;
+         init_program(&pretendDevice);
+         pretendDevice.memory[5] = 1;
+         result->addResult(&pretendDevice, 10);
 
          // Dummy code to print the result to the screen
          for(int i = 1; i <= 16; ++i) 
@@ -237,7 +246,7 @@ int main(int argc, char** argv) {
    server_connection connection(io_service, iterator);
 
    // TODO create a client that runs with this IO Service and is restrained to a class.
-   io_service.run();
+   runClient(io_service);
 
 	cout << "Program has completed!" << endl;
 
@@ -286,4 +295,36 @@ static void print_program(struct device* program)
    {
       cout << (int) program->memory[i] << ' ';
    }
+}
+
+#define THREAD_POOL_SIZE 10
+
+static void runClient(asio::io_service& io_service) 
+{
+   cout << "Kicking off all of the threads." << endl;
+
+   // Kick off all of the threads;
+   std::vector<boost::shared_ptr<boost::thread> > threads;
+   for(std::size_t i = 0; i < THREAD_POOL_SIZE; ++i)
+   {
+      boost::shared_ptr<boost::thread> thread(
+            new boost::thread(
+               boost::bind(
+                  &boost::asio::io_service::run,
+                  &io_service
+                  )
+               )
+            );
+
+      threads.push_back(thread);
+   }
+
+   cout << "All of the threads have been kicked off." << endl;
+
+   for(std::size_t i = 0; i < threads.size(); ++i)
+   {
+      threads[i]->join();
+   }
+
+   cout << "All threads have finished running." << endl;
 }

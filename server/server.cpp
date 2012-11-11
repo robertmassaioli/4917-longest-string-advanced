@@ -42,6 +42,8 @@ static const char* failed = "FAILED!";
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
 
+static void runServer(asio::io_service& io_service);
+
 // TODO the message_queue is not thread safe at all. Make it so that it is.
 class client_connection 
    : public boost::enable_shared_from_this<client_connection>
@@ -180,6 +182,8 @@ class client_connection
          }
          else
          {
+            cout << "Returning Task: " << clientResults->getTask() << endl;
+
             // Try and sift the results to find the best results
             for(int i = 1; i <= 16; ++i) 
             {
@@ -189,6 +193,7 @@ class client_connection
             }
             
             // mark this task as done
+            wait_for_request();
          } 
       }
 
@@ -303,9 +308,12 @@ int main(int argc, char** argv) {
    accepting_server::pointer server = 
       accepting_server::pointer(new accepting_server(io_service, shortPort, taskGenerator));
 
+   // Accept the SIGINT signal to stop the server.
    asio::signal_set signals(io_service, SIGINT);
    signals.async_wait(boost::bind(&asio::io_service::stop, &io_service));
-   io_service.run();
+
+   // Now actually run the server
+   runServer(io_service);
 
    cout << "[TODO] Save the current progress to a file to be loaded next time." << endl;
 
@@ -313,64 +321,34 @@ int main(int argc, char** argv) {
    return EXIT_SUCCESS;
 }
 
-/*
-void handleClient(void* data) {
-   cout << "[Started dealing with another client]" << endl;
-   data = NULL;
-   ServerState serverState = WAITING_START;
+#define THREAD_POOL_SIZE 10
 
-   // Start communicating with the client. Essentially wait for the client to ask you a question
-   const size_t readBufLen = 100;
-   byte readBuf[readBufLen];
-   while (serverState != FINISHED_CONNECTION) {
-      ssize_t readLen = 0;
-      // For now I expect the first message to fit into one buffer call.
-      readLen = recv(NULL, readBuf, readBufLen, 0);
-      if(readLen == 0) {
-         cout << "The client has shut down on the other end of the line." << endl;
-         break;
-      }
-      if(readLen > 20) {
-         cout << "A client tried to" << endl;
-         break;
-      }
-      char tempStr[5];
-      switch(readBuf[0]) {
-         case REQUESTING_TASKS:
-            sprintf(tempStr, "%d", readBuf[1]);
-            cout << "Client is asking for another " << tempStr << " task/s" << endl;
-            // TODO Look inside endian.h and pack_processor.h to see how to send this
-            // response data over the line.
-            break;
-         case POSTING_BACK:
-            // TODO implement complicated logic.
-            // Step 1: Parse into data structure.
-            // Step 2: Pass into helper function that does the processing.
-            // No need to send anything back to the client. If we don't get it then we
-            // will time out eventually.
-            break;
+static void runServer(asio::io_service& io_service) 
+{
+   cout << "Kicking off all of the threads." << endl;
 
-         case STATUS_UPDATE:
-            // TODO record the status update
-            // For the here and now just reset the timeout on that particular client.
-            // In the future we will actually display the data usefully on the server.
-            break;
+   // Kick off all of the threads;
+   std::vector<boost::shared_ptr<boost::thread> > threads;
+   for(std::size_t i = 0; i < THREAD_POOL_SIZE; ++i)
+   {
+      boost::shared_ptr<boost::thread> thread(
+            new boost::thread(
+               boost::bind(
+                  &boost::asio::io_service::run,
+                  &io_service
+                  )
+               )
+            );
 
-         default:
-            sprintf(tempStr, "%d", readBuf[0]);
-            cout << "Did not understand the incoming data..." << tempStr << endl;
-            break;
-      }
-      // TODO debugging code.
-      serverState = FINISHED_CONNECTION;
-      // Expect one of two messages "Can I have N tasks?" or "Sorry, quitting"
-      // Send the required response or close the connection.
-      // Wait for the results to be sent back but do not busy wait so that you can occasionally ping.
-      // Recieve the results and update my own data.
+      threads.push_back(thread);
    }
 
-   cout << "Closed the client." << endl;
-   close(clientData->connectionSocket);
-   delete clientData;
+   cout << "All of the threads have been kicked off." << endl;
+
+   for(std::size_t i = 0; i < threads.size(); ++i)
+   {
+      threads[i]->join();
+   }
+
+   cout << "All threads have finished running." << endl;
 }
-*/
