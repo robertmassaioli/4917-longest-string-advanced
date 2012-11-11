@@ -1,6 +1,12 @@
 add_library(processor processor.cpp)
 add_library(packer processor_packer.cpp)
 
+add_library(solvetask solve_task.cpp)
+target_link_libraries(solvetask
+   processor
+   packer
+   )
+
 add_library(boosthelpers boost_helpers.cpp)
 target_link_libraries(boosthelpers
    ${Boost_LIBRARIES}
