@@ -134,6 +134,10 @@ class server_connection
 
          // Change the data in a stupid way; please remove TODO
          struct device pretendDevice;
+         for(int i = 0; i < 16; ++i)
+         {
+            pretendDevice.memory[i] = 0;
+         }
          init_program(&pretendDevice);
          pretendDevice.memory[5] = 1;
          result->addResult(&pretendDevice, 10);

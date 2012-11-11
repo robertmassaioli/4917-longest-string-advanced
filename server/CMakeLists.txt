@@ -4,6 +4,8 @@ link_directories(${LS_BINARY_DIR}/common)
 add_library(taskgenerator task_generator.cpp)
 add_library(taskmanager task_manager.cpp)
 
+add_library(clientconnection SHARED client_connection.cpp)
+
 add_executable(server server.cpp)
 target_link_libraries(server 
    ${CMAKE_THREAD_LIBS_INIT}
@@ -11,6 +13,7 @@ target_link_libraries(server
    common
    taskgenerator
    taskmanager
+   clientconnection
    clientresults
    boosthelpers
 )

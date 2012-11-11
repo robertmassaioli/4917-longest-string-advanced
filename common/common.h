@@ -1,3 +1,4 @@
+// TODO Merge this with boost_helpers.h
 #ifndef __RM_COMMON
 #define __RM_COMMON
 
