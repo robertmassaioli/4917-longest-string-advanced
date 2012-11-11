@@ -12,4 +12,5 @@ target_link_libraries(server
    taskgenerator
    taskmanager
    clientresults
+   boosthelpers
 )

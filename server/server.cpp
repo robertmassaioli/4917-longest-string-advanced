@@ -17,6 +17,7 @@
 #include "task_generator.h"
 #include "task_manager.h"
 #include "client_results.h"
+#include "boost_helpers.h"
 
 #include <boost/ref.hpp>
 #include <boost/asio.hpp>
@@ -39,10 +40,9 @@ typedef unsigned char byte;
 static const char* success = "SUCCESS!";
 static const char* failed = "FAILED!";
 
+#define DEFAULT_THREAD_COUNT 4
 #define MAX_CONNECTIONS    100
 #define DEFAULT_PORT       "9999"
-
-static void runServer(asio::io_service& io_service);
 
 // TODO the message_queue is not thread safe at all. Make it so that it is.
 class client_connection 
@@ -268,6 +268,7 @@ int main(int argc, char** argv) {
 
    // parse the program options
    int max_connections;
+   int thread_count;
    string port;
    po::options_description desc("Program options", DESCRIPTION_WIDTH);
    desc.add_options()
@@ -276,7 +277,7 @@ int main(int argc, char** argv) {
          "produce help message"
       )
       (
-         "max-connections,n", 
+         "max-connections,m", 
          po::value<int>(&max_connections)->default_value(MAX_CONNECTIONS), 
          "the maximum number of client connections to make at any one time"
       )
@@ -284,6 +285,11 @@ int main(int argc, char** argv) {
          "port,p", 
          po::value<string>(&port)->default_value(DEFAULT_PORT), 
          "the port to start the server on"
+      )
+      (
+         "threads,n", 
+         po::value<int>(&thread_count)->default_value(DEFAULT_THREAD_COUNT),
+         "the number of threads on this server to perform tasks"
       )
       ;
 
@@ -313,42 +319,10 @@ int main(int argc, char** argv) {
    signals.async_wait(boost::bind(&asio::io_service::stop, &io_service));
 
    // Now actually run the server
-   runServer(io_service);
+   run_threaded(io_service, thread_count);
 
    cout << "[TODO] Save the current progress to a file to be loaded next time." << endl;
 
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
-}
-
-#define THREAD_POOL_SIZE 10
-
-static void runServer(asio::io_service& io_service) 
-{
-   cout << "Kicking off all of the threads." << endl;
-
-   // Kick off all of the threads;
-   std::vector<boost::shared_ptr<boost::thread> > threads;
-   for(std::size_t i = 0; i < THREAD_POOL_SIZE; ++i)
-   {
-      boost::shared_ptr<boost::thread> thread(
-            new boost::thread(
-               boost::bind(
-                  &boost::asio::io_service::run,
-                  &io_service
-                  )
-               )
-            );
-
-      threads.push_back(thread);
-   }
-
-   cout << "All of the threads have been kicked off." << endl;
-
-   for(std::size_t i = 0; i < threads.size(); ++i)
-   {
-      threads[i]->join();
-   }
-
-   cout << "All threads have finished running." << endl;
 }

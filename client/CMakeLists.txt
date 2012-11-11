@@ -11,4 +11,5 @@ target_link_libraries(client
    processor 
    common
    clientresults
+   boosthelpers
    )
