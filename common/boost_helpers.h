@@ -1,3 +1,8 @@
+/** 
+ * @file boost_helpers.h
+ * \brief Custom boost-based helper functions that are of use in the project.
+ */
+
 #ifndef __4917_BOOST_HELPERS
 #define __4917_BOOST_HELPERS
 
