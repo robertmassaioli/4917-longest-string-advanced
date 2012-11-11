@@ -12,6 +12,15 @@
 #include "client_results.h"
 #include <boost/smart_ptr/shared_ptr.hpp>
 
+/**
+ * \brief Solves a given task.
+ *
+ * The entire problem space in this program has been broken down into tasks. This function
+ * is capable of accepting a task and giving us back the solutions.
+ *
+ * \param task The task to solve for.
+ * \return The results of running the task.
+ */
 boost::shared_ptr<client_results> solveTask(uint32_t task);
 
 #endif
