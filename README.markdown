@@ -1,5 +1,14 @@
 # 4917 Longest String
 
+## Basic Instructions
+
+To get ready for development and compile the code run:
+
+    bash scripts/setup_development.bash
+
+And that is all. This should setup everything for you and compile the code too. Just look
+at what the script is actually doing to get a better idea of how to compile the code.
+
 ## Goal
 
 The aim of this project is to create a Client / Server networking model that can solve this problem

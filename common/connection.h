@@ -8,6 +8,7 @@
 #include <boost/tuple/tuple.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
+#include <boost/serialization/vector.hpp>
 
 class connection
 {
@@ -17,25 +18,27 @@ class connection
       {
       }
 
+      ~connection() 
+      {
+         socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+         socket_.close();
+      }
+
       boost::asio::ip::tcp::socket& socket()
       {
          return socket_;
       }
 
-      template<typename T, typename Handler>
-      void async_write(const T& data, Handler handler) 
+      template<class Handler>
+      void async_write_archive(std::ostringstream& data_stream, Handler handler)
       {
-         // serialize the data
-         std::ostringstream data_stream;
-         boost::archive::text_oarchive archive(data_stream);
-         archive << data;
-
          std::ostream out(&outbound_);
          // build the header of the message
          out
             << std::setw(header_length) 
             << std::hex
             << data_stream.str().size();
+         std::cout << "Sending header of size: " << data_stream.str().size() << std::endl;
          if(!out)  //|| header_stream.str().size() != header_length) 
          {
             // something went wrong so display an error message.
@@ -59,6 +62,17 @@ class connection
                   boost::asio::placeholders::bytes_transferred,
                   boost::make_tuple(handler)
                   ));
+      }
+
+      template<typename T, typename Handler>
+      void async_write(const T& data, Handler handler) 
+      {
+         // serialize the data
+         std::ostringstream data_stream;
+         boost::archive::text_oarchive archive(data_stream);
+         archive << data;
+
+         async_write_archive<Handler>(data_stream, handler);
       }
 
 
@@ -135,6 +149,8 @@ class connection
                return;
             }
 
+            std::cout << "Size: " << inbound_data_size << std::endl;
+
             inbound_data_.resize(inbound_data_size);
 
             void (connection::*f)(
@@ -172,6 +188,7 @@ class connection
          } 
          else 
          {
+            std::cout << "The data was read." << std::endl;
             try 
             {
                std::string archive_data(&inbound_data_[0], inbound_data_.size());

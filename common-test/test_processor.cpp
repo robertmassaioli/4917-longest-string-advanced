@@ -380,4 +380,26 @@ namespace {
 
       EXPECT_EQ(93, run_program_loop_check(begin));
    }
+
+   TEST_F(ProcessorTest, ProgramCount)
+   {
+      begin->memory[5] = 1;
+
+      EXPECT_EQ(6, program_length(begin));
+   }
+
+   TEST_F(ProcessorTest, ProgramCountNone)
+   {
+      EXPECT_EQ(0, program_length(begin));
+   }
+
+   TEST_F(ProcessorTest, ProgramCountAll)
+   {
+      for(int i = 0; i < 16; ++i)
+      {
+         begin->memory[i] = i;
+      }
+
+      EXPECT_EQ(16, program_length(begin));
+   }
 }

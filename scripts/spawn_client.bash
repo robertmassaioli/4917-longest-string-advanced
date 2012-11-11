@@ -1,6 +1,7 @@
 #!/bin/bash -e
 
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+DIR="$SCRIPTS_DIR/.."
 
 cd "$DIR/localbuild"
 echo "Recompiling the code in:"

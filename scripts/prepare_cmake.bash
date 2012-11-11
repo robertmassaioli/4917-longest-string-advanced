@@ -3,7 +3,9 @@
 echo "Requirements: rm, mkdir, cd, cmake"
 echo "Preparing the build to be run."
 
-BUILD_DIR=localbuild
+SCRIPTS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+BASE_DIR="$SCRIPTS_DIR/.."
+BUILD_DIR=${1:-${BASE_DIR}/localbuild}
 
 rm -rf $BUILD_DIR
 mkdir $BUILD_DIR
