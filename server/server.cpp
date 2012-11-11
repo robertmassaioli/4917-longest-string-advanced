@@ -5,7 +5,6 @@
 #include "task_generator.h"
 #include "client_connection.h"
 #include "boost_helpers.h"
-#include "common.h"
 
 #include <boost/asio.hpp>
 #include <boost/program_options.hpp>

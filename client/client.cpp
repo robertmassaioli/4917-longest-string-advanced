@@ -11,7 +11,6 @@
 #include "pack_processor.h"
 #include "task_queue.h"
 #include "consts.h"
-#include "common.h"
 #include "message.h"
 #include "connection.h"
 #include "client_results.h"
