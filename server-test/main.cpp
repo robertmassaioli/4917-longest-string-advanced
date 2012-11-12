@@ -9,9 +9,9 @@ using namespace std;
 TEST(GeneratorTest, InitTask) {
    TaskGenerator gen;
 
-   EXPECT_EQ(0, gen.getNextTask());
-   EXPECT_EQ(1, gen.getNextTask());
-   EXPECT_EQ(2, gen.getNextTask());
+   EXPECT_EQ(0x10000000, gen.getNextTask());
+   EXPECT_EQ(0x10000001, gen.getNextTask());
+   EXPECT_EQ(0x10000002, gen.getNextTask());
 }
 
 TEST(GeneratorTest, FailedTask) {
@@ -22,20 +22,20 @@ TEST(GeneratorTest, FailedTask) {
 
    // Generate some tasks
    task = gen.getNextTask();
-   EXPECT_EQ(0, task);
+   EXPECT_EQ(0x10000000, task);
    grabbedItems.push(task);
    grabbedItems.push(gen.getNextTask());
    grabbedItems.push(gen.getNextTask());
    grabbedItems.push(gen.getNextTask());
 
    // return a failed task
-   EXPECT_EQ(3, grabbedItems.top());
+   EXPECT_EQ(0x10000003, grabbedItems.top());
    gen.returnFailedTask(grabbedItems.top());
    grabbedItems.pop();
    
    // Expect the failed task
    task = gen.getNextTask();
-   EXPECT_EQ(3, task);
+   EXPECT_EQ(0x10000003, task);
 }
 
 //TEST(GeneratorTest, 
