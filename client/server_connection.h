@@ -3,6 +3,7 @@
 
 #include "connection.h"
 #include "message.h"
+#include <boost/thread.hpp>
 
 /**
  * \brief The class that manages the connection to the server.
@@ -23,9 +24,12 @@ class server_connection
            connection_(io_service), 
            outbound_queue(&connection_)
       {
-          boost::asio::async_connect(connection_.socket(), endpoint_iterator,
-              boost::bind(&server_connection::handle_connect, this,
-                boost::asio::placeholders::error));
+         boost::recursive_mutex::scoped_lock lock(request_mutex);
+         tasksRemaining = 0;
+         boost::asio::async_connect(connection_.socket(), endpoint_iterator,
+            boost::bind(&server_connection::handle_connect, 
+               this,
+               boost::asio::placeholders::error));
       }
 
    private:
@@ -74,6 +78,9 @@ class server_connection
       boost::asio::io_service& io_service_;
       message_header header;
       message_queue outbound_queue;
+
+      boost::recursive_mutex request_mutex;
+      int tasksRemaining;
 };
 
 #endif

@@ -50,9 +50,11 @@ void server_connection::handle_message_task_response(const boost::system::error_
    } 
    else
    {
+      boost::recursive_mutex::scoped_lock lock(request_mutex);
       cout << "Successfully read the message task response." << endl;
 
       int tasks = mtr->getTasks().size();
+      tasksRemaining += tasks;
       cout << "The server gave us " << tasks << " tasks to perform:" << endl;
       for(int i = 0; i < tasks; ++i) 
       {
@@ -108,6 +110,13 @@ void server_connection::perform_task(uint32_t task)
    message_header results_header(message_header::POST_BACK_DATA);
    boost::shared_ptr<message_container> mc = boost::make_shared<message_container>(&results_header, result.get());
    outbound_queue.add(mc);
+
+   boost::recursive_mutex::scoped_lock lock(request_mutex);
+   tasksRemaining--;
+   if(tasksRemaining == 0)
+   {
+      requestTasks();
+   }
 }
 
 void server_connection::handle_request(const boost::system::error_code& error)
