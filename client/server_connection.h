@@ -21,8 +21,7 @@ class server_connection
                         boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
          : io_service_(io_service), 
            connection_(io_service), 
-           sender_strand(io_service_),
-           outbound_queue(&sender_strand, &connection_)
+           outbound_queue(&connection_)
       {
           boost::asio::async_connect(connection_.socket(), endpoint_iterator,
               boost::bind(&server_connection::handle_connect, this,
@@ -75,7 +74,6 @@ class server_connection
       boost::asio::io_service& io_service_;
       message_header header;
       message_queue outbound_queue;
-      boost::asio::strand sender_strand; // is this required?
 };
 
 #endif

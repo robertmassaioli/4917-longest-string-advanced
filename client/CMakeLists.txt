@@ -6,13 +6,13 @@ add_library(server_connection SHARED server_connection.cpp)
 target_link_libraries(server_connection
    solvetask
    clientresults
+   task_queue
    )
 
 add_executable(client client.cpp)
 target_link_libraries(client 
    ${CMAKE_THREAD_LIBS_INIT}
    ${Boost_LIBRARIES}
-   task_queue
    server_connection
    processor 
    clientresults

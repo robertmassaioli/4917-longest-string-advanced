@@ -26,8 +26,7 @@ class client_connection
    private:
       client_connection(boost::asio::io_service& io_service, boost::shared_ptr<TaskGenerator> taskGenerator)
          : connection_(io_service)
-         , client_strand(io_service)
-         , outbound_queue(&client_strand, &connection_) 
+         , outbound_queue(&connection_) 
          , taskManager(new task_manager(taskGenerator))
       {
          // WARNING: The client is not connected here. They only connect as of the run function.
@@ -53,7 +52,6 @@ class client_connection
       connection connection_;
       message_queue outbound_queue;
       message_header header;
-      boost::asio::strand client_strand;
       boost::shared_ptr<task_manager> taskManager;
       // TODO data structure representing last ping
       // list of the current tasks that it has been assigned so that we can reap them when the

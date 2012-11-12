@@ -1,18 +1,18 @@
-add_library(processor processor.cpp)
-add_library(packer processor_packer.cpp)
+add_library(processor SHARED processor.cpp)
+add_library(packer SHARED processor_packer.cpp)
 
-add_library(solvetask solve_task.cpp)
+add_library(solvetask SHARED solve_task.cpp)
 target_link_libraries(solvetask
    processor
    packer
    )
 
-add_library(boosthelpers boost_helpers.cpp)
+add_library(boosthelpers SHARED boost_helpers.cpp)
 target_link_libraries(boosthelpers
    ${Boost_LIBRARIES}
    )
 
-add_library(clientresults client_results.cpp)
+add_library(clientresults SHARED client_results.cpp)
 target_link_libraries(clientresults
    packer
    processor

@@ -162,9 +162,8 @@ class message_queue
       boost::recursive_mutex queue_mutex;
 
    public:
-      message_queue(boost::asio::strand* send_strand, connection* connection) 
+      message_queue(connection* connection) 
       {
-         this->send_strand = send_strand;
          this->connection_ = connection;
          sendingMessage = false;
          // init the queue and take in all of the objects that you are going to need to
@@ -190,14 +189,12 @@ class message_queue
             {
                sendingMessage = true;
                connection_->async_write_archive(*(queue.front()->getHeader()),
-                     //send_strand->wrap(
-                        boost::bind(
-                           &message_queue::send_body,
-                           this,
-                           queue.front(),
-                           boost::asio::placeholders::error
-                        )
-                     //)
+                     boost::bind(
+                        &message_queue::send_body,
+                        this,
+                        queue.front(),
+                        boost::asio::placeholders::error
+                     )
                   );
                queue.pop();
             }
@@ -213,13 +210,11 @@ class message_queue
          else 
          {
             connection_->async_write_archive(*(mc->getBody()),
-                  //send_strand->wrap(
-                     boost::bind(
-                        &message_queue::empty_queue,
-                        this,
-                        boost::asio::placeholders::error
-                     )
-                  //)
+                  boost::bind(
+                     &message_queue::empty_queue,
+                     this,
+                     boost::asio::placeholders::error
+                  )
                );
          }
       }
