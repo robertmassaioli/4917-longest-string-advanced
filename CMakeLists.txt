@@ -26,6 +26,7 @@ set(TESTFILES
    "server-test/server-test"
    "common-test/test_processor"
    "common-test/test_packer"
+   "common-test/test_client_results"
    )
 
 foreach(TESTFILE ${TESTFILES})

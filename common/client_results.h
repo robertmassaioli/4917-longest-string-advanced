@@ -37,7 +37,7 @@ class client_results
 
    private:
       uint32_t task;
-      struct run_result results[16];
+      run_result results[16];
 };
 
 #endif
