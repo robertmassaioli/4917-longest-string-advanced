@@ -52,4 +52,24 @@ TEST(ClientResults, AddMultipleResults)
 
 TEST(ClientResults, MergeResults)
 {
+   client_results main(0), other(1234);
+   struct device dev;
+
+   for(int length = 0; length <= 16; ++length)
+   {
+      for(int slot = 0; slot < 16; ++slot)
+      {
+         dev.memory[slot] = slot < length ? 8 : 0;
+      }
+
+      main.addResult(&dev, length);
+      other.addResult(&dev, length + 20);
+   }
+
+   main.merge(&other);
+
+   for(int length = 1; length <= 16; ++length) 
+   {
+      EXPECT_EQ(length + 20, main.getLongestCharactersPrinted(length));
+   }
 }
