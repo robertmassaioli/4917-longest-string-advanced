@@ -46,6 +46,15 @@ class task_manager
        */
       bool task_finished(uint32_t task);
 
+      /**
+       * Mark this task as a failure.
+       *
+       * \param task The task to be marked as a failure.
+       * \return True if successful and false if the class had no idea it even owned that
+       * task.
+       */
+      bool task_failed(uint32_t task);
+
    private:
       boost::shared_ptr<TaskGenerator> taskGenerator;
       std::set<uint32_t> ownedTasks;

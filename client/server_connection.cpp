@@ -16,8 +16,8 @@ void server_connection::handle_connect(const boost::system::error_code& error)
 {
    cout << "We made a connection to the server! Success!" << endl;
    // Start waiting for the server to tell us stuff.
-   // Request some tasks.
    wait_for_server();
+   // Request some tasks.
    requestTasks();
 }
 

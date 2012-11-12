@@ -41,10 +41,28 @@ bool task_manager::task_finished(uint32_t task)
    if(foundTask == ownedTasks.end()) 
    {
       cout << "ERROR: We tried to 'finish' a task for a client that was not running that task!" << endl;
+      return false;
    }
    else
    {
       ownedTasks.erase(foundTask);
       cout << "Task successfully erased: " << task << endl;
+      return true;
+   }
+}
+
+bool task_manager::task_failed(uint32_t task)
+{
+   set<uint32_t>::iterator foundTask = ownedTasks.find(task);
+   if(foundTask == ownedTasks.end())
+   {
+      return false;
+   }
+   else
+   {
+      ownedTasks.erase(foundTask);
+      taskGenerator->returnFailedTask(task);
+      cout << "Returned a failed task: " << task << endl;
+      return true;
    }
 }

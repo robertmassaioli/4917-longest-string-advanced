@@ -1,6 +1,9 @@
-#include "client_connection.h"
-
 #include <iostream>
+
+#include "client_connection.h"
+#include "processor.h"
+#include "pack_processor.h"
+
 
 using namespace std;
 using boost::asio::ip::tcp;
@@ -124,12 +127,37 @@ void client_connection::handle_results(boost::shared_ptr<client_results> clientR
    {
       cout << "Returning Task: " << clientResults->getTask() << endl;
 
-      // Try and sift the results to find the best results
-      for(int i = 1; i <= 16; ++i) 
+      bool resultsValid = true;
+      struct device testProgram;
+      init_program(&testProgram);
+      // verify that the results are correct
+      for(int i = 1; i <= 16 && resultsValid; ++i)
       {
-         cout << "Program Length " << i
-              << " | Longest " << clientResults->getLongestProgram(i)
-              << " | Characters " << clientResults->getLongestCharactersPrinted(i) << endl;
+         unpack_device(&testProgram, clientResults->getLongestProgram(i));
+         int actualPrinted = run_program_loop_check(&testProgram);
+         if(actualPrinted != clientResults->getLongestCharactersPrinted(i)) 
+         {
+            resultsValid = false;
+         }
+      }
+
+      const uint32_t task = clientResults->getTask();
+      if(resultsValid)
+      {
+         taskManager->task_finished(task);
+         // Try and sift the results to find the best results
+         cout << "Task '" << task << "' has finished:" << endl;
+         for(int i = 1; i <= 16; ++i) 
+         {
+            cout << "  Program Length " << i
+                 << " | Longest " << clientResults->getLongestProgram(i)
+                 << " | Characters " << clientResults->getLongestCharactersPrinted(i) << endl;
+         }
+      }
+      else 
+      {
+         taskManager->task_failed(task);
+         cout << "The clients results for task '" << task << "' were not valid. Failing." << endl;
       }
       
       // mark this task as done
