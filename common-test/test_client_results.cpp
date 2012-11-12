@@ -31,6 +31,23 @@ TEST(ClientResults, AddOneResult)
 
 TEST(ClientResults, AddMultipleResults)
 {
+   client_results main(0);
+   struct device dev;
+
+   for(int length = 0; length <= 16; ++length)
+   {
+      for(int slot = 0; slot < 16; ++slot)
+      {
+         dev.memory[slot] = slot < length ? 8 : 0;
+      }
+
+      main.addResult(&dev, length);
+   }
+
+   for(int length = 1; length <= 16; ++length) 
+   {
+      EXPECT_EQ(length, main.getLongestCharactersPrinted(length));
+   }
 }
 
 TEST(ClientResults, MergeResults)
