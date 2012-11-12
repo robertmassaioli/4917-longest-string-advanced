@@ -37,7 +37,7 @@ void server_connection::requestTasks()
    message_header tempHeader;
    tempHeader.type = message_header::REQUESTING_TASKS;
    // TODO configure how many tasks will be requested somewhere.
-   message_task_request mtr(2);
+   message_task_request mtr(requestCount);
    boost::shared_ptr<message_container> mc(new message_container(&tempHeader, &mtr));
    outbound_queue.add(mc);
 }

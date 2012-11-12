@@ -19,13 +19,15 @@ class server_connection
        * server to be.
        */
       server_connection(boost::asio::io_service& io_service,
-                        boost::asio::ip::tcp::resolver::iterator endpoint_iterator)
+                        boost::asio::ip::tcp::resolver::iterator endpoint_iterator,
+                        int requestCount)
          : io_service_(io_service), 
            connection_(io_service), 
            outbound_queue(&connection_)
       {
          boost::recursive_mutex::scoped_lock lock(request_mutex);
          tasksRemaining = 0;
+         this->requestCount = requestCount;
          boost::asio::async_connect(connection_.socket(), endpoint_iterator,
             boost::bind(&server_connection::handle_connect, 
                this,
@@ -74,6 +76,7 @@ class server_connection
       void handle_request(const boost::system::error_code& error);
 
       // The underlying socket that we use for communication.
+      int requestCount;
       connection connection_;
       boost::asio::io_service& io_service_;
       message_header header;

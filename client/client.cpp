@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
    tcp::resolver::query query(argv[1], argv[2]);
    tcp::resolver::iterator iterator = resolver.resolve(query);
 
-   server_connection connection(io_service, iterator);
+   server_connection connection(io_service, iterator, thread_count);
 
    // TODO create a client that runs with this IO Service and is restrained to a class.
    run_threaded(io_service, thread_count);
