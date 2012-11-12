@@ -40,3 +40,16 @@ int client_results::getLongestCharactersPrinted(int programLength)
 {
    return results[programLength - 1].charactersPrinted;
 }
+
+void client_results::merge(client_results* other)
+{
+   for(int i = 0; i < 16; ++i)
+   {
+      int charsPrinted = other->getLongestCharactersPrinted(i + 1);
+      if(charsPrinted > results[i].charactersPrinted)
+      {
+         results[i].trial = other->getLongestProgram(i + 1);
+         results[i].charactersPrinted = charsPrinted;
+      }
+   }
+}

@@ -23,6 +23,7 @@ class client_results
       client_results(uint32_t task);
       void addResult(struct device* program, int charactersPrinted);
 
+      void merge(client_results* other);
       uint32_t getTask();
       uint64_t getLongestProgram(int programLength);
       int getLongestCharactersPrinted(int programLength);

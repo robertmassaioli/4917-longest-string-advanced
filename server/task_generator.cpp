@@ -4,7 +4,7 @@
 
 TaskGenerator::TaskGenerator() {
    finished = false;
-   nextTask = 0;
+   nextTask = 0x10000000; // No point starting with a program that starts with zero.
    // TODO download the standard C++ docs to your computer
    //failedTasks.clear();
 }

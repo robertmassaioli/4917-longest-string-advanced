@@ -28,6 +28,7 @@ class client_connection
          : connection_(io_service)
          , outbound_queue(&connection_) 
          , taskManager(new task_manager(taskGenerator))
+         , totalResults(new client_results(0))
       {
          // WARNING: The client is not connected here. They only connect as of the run function.
       }
@@ -53,6 +54,7 @@ class client_connection
       message_queue outbound_queue;
       message_header header;
       boost::shared_ptr<task_manager> taskManager;
+      boost::shared_ptr<client_results> totalResults;
       // TODO data structure representing last ping
       // list of the current tasks that it has been assigned so that we can reap them when the
       // client disconnects.

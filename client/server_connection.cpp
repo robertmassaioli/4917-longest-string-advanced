@@ -85,6 +85,7 @@ void server_connection::perform_task(uint32_t task)
 
 
    // Change the data in a stupid way; please remove TODO
+   /*
    struct device pretendDevice;
    for(int i = 0; i < 16; ++i)
    {
@@ -93,6 +94,7 @@ void server_connection::perform_task(uint32_t task)
    init_program(&pretendDevice);
    pretendDevice.memory[5] = 1;
    result->addResult(&pretendDevice, 10);
+   */
 
    // Dummy code to print the result to the screen
    for(int i = 1; i <= 16; ++i) 

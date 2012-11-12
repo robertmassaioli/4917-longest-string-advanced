@@ -145,13 +145,15 @@ void client_connection::handle_results(boost::shared_ptr<client_results> clientR
       if(resultsValid)
       {
          taskManager->task_finished(task);
+         totalResults->merge(clientResults.get());
+
          // Try and sift the results to find the best results
          cout << "Task '" << task << "' has finished:" << endl;
          for(int i = 1; i <= 16; ++i) 
          {
             cout << "  Program Length " << i
-                 << " | Longest " << clientResults->getLongestProgram(i)
-                 << " | Characters " << clientResults->getLongestCharactersPrinted(i) << endl;
+                 << " | Longest " << totalResults->getLongestProgram(i)
+                 << " | Characters " << totalResults->getLongestCharactersPrinted(i) << endl;
          }
       }
       else 

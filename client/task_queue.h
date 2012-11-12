@@ -6,7 +6,14 @@
 #include <boost/thread/mutex.hpp>
 #include <boost/optional/optional.hpp>
 
-class TaskQueue {
+/**
+ * \brief Manages the tasks for a client and lets people know when more should be
+ * requested.
+ *
+ * This class manages all of the tasks that the server gives it and prepares to run them
+ * all in their own threads.
+ */
+class task_queue {
    private:
       std::queue<uint64_t> tasks;
       boost::mutex tasksLock;
