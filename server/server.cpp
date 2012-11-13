@@ -124,6 +124,9 @@ int main(int argc, char** argv) {
    run_threaded(io_service, thread_count);
 
    cout << "[TODO] Save the current progress to a file to be loaded next time." << endl;
+   // What do we need to save?
+   //  - The current best results.
+   //  - The current task progress. Which tasks remain and what would the next task be?
 
    cout << "[Successfully closed the server]" << endl;
    return EXIT_SUCCESS;
