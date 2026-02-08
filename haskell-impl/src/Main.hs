@@ -4,6 +4,7 @@ import Processor
 import SolveTask
 import ClientResults
 import PackProcessor
+import BruteForceSearch
 import Data.Word (Word32)
 import Data.Vector.Unboxed ((!))  -- For vector indexing
 
@@ -178,6 +179,32 @@ demonstratePacking = do
     let unpackedHalf = unpackHalfDevice packedHalf
     putStrLn $ "Half-unpacked: " ++ printProgram unpackedHalf
 
+-- | Demonstrate brute force search for best programs
+demonstrateBruteForceSearch :: IO ()
+demonstrateBruteForceSearch = do
+    putStrLn "\n=== Brute Force Program Search ==="
+    putStrLn "Finding programs that produce the longest output..."
+    
+    putStr "Length 2: "
+    case findLongestOutputProgram 2 of
+        Nothing -> putStrLn "No programs found that produce output"
+        Just result -> putStrLn $ "Program " ++ show (programBytes result) ++ 
+                                 " produces " ++ show (outputLength result) ++ " characters"
+    
+    putStr "Length 3: "
+    case findLongestOutputProgram 3 of
+        Nothing -> putStrLn "No programs found that produce output"
+        Just result -> putStrLn $ "Program " ++ show (programBytes result) ++ 
+                                 " produces " ++ show (outputLength result) ++ " characters"
+    
+    putStr "Length 4: "
+    case findLongestOutputProgram 4 of
+        Nothing -> putStrLn "No programs found that produce output"
+        Just result -> do
+            putStrLn $ "Program " ++ show (programBytes result) ++ 
+                      " produces " ++ show (outputLength result) ++ " characters"
+            putStrLn $ "This is our length-4 example program that maximizes output!"
+
 main :: IO ()
 main = do
     putStrLn "Haskell 4917 Processor Implementation"
@@ -221,5 +248,8 @@ main = do
 
     putStrLn "\nNote: Task solving can be computationally intensive for complex programs."
     putStrLn "The above examples use simple tasks that complete quickly."
+
+    -- Test brute force search
+    demonstrateBruteForceSearch
 
     putStrLn "\nAll examples completed!"

@@ -1,9 +1,11 @@
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/haskell-impl.cabal:
-  hash: 4b27f717e60093059002379071516537479d9bb1cf88a07e4757342d6e79e15f
+  hash: 946ce54ce7c393932b50085ed6028c65a0efa7a344f463237ffc800540710883
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/BruteForceSearch.hs:
+  hash: 1fcdeed529483323aa722fb00b799c5aec6b46a5e1a3c4e31cbbc6bc5ba4e178
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/ClientResults.hs:
   hash: d493ece9f7917666feb7de16344b18a796e12aa6aca0babd87b354ce369949e1
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Main.hs:
-  hash: f6fb281463aa008894e05ff510de61ae1678fb8596d6464609901a08fa86ba44
+  hash: c4cf191db731a31d1b6520e6e70a83f615160667d6a0d439eb18bb284fc2a7cc
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/PackProcessor.hs:
   hash: 2b76764893b7429abc7b4c20231ddb3d9a4b0c90684e303c2d2eb6294f46966b
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Processor.hs:
