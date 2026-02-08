@@ -6,8 +6,8 @@ module SolveTask
     ) where
 
 import Data.Word (Word32)
-import qualified Data.Vector as V
-import Data.Vector ((!), (//))
+import qualified Data.Vector.Unboxed as V
+import Data.Vector.Unboxed ((!), (//))
 import Data.Bits ((.&.))
 import Processor (Device(..), Byte, runProgramLoopCheck, programLength)
 import PackProcessor (unpackHalfDevice, packDevice)

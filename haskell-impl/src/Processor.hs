@@ -1,4 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Processor
     ( Device(..)
@@ -15,13 +16,14 @@ module Processor
 
 import Data.Word (Word8)
 import Data.Bits ((.&.))
-import qualified Data.Vector as V
-import Data.Vector (Vector, (!), (//), fromList)
+import qualified Data.Vector.Unboxed as V
+import Data.Vector.Unboxed (Vector, (!), (//), fromList)
 
 -- | Type alias for byte values (0-15 for this 4-bit machine)
 type Byte = Word8
 
 -- | Create a device with given memory contents
+{-# INLINE createDevice #-}
 createDevice :: [Byte] -> Device
 createDevice memList = Device
     { memory = fromList $ take 16 (memList ++ repeat 0)
@@ -32,53 +34,48 @@ createDevice memList = Device
 
 -- | The device structure representing the 4917 machine state
 data Device = Device
-    { memory :: Vector Byte  -- 16 memory locations
-    , r0     :: Byte         -- Register 0
-    , r1     :: Byte         -- Register 1  
-    , pc     :: Byte         -- Program Counter
+    { memory :: !(Vector Byte)  -- 16 memory locations
+    , r0     :: !Byte          -- Register 0
+    , r1     :: !Byte          -- Register 1  
+    , pc     :: !Byte          -- Program Counter
     } deriving (Show, Eq)
 
 -- | Initialize a program to its starting state
+{-# INLINE initProgram #-}
 initProgram :: Device -> Device
 initProgram device = device { r0 = 0, r1 = 0, pc = 0 }
 
 -- | Perform a single step of program execution
 -- Returns (newDevice, outputCount, programFinished)
+{-# INLINE stepProgram #-}
 stepProgram :: Device -> (Device, Int, Bool)
 stepProgram device@Device{..} = 
-    let instruction = memory ! fromIntegral pc
-        newPC = (pc + 1) .&. 0x0F
-        device' = device { pc = newPC }
+    let !instruction = memory ! fromIntegral pc
+        !newPC = (pc + 1) .&. 0x0F
     in case instruction of
-        0  -> (device', 0, True)  -- HALT
-        
-        1  -> (device' { r0 = (r0 + r1) .&. 0x0F }, 0, False)  -- ADD R0, R1
-        
-        2  -> (device' { r0 = (r0 - r1) .&. 0x0F }, 0, False)  -- SUB R0, R1
-        
-        3  -> (device' { r0 = (r0 + 1) .&. 0x0F }, 0, False)   -- INC R0
-        
-        4  -> (device' { r1 = (r1 + 1) .&. 0x0F }, 0, False)   -- INC R1
-        
-        5  -> (device' { r0 = (r0 - 1) .&. 0x0F }, 0, False)   -- DEC R0
-        
-        6  -> (device' { r1 = (r1 - 1) .&. 0x0F }, 0, False)   -- DEC R1
-        
-        7  -> (device', 0, False)  -- NOP
-        
-        8  -> let nextPC = (newPC + 1) .&. 0x0F
-                  nextValue = memory ! fromIntegral newPC
-                  outputCount = if nextValue > 9 then 2 else 1
+        -- Fast path for most common simple instructions
+        3  -> (device { r0 = (r0 + 1) .&. 0x0F, pc = newPC }, 0, False)   -- INC R0
+        7  -> (device { pc = newPC }, 0, False)  -- NOP
+        0  -> (device { pc = newPC }, 0, True)  -- HALT
+        4  -> (device { r1 = (r1 + 1) .&. 0x0F, pc = newPC }, 0, False)   -- INC R1
+        5  -> (device { r0 = (r0 - 1) .&. 0x0F, pc = newPC }, 0, False)   -- DEC R0
+        6  -> (device { r1 = (r1 - 1) .&. 0x0F, pc = newPC }, 0, False)   -- DEC R1
+        1  -> (device { r0 = (r0 + r1) .&. 0x0F, pc = newPC }, 0, False)  -- ADD R0, R1
+        2  -> (device { r0 = (r0 - r1) .&. 0x0F, pc = newPC }, 0, False)  -- SUB R0, R1
+        -- Complex instructions need more computation  
+        8  -> let !nextPC = (newPC + 1) .&. 0x0F
+                  !nextValue = memory ! fromIntegral newPC
+                  !outputCount = if nextValue > 9 then 2 else 1
               in (device { pc = nextPC }, outputCount, False)  -- OUTPUT
         
-        9  -> let nextPC = (newPC + 1) .&. 0x0F
-                  addr = memory ! fromIntegral newPC
-                  value = memory ! fromIntegral addr
+        9  -> let !nextPC = (newPC + 1) .&. 0x0F
+                  !addr = memory ! fromIntegral newPC
+                  !value = memory ! fromIntegral addr
               in (device { pc = nextPC, r0 = value }, 0, False)  -- LOAD R0, [addr]
         
-        10 -> let nextPC = (newPC + 1) .&. 0x0F
-                  addr = memory ! fromIntegral newPC
-                  value = memory ! fromIntegral addr
+        10 -> let !nextPC = (newPC + 1) .&. 0x0F
+                  !addr = memory ! fromIntegral newPC
+                  !value = memory ! fromIntegral addr
               in (device { pc = nextPC, r1 = value }, 0, False)  -- LOAD R1, [addr]
         
         11 -> let nextPC = (newPC + 1) .&. 0x0F
@@ -102,20 +99,33 @@ stepProgram device@Device{..} =
                   nextPC = if r0 /= 0 then addr else (newPC + 1) .&. 0x0F
               in (device { pc = nextPC }, 0, False)  -- JNZ [addr]
         
-        _  -> (device', 0, False)  -- Unknown instruction, treat as NOP
+        _  -> (device { pc = newPC }, 0, False)  -- Unknown instruction, treat as NOP
 
 -- | Run a program with a timeout (in steps)
 -- Returns the total output count, or 0 if timeout reached
+{-# INLINE runProgram #-}
 runProgram :: Device -> Int -> Int
 runProgram device timeout = go (initProgram device) timeout 0
   where
     go _ 0 _ = 0  -- Timeout reached
-    go dev t outputAcc = 
-        let (newDev, output, finished) = stepProgram dev
-            newOutputAcc = outputAcc + output
-        in if finished 
-           then newOutputAcc
-           else go newDev (t - 1) newOutputAcc
+    go dev t outputAcc 
+        | t >= 4 = -- Unroll 4 iterations at once
+            let (!dev1, !out1, !fin1) = stepProgram dev
+            in if fin1 then outputAcc + out1
+               else let (!dev2, !out2, !fin2) = stepProgram dev1
+                    in if fin2 then outputAcc + out1 + out2
+                       else let (!dev3, !out3, !fin3) = stepProgram dev2
+                            in if fin3 then outputAcc + out1 + out2 + out3
+                               else let (!dev4, !out4, !fin4) = stepProgram dev3
+                                        !newOutputAcc = outputAcc + out1 + out2 + out3 + out4
+                                    in if fin4 then newOutputAcc
+                                       else go dev4 (t - 4) newOutputAcc
+        | otherwise = -- Handle remaining iterations normally
+            let (!newDev, !output, !finished) = stepProgram dev
+                !newOutputAcc = outputAcc + output
+            in if finished 
+               then newOutputAcc
+               else go newDev (t - 1) newOutputAcc
 
 -- | Run a program with loop detection using Floyd's cycle detection algorithm
 -- Returns the total output count, or 0 if infinite loop detected

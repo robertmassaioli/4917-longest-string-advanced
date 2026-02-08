@@ -5,7 +5,7 @@ import SolveTask
 import ClientResults
 import PackProcessor
 import Data.Word (Word32)
-import Data.Vector ((!))  -- For vector indexing
+import Data.Vector.Unboxed ((!))  -- For vector indexing
 
 -- | Example 1: Simple counter program
 -- Increments R0 three times then halts

@@ -9,8 +9,8 @@ module PackProcessor
 
 import Data.Word (Word32, Word64)
 import Data.Bits ((.&.), (.|.), shiftL, shiftR)
-import qualified Data.Vector as V
-import Data.Vector ((!), fromList)
+import qualified Data.Vector.Unboxed as V
+import Data.Vector.Unboxed ((!), fromList)
 import Processor (Device(..), Byte, createDevice)
 
 -- | Pack the first 8 memory locations (half device) into a 32-bit word
