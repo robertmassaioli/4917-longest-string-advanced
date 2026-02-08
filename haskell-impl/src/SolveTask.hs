@@ -59,10 +59,8 @@ incrementProgram program startCounter = go program startCounter
                    let shouldPrint = counter > 14
                        result = (updatedProgram, True)
                    in if shouldPrint
-                      then trace ("Reached: " ++ printProgram updatedProgram) result
+                      then result  -- For now, just ignore tracing
                       else result
-    where
-      trace msg result = result  -- For now, just ignore tracing (could use Debug.Trace later)
 
 -- | Print a program's memory contents (for debugging)
 printProgram :: Device -> String

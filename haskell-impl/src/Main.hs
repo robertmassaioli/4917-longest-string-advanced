@@ -1,6 +1,11 @@
 module Main where
 
 import Processor
+import SolveTask
+import ClientResults
+import PackProcessor
+import Data.Word (Word32)
+import Data.Vector ((!))  -- For vector indexing
 
 -- | Example 1: Simple counter program
 -- Increments R0 three times then halts
@@ -77,11 +82,78 @@ runExample name device = do
 
     putStrLn $ "Program length: " ++ show (programLength device)
 
+-- | Demonstrate basic solveTask functionality (simplified)
+testSolveTaskBasic :: String -> Word32 -> IO ()
+testSolveTaskBasic description task = do
+    putStrLn $ "\n=== Basic Test: " ++ description ++ " (Task ID: " ++ show task ++ ") ==="
+    
+    -- Show the initial program from the task
+    let initialProgram = unpackHalfDevice task
+    putStrLn $ "Initial program: " ++ printProgram initialProgram
+    
+    -- Create basic results structure (without intensive solving)
+    let results = newClientResults task
+    putStrLn $ "Created ClientResults for task: " ++ show (getTask results)
+    putStrLn "ClientResults structure created successfully."
+
+-- | Demonstrate solving a task with the solveTask function (warning: can be slow)
+solveSampleTask :: String -> Word32 -> IO ()
+solveSampleTask description task = do
+    putStrLn $ "\n=== Solving Task: " ++ description ++ " (Task ID: " ++ show task ++ ") ==="
+    
+    -- Show the initial program from the task
+    let initialProgram = unpackHalfDevice task
+    putStrLn $ "Initial program: " ++ printProgram initialProgram
+    
+    -- Only solve if the initial program has non-zero first instruction
+    if memory initialProgram ! 0 == 0
+    then putStrLn "Empty program - skipping solve (would be quick but no results to show)"
+    else do
+        putStrLn "Warning: This may take a while for complex programs..."
+        -- Solve the task
+        let taskResults = solveTask task
+        putStrLn $ "Task ID: " ++ show (getTask taskResults)
+        
+        -- Show results for each program length
+        putStrLn "Best results by program length:"
+        mapM_ (showResultForLength taskResults) [1..3]  -- Only show first few lengths
+  where
+    showResultForLength results len = do
+        let charsPrinted = getLongestCharactersPrinted results len
+            programPacked = getLongestProgram results len
+        when (charsPrinted > 0) $ do
+            let program = unpackDevice programPacked
+            putStrLn $ "  Length " ++ show len ++ ": " ++ show charsPrinted ++ " characters, program: " ++ printProgram program
+    
+    when condition action = if condition then action else return ()
+
+-- | Show packing and unpacking examples
+demonstratePacking :: IO ()
+demonstratePacking = do
+    putStrLn "\n=== Device Packing/Unpacking Examples ==="
+    
+    -- Example with counter program
+    let device = counterProgram
+    putStrLn $ "Original device: " ++ printProgram device
+    
+    let packedFull = packDevice device
+    putStrLn $ "Packed (64-bit): " ++ show packedFull
+    
+    let unpackedFull = unpackDevice packedFull
+    putStrLn $ "Unpacked: " ++ printProgram unpackedFull
+    
+    let packedHalf = packHalfDevice device
+    putStrLn $ "Half-packed (32-bit): " ++ show packedHalf
+    
+    let unpackedHalf = unpackHalfDevice packedHalf
+    putStrLn $ "Half-unpacked: " ++ printProgram unpackedHalf
+
 main :: IO ()
 main = do
     putStrLn "Haskell 4917 Processor Implementation"
     putStrLn "====================================="
 
+    -- Original processor demonstrations
     runExample "Simple Counter" counterProgram
     runExample "Arithmetic Operations" arithmeticProgram
     runExample "Infinite Loop (should be detected)" infiniteLoopProgram
@@ -105,4 +177,15 @@ main = do
     let (step4, out4, fin4) = stepProgram step3
     putStrLn $ "Step 4: " ++ show step4 ++ " (output: " ++ show out4 ++ ", finished: " ++ show fin4 ++ ")"
 
+    -- New demonstrations of solveTask functionality
+    demonstratePacking
+    
+    -- Test basic solveTask functionality without intensive computation
+    testSolveTaskBasic "Single instruction test" 0x00000003
+    testSolveTaskBasic "Empty task test" 0x00000000
+    testSolveTaskBasic "Output instruction test" 0x00000008
+    
+    putStrLn "\nNote: Full task solving can be computationally intensive for complex programs."
+    putStrLn "Use solveSampleTask function for actual solving (may take time)."
+    
     putStrLn "\nAll examples completed!"
