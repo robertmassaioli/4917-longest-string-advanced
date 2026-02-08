@@ -80,7 +80,10 @@ runExample name device = do
     putStrLn $ "Run with loop detection: " ++ show loopCheckResult ++ " characters output"
     
     -- Show final state after a few steps
-    let (finalDevice, _, finished) = stepProgram $ stepProgram $ stepProgram $ initProgram device
+    let initialDevice = initProgram device
+        (step1Device, _, _) = stepProgram initialDevice
+        (step2Device, _, _) = stepProgram step1Device
+        (finalDevice, _, finished) = stepProgram step2Device
     putStrLn $ "After 3 steps: " ++ show finalDevice ++ " (finished: " ++ show finished ++ ")"
     
     putStrLn $ "Program length: " ++ show (programLength device)
