@@ -3,6 +3,7 @@
 module Processor
     ( Device(..)
     , Byte
+    , createDevice
     , initProgram
     , stepProgram
     , runProgram
@@ -15,10 +16,19 @@ module Processor
 import Data.Word (Word8)
 import Data.Bits ((.&.))
 import qualified Data.Vector as V
-import Data.Vector (Vector, (!), (//))
+import Data.Vector (Vector, (!), (//), fromList)
 
 -- | Type alias for byte values (0-15 for this 4-bit machine)
 type Byte = Word8
+
+-- | Create a device with given memory contents
+createDevice :: [Byte] -> Device
+createDevice memList = Device
+    { memory = fromList $ take 16 (memList ++ repeat 0)
+    , r0 = 0
+    , r1 = 0
+    , pc = 0
+    }
 
 -- | The device structure representing the 4917 machine state
 data Device = Device
