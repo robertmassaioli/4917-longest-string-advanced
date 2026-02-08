@@ -86,11 +86,11 @@ runExample name device = do
 testSolveTaskBasic :: String -> Word32 -> IO ()
 testSolveTaskBasic description task = do
     putStrLn $ "\n=== Basic Test: " ++ description ++ " (Task ID: " ++ show task ++ ") ==="
-    
+
     -- Show the initial program from the task
     let initialProgram = unpackHalfDevice task
     putStrLn $ "Initial program: " ++ printProgram initialProgram
-    
+
     -- Create basic results structure (without intensive solving)
     let results = newClientResults task
     putStrLn $ "Created ClientResults for task: " ++ show (getTask results)
@@ -100,11 +100,11 @@ testSolveTaskBasic description task = do
 solveSampleTask :: String -> Word32 -> IO ()
 solveSampleTask description task = do
     putStrLn $ "\n=== Solving Task: " ++ description ++ " (Task ID: " ++ show task ++ ") ==="
-    
+
     -- Show the initial program from the task
     let initialProgram = unpackHalfDevice task
     putStrLn $ "Initial program: " ++ printProgram initialProgram
-    
+
     -- Only solve if the initial program has non-zero first instruction
     if memory initialProgram ! 0 == 0
     then do
@@ -116,11 +116,11 @@ solveSampleTask description task = do
         -- Solve the task
         let taskResults = solveTask task
         putStrLn $ "Task ID: " ++ show (getTask taskResults)
-        
+
         -- Show results for each program length
         putStrLn "Best results by program length:"
         mapM_ (showResultForLength taskResults) [1..8]  -- Show all lengths
-        
+
         -- Show overall status
         putStrLn ""
         showClientResultsStatus taskResults
@@ -131,7 +131,7 @@ solveSampleTask description task = do
         when (charsPrinted > 0) $ do
             let program = unpackDevice programPacked
             putStrLn $ "  Length " ++ show len ++ ": " ++ show charsPrinted ++ " characters, program: " ++ printProgram program
-    
+
     when condition action = if condition then action else return ()
 
 -- | Show the status and summary of ClientResults
@@ -139,42 +139,42 @@ showClientResultsStatus :: ClientResults -> IO ()
 showClientResultsStatus results = do
     putStrLn "=== ClientResults Status ==="
     putStrLn $ "Task ID: " ++ show (getTask results)
-    
+
     -- Count how many program lengths have results
     let resultsWithOutput = [(len, getLongestCharactersPrinted results len) | len <- [1..16], getLongestCharactersPrinted results len > 0]
-    
+
     if null resultsWithOutput
     then putStrLn "No programs found that produce output."
     else do
         putStrLn $ "Found " ++ show (length resultsWithOutput) ++ " program length(s) with output:"
         mapM_ showLengthSummary resultsWithOutput
-        
+
         -- Show the best overall result
         let bestResult = maximum (map snd resultsWithOutput)
             bestLengths = [len | (len, chars) <- resultsWithOutput, chars == bestResult]
         putStrLn $ "Best output: " ++ show bestResult ++ " characters (length(s): " ++ show bestLengths ++ ")"
   where
-    showLengthSummary (len, chars) = 
+    showLengthSummary (len, chars) =
         putStrLn $ "  Length " ++ show len ++ ": " ++ show chars ++ " characters"
 
 -- | Show packing and unpacking examples
 demonstratePacking :: IO ()
 demonstratePacking = do
     putStrLn "\n=== Device Packing/Unpacking Examples ==="
-    
+
     -- Example with counter program
     let device = counterProgram
     putStrLn $ "Original device: " ++ printProgram device
-    
+
     let packedFull = packDevice device
     putStrLn $ "Packed (64-bit): " ++ show packedFull
-    
+
     let unpackedFull = unpackDevice packedFull
     putStrLn $ "Unpacked: " ++ printProgram unpackedFull
-    
+
     let packedHalf = packHalfDevice device
     putStrLn $ "Half-packed (32-bit): " ++ show packedHalf
-    
+
     let unpackedHalf = unpackHalfDevice packedHalf
     putStrLn $ "Half-unpacked: " ++ printProgram unpackedHalf
 
@@ -209,17 +209,17 @@ main = do
 
     -- New demonstrations of solveTask functionality
     demonstratePacking
-    
+
     -- Test basic solveTask functionality without intensive computation
     testSolveTaskBasic "Single instruction test" 0x00000003
     testSolveTaskBasic "Empty task test" 0x00000000
     testSolveTaskBasic "Output instruction test" 0x00000008
-    
+
     -- Demonstrate actual task solving with simple examples
     solveSampleTask "Empty task (should be fast)" 0x00000000
     -- Note: Skipping non-empty tasks as they trigger intensive computation
-    
+
     putStrLn "\nNote: Task solving can be computationally intensive for complex programs."
     putStrLn "The above examples use simple tasks that complete quickly."
-    
+
     putStrLn "\nAll examples completed!"
