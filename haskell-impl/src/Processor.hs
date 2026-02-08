@@ -35,8 +35,8 @@ createDevice memList = Device
 -- | The device structure representing the 4917 machine state
 data Device = Device
     { memory :: !(Vector Byte)  -- 16 memory locations
-    , r0     :: !Byte          -- Register 0
-    , r1     :: !Byte          -- Register 1  
+    , r0     :: !Byte          -- Register 0 oaeh
+    , r1     :: !Byte          -- Register 1
     , pc     :: !Byte          -- Program Counter
     } deriving (Show, Eq)
 
@@ -49,7 +49,7 @@ initProgram device = device { r0 = 0, r1 = 0, pc = 0 }
 -- Returns (newDevice, outputCount, programFinished)
 {-# INLINE stepProgram #-}
 stepProgram :: Device -> (Device, Int, Bool)
-stepProgram device@Device{..} = 
+stepProgram device@Device{..} =
     let !instruction = memory ! fromIntegral pc
         !newPC = (pc + 1) .&. 0x0F
     in case instruction of
@@ -62,43 +62,43 @@ stepProgram device@Device{..} =
         6  -> (device { r1 = (r1 - 1) .&. 0x0F, pc = newPC }, 0, False)   -- DEC R1
         1  -> (device { r0 = (r0 + r1) .&. 0x0F, pc = newPC }, 0, False)  -- ADD R0, R1
         2  -> (device { r0 = (r0 - r1) .&. 0x0F, pc = newPC }, 0, False)  -- SUB R0, R1
-        -- Complex instructions need more computation  
+        -- Complex instructions need more computation
         8  -> let !nextPC = (newPC + 1) .&. 0x0F
                   !nextValue = memory ! fromIntegral newPC
                   !outputCount = if nextValue > 9 then 2 else 1
               in (device { pc = nextPC }, outputCount, False)  -- OUTPUT
-        
+
         9  -> let !nextPC = (newPC + 1) .&. 0x0F
                   !addr = memory ! fromIntegral newPC
                   !value = memory ! fromIntegral addr
               in (device { pc = nextPC, r0 = value }, 0, False)  -- LOAD R0, [addr]
-        
+
         10 -> let !nextPC = (newPC + 1) .&. 0x0F
                   !addr = memory ! fromIntegral newPC
                   !value = memory ! fromIntegral addr
               in (device { pc = nextPC, r1 = value }, 0, False)  -- LOAD R1, [addr]
-        
+
         11 -> let nextPC = (newPC + 1) .&. 0x0F
                   addr = memory ! fromIntegral newPC
                   newMemory = memory // [(fromIntegral addr, r0)]
               in (device { pc = nextPC, memory = newMemory }, 0, False)  -- STORE R0, [addr]
-        
+
         12 -> let nextPC = (newPC + 1) .&. 0x0F
                   addr = memory ! fromIntegral newPC
                   newMemory = memory // [(fromIntegral addr, r1)]
               in (device { pc = nextPC, memory = newMemory }, 0, False)  -- STORE R1, [addr]
-        
+
         13 -> let addr = memory ! fromIntegral newPC
               in (device { pc = addr }, 0, False)  -- JMP [addr]
-        
+
         14 -> let addr = memory ! fromIntegral newPC
                   nextPC = if r0 == 0 then addr else (newPC + 1) .&. 0x0F
               in (device { pc = nextPC }, 0, False)  -- JZ [addr]
-        
+
         15 -> let addr = memory ! fromIntegral newPC
                   nextPC = if r0 /= 0 then addr else (newPC + 1) .&. 0x0F
               in (device { pc = nextPC }, 0, False)  -- JNZ [addr]
-        
+
         _  -> (device { pc = newPC }, 0, False)  -- Unknown instruction, treat as NOP
 
 -- | Run a program with a timeout (in steps)
@@ -108,7 +108,7 @@ runProgram :: Device -> Int -> Int
 runProgram device timeout = go (initProgram device) timeout 0
   where
     go _ 0 _ = 0  -- Timeout reached
-    go dev t outputAcc 
+    go dev t outputAcc
         | t >= 4 = -- Unroll 4 iterations at once
             let (!dev1, !out1, !fin1) = stepProgram dev
             in if fin1 then outputAcc + out1
@@ -123,7 +123,7 @@ runProgram device timeout = go (initProgram device) timeout 0
         | otherwise = -- Handle remaining iterations normally
             let (!newDev, !output, !finished) = stepProgram dev
                 !newOutputAcc = outputAcc + output
-            in if finished 
+            in if finished
                then newOutputAcc
                else go newDev (t - 1) newOutputAcc
 
@@ -134,11 +134,11 @@ runProgramLoopCheck device = go slowDev fastDev 0
   where
     slowDev = initProgram device
     fastDev = initProgram device
-    
+
     go slow fast outputAcc =
         let (newSlow, _, slowFinished) = stepProgram slow
             (fast1, output1, fast1Finished) = stepProgram fast
-            (fast2, output2, fast2Finished) = if fast1Finished 
+            (fast2, output2, fast2Finished) = if fast1Finished
                                               then (fast1, 0, True)
                                               else stepProgram fast1
             newOutputAcc = outputAcc + output1 + output2
@@ -158,7 +158,7 @@ comparePrograms = (==)  -- We derived Eq for Device
 
 -- | Calculate the length of a program (last non-zero memory location + 1)
 programLength :: Device -> Int
-programLength Device{..} = 
+programLength Device{..} =
     case [i | i <- [15, 14 .. 0], memory ! i /= 0] of
         [] -> 0
         (i:_) -> i + 1
