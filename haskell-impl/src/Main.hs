@@ -107,7 +107,10 @@ solveSampleTask description task = do
     
     -- Only solve if the initial program has non-zero first instruction
     if memory initialProgram ! 0 == 0
-    then putStrLn "Empty program - skipping solve (would be quick but no results to show)"
+    then do
+        putStrLn "Empty program - skipping solve (would be quick but no results to show)"
+        let taskResults = solveTask task
+        showClientResultsStatus taskResults
     else do
         putStrLn "Warning: This may take a while for complex programs..."
         -- Solve the task
@@ -116,7 +119,11 @@ solveSampleTask description task = do
         
         -- Show results for each program length
         putStrLn "Best results by program length:"
-        mapM_ (showResultForLength taskResults) [1..3]  -- Only show first few lengths
+        mapM_ (showResultForLength taskResults) [1..8]  -- Show all lengths
+        
+        -- Show overall status
+        putStrLn ""
+        showClientResultsStatus taskResults
   where
     showResultForLength results len = do
         let charsPrinted = getLongestCharactersPrinted results len
@@ -126,6 +133,29 @@ solveSampleTask description task = do
             putStrLn $ "  Length " ++ show len ++ ": " ++ show charsPrinted ++ " characters, program: " ++ printProgram program
     
     when condition action = if condition then action else return ()
+
+-- | Show the status and summary of ClientResults
+showClientResultsStatus :: ClientResults -> IO ()
+showClientResultsStatus results = do
+    putStrLn "=== ClientResults Status ==="
+    putStrLn $ "Task ID: " ++ show (getTask results)
+    
+    -- Count how many program lengths have results
+    let resultsWithOutput = [(len, getLongestCharactersPrinted results len) | len <- [1..16], getLongestCharactersPrinted results len > 0]
+    
+    if null resultsWithOutput
+    then putStrLn "No programs found that produce output."
+    else do
+        putStrLn $ "Found " ++ show (length resultsWithOutput) ++ " program length(s) with output:"
+        mapM_ showLengthSummary resultsWithOutput
+        
+        -- Show the best overall result
+        let bestResult = maximum (map snd resultsWithOutput)
+            bestLengths = [len | (len, chars) <- resultsWithOutput, chars == bestResult]
+        putStrLn $ "Best output: " ++ show bestResult ++ " characters (length(s): " ++ show bestLengths ++ ")"
+  where
+    showLengthSummary (len, chars) = 
+        putStrLn $ "  Length " ++ show len ++ ": " ++ show chars ++ " characters"
 
 -- | Show packing and unpacking examples
 demonstratePacking :: IO ()
@@ -185,7 +215,11 @@ main = do
     testSolveTaskBasic "Empty task test" 0x00000000
     testSolveTaskBasic "Output instruction test" 0x00000008
     
-    putStrLn "\nNote: Full task solving can be computationally intensive for complex programs."
-    putStrLn "Use solveSampleTask function for actual solving (may take time)."
+    -- Demonstrate actual task solving with simple examples
+    solveSampleTask "Empty task (should be fast)" 0x00000000
+    -- Note: Skipping non-empty tasks as they trigger intensive computation
+    
+    putStrLn "\nNote: Task solving can be computationally intensive for complex programs."
+    putStrLn "The above examples use simple tasks that complete quickly."
     
     putStrLn "\nAll examples completed!"
