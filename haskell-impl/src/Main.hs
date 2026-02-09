@@ -4,7 +4,9 @@ import Processor
 import SolveTask
 import ClientResults
 import PackProcessor
-import BruteForceSearch
+import BruteForceSearch (findLongestOutputProgram, findLongestOutputProgramTimed, 
+                         ProgramResult(..), SearchResult(..), programBytes, outputLength,
+                         bestProgram, searchTimeMs, programsTested, programsWithOutput)
 import Data.Word (Word32)
 import Data.Vector.Unboxed ((!))  -- For vector indexing
 
@@ -183,27 +185,43 @@ demonstratePacking = do
 demonstrateBruteForceSearch :: IO ()
 demonstrateBruteForceSearch = do
     putStrLn "\n=== Brute Force Program Search ==="
-    putStrLn "Finding programs that produce the longest output..."
+    putStrLn "Finding programs that produce the longest output for each length..."
+    putStrLn "This demonstrates exhaustive search through all possible programs.\n"
     
-    putStr "Length 2: "
-    case findLongestOutputProgram 2 of
-        Nothing -> putStrLn "No programs found that produce output"
-        Just result -> putStrLn $ "Program " ++ show (programBytes result) ++ 
-                                 " produces " ++ show (outputLength result) ++ " characters"
+    -- Search through lengths 1-6 with timing and analysis
+    mapM_ searchAndAnalyze [1..6]
     
-    putStr "Length 3: "
-    case findLongestOutputProgram 3 of
-        Nothing -> putStrLn "No programs found that produce output"
-        Just result -> putStrLn $ "Program " ++ show (programBytes result) ++ 
-                                 " produces " ++ show (outputLength result) ++ " characters"
+    putStrLn "\n=== Analysis Summary ==="
+    putStrLn "Length 4 example: Shows how program structure affects output length"
+    putStrLn "Longer programs: Demonstrate exponential growth in search space"
+    putStrLn "OUTPUT instruction (8): Key to maximizing output (2 chars if value > 9)"
+
+searchAndAnalyze :: Int -> IO ()
+searchAndAnalyze len = do
+    putStrLn $ "=== Length " ++ show len ++ " ==="
+    result <- findLongestOutputProgramTimed len
     
-    putStr "Length 4: "
-    case findLongestOutputProgram 4 of
-        Nothing -> putStrLn "No programs found that produce output"
-        Just result -> do
-            putStrLn $ "Program " ++ show (programBytes result) ++ 
-                      " produces " ++ show (outputLength result) ++ " characters"
-            putStrLn $ "This is our length-4 example program that maximizes output!"
+    case bestProgram result of
+        Nothing -> do
+            putStrLn $ "No programs of length " ++ show len ++ " produce output"
+            putStrLn $ "Searched " ++ show (programsTested result) ++ " programs in " ++
+                      show (searchTimeMs result) ++ "ms\n"
+        Just prog -> do
+            putStrLn $ "Best program: " ++ show (programBytes prog)
+            putStrLn $ "Output length: " ++ show (outputLength prog) ++ " characters"
+            putStrLn $ "Programs with output: " ++ show (programsWithOutput result) ++ 
+                      "/" ++ show (programsTested result) ++ 
+                      " (" ++ show (round (100.0 * fromIntegral (programsWithOutput result) / 
+                                          fromIntegral (programsTested result))) ++ "%)"
+            putStrLn $ "Search time: " ++ show (round (searchTimeMs result)) ++ "ms"
+            
+            -- Add special analysis for interesting lengths
+            case len of
+                4 -> putStrLn "→ This is our featured length-4 example that maximizes output!"
+                6 -> putStrLn "→ Notice the significant increase in search time!"
+                8 -> putStrLn "→ Maximum length: 4.3 billion possible programs!"
+                _ -> return ()
+            putStrLn ""
 
 main :: IO ()
 main = do
