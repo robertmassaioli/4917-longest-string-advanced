@@ -28,3 +28,6 @@ cscope.*
 # build directory 
 localbuild
 build
+
+# Haskell Stack build artifacts
+.stack-work/
