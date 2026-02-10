@@ -41,7 +41,7 @@ runSearchCommand searchLength useCached useAdvanced fresh cacheFile verbose = do
     (result, maybeCachedResult) <- if useAdvanced
               then do
                   when verbose $ putStrLn "Using Phase 2 advanced pattern analysis..."
-                  cachedResult <- findLongestOutputProgramAdvanced searchLength
+                  cachedResult <- findLongestOutputProgramAdvanced cacheFile searchLength
                   return (convertCachedResult cachedResult, Just cachedResult)
               else if useCached 
               then do

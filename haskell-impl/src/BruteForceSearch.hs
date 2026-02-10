@@ -27,7 +27,7 @@ import qualified ExecutionTracing as ET
 import PatternCache (loadCache, saveCache, lookupPattern, addPatternEntry, PatternResult(..), incrementTotalExecutions)
 import qualified PatternCache as Cache
 import PatternAnalyzer (analyzeProgram, detectHaltPattern, detectLoopPattern)
-import AdvancedPatternCache (AdvancedPatternCache, createAdvancedCache, lookupByPattern, addPatternAnalysis, getCacheStatistics)
+import AdvancedPatternCache (AdvancedPatternCache, createAdvancedCache, lookupByPattern, addPatternAnalysis, getCacheStatistics, saveAdvancedCache, loadAdvancedCache)
 
 -- | Calculate the actual length of a program (position of last non-zero byte + 1)
 calculateActualLength :: [Byte] -> Int
@@ -293,8 +293,8 @@ findBestProgramsCached maxLength = do
                           show (cachedPatternsAdded result) ++ " patterns added"
 
 -- | Advanced pattern-based search with Phase 2 optimizations
-findLongestOutputProgramAdvanced :: Int -> IO CachedSearchResult
-findLongestOutputProgramAdvanced programLength 
+findLongestOutputProgramAdvanced :: String -> Int -> IO CachedSearchResult
+findLongestOutputProgramAdvanced cacheFilePath programLength 
     | programLength <= 0 || programLength > 8 = return $ CachedSearchResult 
         { cachedBestProgram = Nothing, cachedSearchTimeMs = 0.0, cachedProgramsTested = 0
         , cachedProgramsWithOutput = 0, cachedCacheHits = 0, cachedCacheMisses = 0
@@ -302,7 +302,7 @@ findLongestOutputProgramAdvanced programLength
         , cachedSimilarityHits = 0, cachedTotalExecutions = 0, cachedEstimatedTimeSavedMs = 0.0 }
     | otherwise = do
         start <- getCPUTime
-        advancedCache <- createAdvancedCache
+        advancedCache <- loadAdvancedCache cacheFilePath
         
         let exactLengthPrograms = generateProgramsOfExactLength programLength
             totalExactPrograms = length exactLengthPrograms
@@ -337,6 +337,9 @@ findLongestOutputProgramAdvanced programLength
             cacheStats = getCacheStatistics finalCache
         
         putStrLn $ "  Pattern analysis: " ++ show patternsAdded ++ " new patterns detected"
+        
+        -- Save the cache with all the learned patterns
+        saveAdvancedCache cacheFilePath finalCache
         
         return $ CachedSearchResult 
             { cachedBestProgram = bestResult

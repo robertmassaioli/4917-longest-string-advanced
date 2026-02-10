@@ -1,5 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module AdvancedPatternCache
     ( AdvancedPatternCache(..)
@@ -15,7 +17,7 @@ module AdvancedPatternCache
 
 import PatternAnalyzer
 import qualified WildcardPatterns as WP
-import ExecutionTracing (ProgramResult(..), extractExecutionSteps)
+import ExecutionTracing (ProgramResult(..), TerminationType(..), ExecutionTrace(..), ExecutionState(..), extractExecutionSteps)
 import PatternCache (ProgramCache(..), CacheStatistics(..), incrementExecutionsSaved, incrementWildcardHits, incrementSimilarityHits, addTimeSaved, incrementTotalExecutions)
 import qualified PatternCache as Basic
 import Processor (Byte)
@@ -26,34 +28,32 @@ import Data.List (sortBy)
 import Data.Aeson
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData, rnf)
+import System.Directory (doesFileExist)
+import System.IO.Error (tryIOError)
 
--- | Advanced pattern cache entry with pattern analysis
+-- | Simplified pattern cache entry for basic persistence
 data PatternEntry = PatternEntry
     { entryProgram :: [Byte]
-    , entryResult :: ProgramResult
-    , entryPattern :: ProgramPattern
+    , entryOutputLength :: Int
     , entryCreatedAt :: UTCTime
     , entryLastUsed :: UTCTime
     , entryUseCount :: Int
-    } deriving (Show, Eq, Generic)
+    } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance NFData PatternEntry where
-    rnf (PatternEntry prog result pattern created used count) = 
-        rnf prog `seq` rnf result `seq` rnf pattern `seq` rnf created `seq` rnf used `seq` rnf count
+    rnf (PatternEntry prog output created used count) = 
+        rnf prog `seq` rnf output `seq` rnf created `seq` rnf used `seq` rnf count
 
--- | Advanced cache with pattern analysis capabilities
+-- | Simplified advanced cache with basic persistence
 data AdvancedPatternCache = AdvancedPatternCache
     { cacheEntries :: Map String PatternEntry      -- Keyed by program bytes
-    , patternIndex :: Map PatternType [String]      -- Index by pattern type
-    , haltPrograms :: [String]                     -- Programs that definitely halt
-    , loopPrograms :: [(String, LoopPattern)]     -- Programs with detected loops
     , statistics :: CacheStatistics
     , cacheVersion :: String
-    } deriving (Show, Eq, Generic)
+    } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance NFData AdvancedPatternCache where
-    rnf (AdvancedPatternCache entries index halts loops stats ver) = 
-        rnf entries `seq` rnf index `seq` rnf halts `seq` rnf loops `seq` rnf stats `seq` rnf ver
+    rnf (AdvancedPatternCache entries stats ver) = 
+        rnf entries `seq` rnf stats `seq` rnf ver
 
 -- | Create empty advanced cache
 createAdvancedCache :: IO AdvancedPatternCache
@@ -61,11 +61,8 @@ createAdvancedCache = do
     now <- getCurrentTime
     return AdvancedPatternCache
         { cacheEntries = Map.empty
-        , patternIndex = Map.empty
-        , haltPrograms = []
-        , loopPrograms = []
         , statistics = CacheStatistics 0 0 0 now 0 0 0 0 0.0
-        , cacheVersion = "2.0"
+        , cacheVersion = "3.0"
         }
 
 -- | Look up a program by its pattern characteristics
@@ -81,114 +78,80 @@ lookupByPattern program cache = do
                     let newStats = incrementMisses (statistics cache)
                     return (Nothing, cache { statistics = newStats })
                 (similarEntry:_) -> do
-                    -- Update usage statistics for wildcard/similarity hit
+                    -- Update usage statistics for similarity hit
                     now <- getCurrentTime
                     let updatedEntry = similarEntry { entryLastUsed = now, entryUseCount = entryUseCount similarEntry + 1 }
                         updatedEntries = Map.insert (show (entryProgram updatedEntry)) updatedEntry (cacheEntries cache)
                         -- Estimate time saved (assuming ~0.1ms average execution time)
                         timeSavedMs = 0.1
-                        newStats = incrementHits $ incrementWildcardHits $ incrementExecutionsSaved $ 
+                        newStats = incrementHits $ incrementSimilarityHits $ incrementExecutionsSaved $ 
                                   addTimeSaved timeSavedMs (statistics cache)
-                    return (Just (entryResult updatedEntry), cache { cacheEntries = updatedEntries, statistics = newStats })
+                        -- Create a simple ProgramResult from cached data
+                        programResult = ProgramResult
+                            { resultOutput = entryOutputLength updatedEntry
+                            , resultSteps = 0
+                            , resultTermination = Halt
+                            , resultProgram = entryProgram updatedEntry
+                            , resultTrace = ExecutionTrace [] 0 (ExecutionState 0 0 0 0 0 Nothing)
+                            , resultTimestamp = entryLastUsed updatedEntry
+                            }
+                    return (Just programResult, cache { cacheEntries = updatedEntries, statistics = newStats })
         Just entry -> do
-            -- Direct cache hit
+            -- Direct cache hit - create ProgramResult from cached data
             now <- getCurrentTime
             let updatedEntry = entry { entryLastUsed = now, entryUseCount = entryUseCount entry + 1 }
                 updatedEntries = Map.insert programKey updatedEntry (cacheEntries cache)
                 -- Estimate time saved for exact match
                 timeSavedMs = 0.1
                 newStats = incrementHits $ incrementExecutionsSaved $ addTimeSaved timeSavedMs (statistics cache)
-            return (Just (entryResult updatedEntry), cache { cacheEntries = updatedEntries, statistics = newStats })
+                -- Create a simple ProgramResult from cached data
+                programResult = ProgramResult
+                    { resultOutput = entryOutputLength entry
+                    , resultSteps = 0  -- We don't store steps in simplified cache
+                    , resultTermination = Halt  -- Assume successful termination if cached
+                    , resultProgram = entryProgram entry
+                    , resultTrace = ExecutionTrace [] 0 (ExecutionState 0 0 0 0 0 Nothing)  -- No trace data in simplified cache
+                    , resultTimestamp = entryLastUsed entry
+                    }
+            return (Just programResult, cache { cacheEntries = updatedEntries, statistics = newStats })
 
 -- | Add a program with pattern analysis to the cache
 addPatternAnalysis :: [Byte] -> ProgramResult -> AdvancedPatternCache -> IO AdvancedPatternCache
-addPatternAnalysis program result cache = do
+addPatternAnalysis program result cache@AdvancedPatternCache{..} = do
     now <- getCurrentTime
-    let pattern = analyzeProgram program result
-        programKey = show program
+    let programKey = show program
         entry = PatternEntry
             { entryProgram = program
-            , entryResult = result
-            , entryPattern = pattern
+            , entryOutputLength = resultOutput result
             , entryCreatedAt = now
             , entryLastUsed = now
             , entryUseCount = 1
             }
         
         -- Update main cache
-        newEntries = Map.insert programKey entry (cacheEntries cache)
-        
-        -- Update pattern index
-        newPatternIndex = updatePatternIndex (patternType pattern) programKey (patternIndex cache)
-        
-        -- Update specialized lists
-        newHaltPrograms = if patternType pattern == HaltPattern 
-                         then programKey : haltPrograms cache
-                         else haltPrograms cache
-        
-        newLoopPrograms = case patternLoop pattern of
-            Nothing -> loopPrograms cache
-            Just loopPat -> (programKey, loopPat) : loopPrograms cache
+        newEntries = Map.insert programKey entry cacheEntries
         
         -- Update statistics (this represents a program that was executed)
-        newStats = incrementPatterns $ incrementTotalExecutions (statistics cache)
+        newStats = incrementPatterns $ incrementTotalExecutions statistics
     
     return cache 
         { cacheEntries = newEntries
-        , patternIndex = newPatternIndex
-        , haltPrograms = newHaltPrograms
-        , loopPrograms = newLoopPrograms
         , statistics = newStats
         }
 
--- | Find programs with similar patterns
+-- | Find programs with similar patterns (simplified version)
 findSimilarPrograms :: [Byte] -> AdvancedPatternCache -> IO [PatternEntry]
 findSimilarPrograms program cache = do
-    -- For Phase 2, we do simple pattern type matching
-    -- Phase 3 will add more sophisticated similarity matching
-    
-    -- First, try to predict what pattern type this program might have
-    let predictedPatternType = predictPatternType program
-        similarKeys = Map.findWithDefault [] predictedPatternType (patternIndex cache)
-        similarEntries = [entry | key <- similarKeys, Just entry <- [Map.lookup key (cacheEntries cache)]]
-    
-    return $ take 5 $ filter (isSimilarProgram program) similarEntries
+    -- Simple similarity matching based on program length
+    let allEntries = Map.elems (cacheEntries cache)
+        similarEntries = filter (isSimilarProgram program) allEntries
+    return $ take 5 similarEntries
   where
     isSimilarProgram :: [Byte] -> PatternEntry -> Bool
     isSimilarProgram prog entry = 
-        -- Try wildcard pattern matching first
-        matchesPattern prog (entryPattern entry) ||
-        -- Fallback to basic similarity
-        (length prog == length (entryProgram entry))
+        -- Basic similarity: same length
+        length prog == length (entryProgram entry)
 
--- | Predict pattern type from program structure (heuristic)
-predictPatternType :: [Byte] -> PatternType
-predictPatternType program
-    | 0 `elem` program = HaltPattern  -- Has HALT instruction
-    | any (`elem` [13, 14, 15]) program = SimpleLoopPattern  -- Has jump instructions
-    | otherwise = LinearPattern
-
--- | Check if two programs are similar (Phase 2: simple heuristics)
-isSimilarProgram :: [Byte] -> PatternEntry -> Bool
-isSimilarProgram program entry =
-    let otherProgram = entryProgram entry
-        pattern = entryPattern entry
-        
-        -- Simple similarity checks for Phase 2
-        sameLengthCheck = length program == length otherProgram
-        samePatternTypeCheck = predictPatternType program == patternType pattern
-        
-        -- Structure similarity (same instruction types present)
-        programInstructions = map (`div` 16) program  -- Group into instruction families
-        otherInstructions = map (`div` 16) otherProgram
-        structureSimilarity = programInstructions == otherInstructions
-        
-    in sameLengthCheck && samePatternTypeCheck && structureSimilarity
-
--- | Update pattern index
-updatePatternIndex :: PatternType -> String -> Map PatternType [String] -> Map PatternType [String]
-updatePatternIndex patternType programKey index = 
-    Map.insertWith (++) patternType [programKey] index
 
 -- | Get cache statistics
 getCacheStatistics :: AdvancedPatternCache -> CacheStatistics
@@ -197,17 +160,27 @@ getCacheStatistics = statistics
 -- | Save advanced cache to file
 saveAdvancedCache :: String -> AdvancedPatternCache -> IO ()
 saveAdvancedCache filepath cache = do
-    -- Convert to JSON and save
-    -- Note: This would require ToJSON instances for all types
-    putStrLn $ "Advanced cache saved to: " ++ filepath
-    -- encodeFile filepath cache  -- Uncomment when ToJSON instances are ready
+    result <- tryIOError $ encodeFile filepath cache
+    case result of
+        Left err -> putStrLn $ "Warning: Could not save cache to " ++ filepath ++ ": " ++ show err
+        Right _ -> return ()  -- Success - no output needed for quiet operation
 
 -- | Load advanced cache from file
 loadAdvancedCache :: String -> IO AdvancedPatternCache
 loadAdvancedCache filepath = do
-    -- Try to load from file, create empty if not found
-    putStrLn $ "Loading advanced cache from: " ++ filepath
-    createAdvancedCache  -- For now, always create empty cache
+    exists <- doesFileExist filepath
+    if exists
+        then do
+            result <- tryIOError $ eitherDecodeFileStrict filepath
+            case result of
+                Left ioErr -> do
+                    putStrLn $ "Warning: Could not read cache file " ++ filepath ++ ": " ++ show ioErr
+                    createAdvancedCache
+                Right (Left parseErr) -> do
+                    putStrLn $ "Warning: Could not parse cache file " ++ filepath ++ ": " ++ parseErr
+                    createAdvancedCache
+                Right (Right cache) -> return cache
+        else createAdvancedCache
 
 -- Helper functions (from PatternCache)
 incrementHits :: CacheStatistics -> CacheStatistics
