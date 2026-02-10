@@ -1,11 +1,25 @@
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/haskell-impl.cabal:
-  hash: 69acdb328c2800b00aa3ddc38374d57d6ff27ee66f9961b48dde4056587d3b62
+  hash: 6cc50c823aec643f0e07ab02382a1edecebbd18d3f1ad3d6ec26d0bd0064a119
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Benchmark.hs:
   hash: 618f7820d6f7615071705d0fab9c37d9dde4577467cdb55080f581d1073596c6
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/BruteForceSearch.hs:
   hash: 13298062e03fe38ff6d148754c35166f22a0946a8cd4f32f6b8e2709fd41f061
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/CLI.hs:
+  hash: 603865108988e4391afc30e6e1a6b9765b71c1c5151a8254e099abe15c54b9f8
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/ClientResults.hs:
   hash: d493ece9f7917666feb7de16344b18a796e12aa6aca0babd87b354ce369949e1
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Commands/Benchmark.hs:
+  hash: d0411fa3097ca7bd952e78506877f0c62b4b7a68a93aea0ed4b7b0e7e0f25eeb
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Commands/CacheDemo.hs:
+  hash: f7374b5f58d64ecbd06d3086fd8995b99e84b37ab36a4694cc0d6b47b8f4093e
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Commands/Demo.hs:
+  hash: 563f1821bcbf06bce208d6a1150cc47d0252ce115d59280ca2f3b62c85dd5d83
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Commands/Search.hs:
+  hash: 05b6709d7b6b1fd3541ba0d6abd74afb0f5e258e183b013dd8c732ae54e7a538
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Commands/Solve.hs:
+  hash: 4540445f8bd477e9de425a8950e73dd826321d1fd96886a99f76bf369ec5217c
+/Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/Commands/Test.hs:
+  hash: 58f8592e2c5052e9b02d7052675722a244b1ea77619bf1239481e5e7548f3a6e
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/ExecutionTracing.hs:
   hash: 0e408908e77a9e773b090add0342b3f985fe20a5e4144bab5109e97c7ec2ea00
 /Users/rmassaioli/Code/4917-longest-string/haskell-impl/src/PackProcessor.hs:
