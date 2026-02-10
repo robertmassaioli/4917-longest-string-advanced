@@ -42,13 +42,16 @@ The 4917 supports 16 instructions, divided into single and two-byte operations:
 **Find the program of a given length that produces the longest possible output string.**
 
 ### Key Constraints:
-- Programs are limited in length (typically 3-8 instructions)
 - Each instruction is 4 bits (0-15)
 - Program length = zero-indexed position of last non-zero byte + 1 (e.g., `[8, 15, 0, 0, 0...]` has length 2)
 - Memory beyond program length is implicitly zero
 - Program counter wraps at memory boundary (enables loops)
 - Output is measured in **character count** (digits 0-9 = 1 char, 10-15 = 2 chars)
 - Programs must terminate (no infinite loops) to be valid solutions
+
+### Typical Usage:
+- Search focuses on programs of length 3-8 instructions for computational feasibility
+- Longer programs (9-16) are theoretically possible but exponentially more expensive to search
 
 ### Program Length Examples:
 - `[8, 15]` → length 2 (last non-zero byte at zero-indexed position 1, so 1+1=2)
