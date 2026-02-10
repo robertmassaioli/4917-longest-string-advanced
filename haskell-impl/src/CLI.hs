@@ -60,8 +60,6 @@ data TestOptions = TestOptions
 -- | Options for search command
 data SearchOptions = SearchOptions
     { searchLength :: Int
-    , searchCached :: Bool
-    , searchAdvanced :: Bool
     , searchFresh :: Bool
     , searchCacheFile :: String
     , searchVerbose :: Bool
@@ -167,13 +165,6 @@ searchParser = Search <$> (SearchOptions
        <> help "Program length to search"
        <> showDefault
        <> value 3 )
-    <*> (not <$> switch
-        ( long "no-cache"
-       <> help "Disable caching (caching is enabled by default)" ))
-    <*> switch
-        ( long "advanced"
-       <> short 'a'
-       <> help "Use Phase 2 advanced pattern analysis" )
     <*> switch
         ( long "fresh"
        <> short 'f'
@@ -210,5 +201,5 @@ runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
 runCommand (Benchmark opts) = runBenchmarkCommand (benchmarkAll opts) (benchmarkVerbose opts)
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Test opts) = runTestCommand (testPattern opts) (testVerbose opts)
-runCommand (Search opts) = runSearchCommand (searchLength opts) (searchCached opts) (searchAdvanced opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
+runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)

@@ -4,6 +4,7 @@ module Commands.Demo
 
 import Processor
 import BruteForceSearch
+import qualified ExecutionTracing as ET
 import qualified Processor as P
 
 -- | Run the demo command  
@@ -61,15 +62,15 @@ demonstrateSingleLength len = do
 searchAndAnalyze :: Int -> IO ()
 searchAndAnalyze len = do
     putStr $ "Length " ++ show len ++ ": "
-    result <- findLongestOutputProgramTimed len
+    result <- findLongestOutputProgramAdvanced "demo_cache.json" len
     
-    case bestProgram result of
+    case cachedBestProgram result of
         Nothing -> putStrLn "No programs found that produce output"
         Just prog -> do
-            putStrLn $ show (programBytes prog) ++ " → " ++ show (outputLength prog) ++ " chars"
-            putStrLn $ "  (" ++ show (programsWithOutput result) ++ "/" ++ 
-                      show (programsTested result) ++ " programs produced output, " ++
-                      show (searchTimeMs result) ++ "ms)"
+            putStrLn $ show (ET.resultProgram prog) ++ " → " ++ show (ET.resultOutput prog) ++ " chars"
+            putStrLn $ "  (" ++ show (cachedProgramsWithOutput result) ++ "/" ++ 
+                      show (cachedProgramsTested result) ++ " programs produced output, " ++
+                      show (cachedSearchTimeMs result) ++ "ms)"
 
 -- Helper to conditionally print
 when :: Bool -> IO () -> IO ()

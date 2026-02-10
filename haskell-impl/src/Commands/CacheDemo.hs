@@ -3,6 +3,7 @@ module Commands.CacheDemo
     ) where
 
 import BruteForceSearch
+import qualified ExecutionTracing as ET
 import Text.Printf
 import System.CPUTime
 import System.IO.Error (tryIOError)
@@ -39,15 +40,15 @@ runCacheDemoCommand maybeLength verbose fresh cacheFile = do
     -- First run (cache building)
     putStrLn "📝 Run 1: Building cache..."
     start1 <- getCPUTime
-    result1 <- findLongestOutputProgramCachedWithFile cacheFile defaultLength
+    result1 <- findLongestOutputProgramAdvanced cacheFile defaultLength
     end1 <- getCPUTime
     let time1 = fromIntegral (end1 - start1) / (10^9) :: Double
     
     case cachedBestProgram result1 of
         Nothing -> putStrLn "❌ No programs found"
         Just prog -> do
-            putStrLn $ "✅ Best program: " ++ show (programBytes prog)
-            putStrLn $ "   Output length: " ++ show (outputLength prog) ++ " characters"
+            putStrLn $ "✅ Best program: " ++ show (ET.resultProgram prog)
+            putStrLn $ "   Output length: " ++ show (ET.resultOutput prog) ++ " characters"
             putStrLn $ "   Time: " ++ printf "%.1fms" (cachedSearchTimeMs result1)
             putStrLn $ "   Cache: " ++ show (cachedCacheHits result1) ++ " hits, " ++ 
                       show (cachedCacheMisses result1) ++ " misses"
@@ -58,15 +59,15 @@ runCacheDemoCommand maybeLength verbose fresh cacheFile = do
     -- Second run (cache usage)
     putStrLn "🚀 Run 2: Using existing cache..."
     start2 <- getCPUTime  
-    result2 <- findLongestOutputProgramCachedWithFile cacheFile defaultLength
+    result2 <- findLongestOutputProgramAdvanced cacheFile defaultLength
     end2 <- getCPUTime
     let time2 = fromIntegral (end2 - start2) / (10^9) :: Double
     
     case cachedBestProgram result2 of
         Nothing -> putStrLn "❌ No programs found"
         Just prog -> do
-            putStrLn $ "✅ Best program: " ++ show (programBytes prog)
-            putStrLn $ "   Output length: " ++ show (outputLength prog) ++ " characters"
+            putStrLn $ "✅ Best program: " ++ show (ET.resultProgram prog)
+            putStrLn $ "   Output length: " ++ show (ET.resultOutput prog) ++ " characters"
             putStrLn $ "   Time: " ++ printf "%.1fms" (cachedSearchTimeMs result2)
             putStrLn $ "   Cache: " ++ show (cachedCacheHits result2) ++ " hits, " ++ 
                       show (cachedCacheMisses result2) ++ " misses"
@@ -112,11 +113,11 @@ runCacheDemoCommand maybeLength verbose fresh cacheFile = do
     -- Test additional length if different from default
     when (defaultLength < 4) $ do
         putStrLn "\\n🧪 Quick test of Length 4 (65,536 programs):"
-        result4 <- findLongestOutputProgramCachedWithFile cacheFile 4
+        result4 <- findLongestOutputProgramAdvanced cacheFile 4
         case cachedBestProgram result4 of
             Nothing -> putStrLn "❌ No programs found"
             Just prog -> do
-                putStrLn $ "✅ Best: " ++ show (programBytes prog) ++ " → " ++ show (outputLength prog) ++ " chars"
+                putStrLn $ "✅ Best: " ++ show (ET.resultProgram prog) ++ " → " ++ show (ET.resultOutput prog) ++ " chars"
                 putStrLn $ "   Time: " ++ printf "%.1fms" (cachedSearchTimeMs result4)
                 putStrLn $ "   Cache: " ++ show (cachedCacheHits result4) ++ " hits, " ++ 
                           show (cachedCacheMisses result4) ++ " misses"

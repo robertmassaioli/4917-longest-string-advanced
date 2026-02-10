@@ -23,6 +23,8 @@ library
                      , PatternMatching
                      , PatternAnalyzer
                      , AdvancedPatternCache
+                     , InstructionAnalysis
+                     , WildcardPatterns
                      , CLI
                      , Commands.Demo
                      , Commands.Benchmark

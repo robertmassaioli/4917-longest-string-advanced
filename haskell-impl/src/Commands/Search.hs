@@ -6,18 +6,19 @@ module Commands.Search
 
 import BruteForceSearch
 import InstructionAnalysis (analyzeProgram)
+import qualified ExecutionTracing as ET
 import Text.Printf
 import Data.Word (Word8)
 import System.IO.Error (tryIOError)
 import System.Directory (removeFile, doesFileExist)
 
--- | Run the search command
-runSearchCommand :: Int -> Bool -> Bool -> Bool -> String -> Bool -> IO ()
-runSearchCommand searchLength useCached useAdvanced fresh cacheFile verbose = do
+-- | Run the search command (always uses advanced caching)
+runSearchCommand :: Int -> Bool -> String -> Bool -> IO ()
+runSearchCommand searchLength fresh cacheFile verbose = do
     when verbose $ putStrLn $ "Searching for optimal programs of length " ++ show searchLength
     
     -- Handle fresh cache option
-    when (useCached && fresh) $ do
+    when fresh $ do
         when verbose $ putStrLn $ "Deleting existing cache file: " ++ cacheFile
         fileExists <- doesFileExist cacheFile
         if fileExists
@@ -29,68 +30,42 @@ runSearchCommand searchLength useCached useAdvanced fresh cacheFile verbose = do
             else when verbose $ putStrLn "Cache file does not exist (starting fresh automatically)"
     
     when verbose $ do
-        if useCached
-            then putStrLn $ "Using cache file: " ++ cacheFile
-            else putStrLn "Caching disabled"
-        when useAdvanced $ putStrLn "Using Phase 2 advanced pattern analysis"
+        putStrLn $ "Using cache file: " ++ cacheFile
+        putStrLn "Using advanced pattern analysis with persistent caching"
     
     putStrLn $ "=== Program Search (Length " ++ show searchLength ++ ") ==="
     putStrLn $ "Searching " ++ show (16^searchLength) ++ " possible programs..."
     putStrLn ""
     
-    (result, maybeCachedResult) <- if useAdvanced
-              then do
-                  when verbose $ putStrLn "Using Phase 2 advanced pattern analysis..."
-                  cachedResult <- findLongestOutputProgramAdvanced cacheFile searchLength
-                  return (convertCachedResult cachedResult, Just cachedResult)
-              else if useCached 
-              then do
-                  when verbose $ putStrLn "Using persistent memoization cache..."
-                  cachedResult <- findLongestOutputProgramCachedWithFile cacheFile searchLength
-                  return (convertCachedResult cachedResult, Just cachedResult)
-              else do
-                  when verbose $ putStrLn "Running direct search..."
-                  directResult <- findLongestOutputProgramTimed searchLength
-                  return (directResult, Nothing)
+    when verbose $ putStrLn "Running advanced pattern analysis with persistent caching..."
+    cachedResult <- findLongestOutputProgramAdvanced cacheFile searchLength
     
-    case bestProgram result of
+    case cachedBestProgram cachedResult of
         Nothing -> do
             putStrLn "❌ No programs found that produce output"
-            putStrLn $ "   Tested " ++ show (programsTested result) ++ " programs in " ++
-                      printf "%.1fms" (searchTimeMs result)
+            putStrLn $ "   Tested " ++ show (cachedProgramsTested cachedResult) ++ " programs in " ++
+                      printf "%.1fms" (cachedSearchTimeMs cachedResult)
         Just prog -> do
-            putStrLn $ "✅ Best program found: " ++ show (programBytes prog)
-            putStrLn $ "   Output length: " ++ show (outputLength prog) ++ " characters"
-            putStrLn $ "   Programs with output: " ++ show (programsWithOutput result) ++ "/" ++ 
-                      show (programsTested result) ++ " (" ++
-                      printf "%.1f%%" (fromIntegral (programsWithOutput result) / fromIntegral (programsTested result) * 100 :: Double) ++ ")"
-            putStrLn $ "   Search time: " ++ printf "%.1fms" (searchTimeMs result)
+            putStrLn $ "✅ Best program found: " ++ show (ET.resultProgram prog)
+            putStrLn $ "   Output length: " ++ show (ET.resultOutput prog) ++ " characters"
+            putStrLn $ "   Programs with output: " ++ show (cachedProgramsWithOutput cachedResult) ++ "/" ++ 
+                      show (cachedProgramsTested cachedResult) ++ " (" ++
+                      printf "%.1f%%" (fromIntegral (cachedProgramsWithOutput cachedResult) / fromIntegral (cachedProgramsTested cachedResult) * 100 :: Double) ++ ")"
+            putStrLn $ "   Search time: " ++ printf "%.1fms" (cachedSearchTimeMs cachedResult)
             
             when verbose $ do
                 putStrLn ""
                 putStrLn "Program analysis:"
-                analyzeProgram (programBytes prog)
+                analyzeProgram (ET.resultProgram prog)
     
-    -- Display cache statistics if using advanced caching
-    when (useCached && useAdvanced) $ do
-        putStrLn ""
-        case maybeCachedResult of
-            Just cachedResult -> displayCacheStatistics cachedResult
-            Nothing -> return ()
+    -- Display cache statistics (always available with advanced caching)
+    putStrLn ""
+    displayCacheStatistics cachedResult
     
-    when useCached $ do
-        putStrLn ""
-        putStrLn $ "💾 Cache file '" ++ cacheFile ++ "' updated."
-        putStrLn "🔄 Run again to benefit from cached results!"
+    putStrLn ""
+    putStrLn $ "💾 Cache file '" ++ cacheFile ++ "' updated."
+    putStrLn "🔄 Run again to benefit from cached results!"
 
--- | Convert cached search result to standard search result
-convertCachedResult :: CachedSearchResult -> SearchResult
-convertCachedResult cached = SearchResult
-    { bestProgram = cachedBestProgram cached
-    , searchTimeMs = cachedSearchTimeMs cached
-    , programsTested = cachedProgramsTested cached
-    , programsWithOutput = cachedProgramsWithOutput cached
-    }
 
 -- | Display cache effectiveness statistics
 displayCacheStatistics :: CachedSearchResult -> IO ()
