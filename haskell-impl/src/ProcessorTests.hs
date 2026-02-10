@@ -47,7 +47,8 @@ deviceEquals Device{memory=m1, r0=r0_1, r1=r1_1, pc=pc1} Device{memory=m2, r0=r0
 -- | Run a single instruction test
 runInstructionTest :: InstructionTest -> TestResult
 runInstructionTest InstructionTest{..} =
-    let (actualDevice, actualOutput, actualFinished) = stepProgram initialDevice
+    let (actualDevice, actualOutputInfo, actualFinished) = stepProgram initialDevice
+        actualOutput = outputInfoToCount actualOutputInfo
         deviceMatch = deviceEquals actualDevice expectedDevice
         outputMatch = actualOutput == expectedOutput
         finishedMatch = actualFinished == expectedFinished
@@ -114,7 +115,8 @@ runProgramTest ProgramTest{..} =
         go dev steps output
             | steps > 10000 = (steps, dev, output, False)  -- Timeout
             | otherwise = 
-                let (newDev, chars, finished) = stepProgram dev
+                let (newDev, outputInfo, finished) = stepProgram dev
+                    chars = outputInfoToCount outputInfo
                 in if finished
                    then (steps + 1, newDev, output + chars, True)
                    else go newDev (steps + 1) (output + chars)

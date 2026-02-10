@@ -117,7 +117,8 @@ benchmarkProgram progName initialDevice = do
         go dev steps output
             | steps > 10000 = (steps, output)  -- Prevent infinite loops
             | otherwise = 
-                let (newDev, chars, finished) = stepProgram dev
+                let (newDev, outputInfo, finished) = stepProgram dev
+                    chars = outputInfoToCount outputInfo
                 in if finished 
                    then (steps + 1, output + chars)
                    else go newDev (steps + 1) (output + chars)
