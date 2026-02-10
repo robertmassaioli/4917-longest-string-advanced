@@ -5,11 +5,31 @@ module Commands.Search
 import BruteForceSearch
 import Text.Printf
 import Data.Word (Word8)
+import System.IO.Error (tryIOError)
+import System.Directory (removeFile, doesFileExist)
 
 -- | Run the search command
-runSearchCommand :: Int -> Bool -> Bool -> Bool -> IO ()
-runSearchCommand searchLength useCached useAdvanced verbose = do
+runSearchCommand :: Int -> Bool -> Bool -> Bool -> String -> Bool -> IO ()
+runSearchCommand searchLength useCached useAdvanced fresh cacheFile verbose = do
     when verbose $ putStrLn $ "Searching for optimal programs of length " ++ show searchLength
+    
+    -- Handle fresh cache option
+    when (useCached && fresh) $ do
+        when verbose $ putStrLn $ "Deleting existing cache file: " ++ cacheFile
+        fileExists <- doesFileExist cacheFile
+        if fileExists
+            then do
+                result <- tryIOError $ removeFile cacheFile
+                case result of
+                    Left err -> putStrLn $ "Warning: Could not delete cache file: " ++ show err
+                    Right _ -> when verbose $ putStrLn "Cache file deleted successfully"
+            else when verbose $ putStrLn "Cache file does not exist (starting fresh automatically)"
+    
+    when verbose $ do
+        if useCached
+            then putStrLn $ "Using cache file: " ++ cacheFile
+            else putStrLn "Caching disabled"
+        when useAdvanced $ putStrLn "Using Phase 2 advanced pattern analysis"
     
     putStrLn $ "=== Program Search (Length " ++ show searchLength ++ ") ==="
     putStrLn $ "Searching " ++ show (16^searchLength) ++ " possible programs..."
@@ -23,7 +43,7 @@ runSearchCommand searchLength useCached useAdvanced verbose = do
               else if useCached 
               then do
                   when verbose $ putStrLn "Using persistent memoization cache..."
-                  cachedResult <- findLongestOutputProgramCached searchLength
+                  cachedResult <- findLongestOutputProgramCachedWithFile cacheFile searchLength
                   return $ convertCachedResult cachedResult
               else do
                   when verbose $ putStrLn "Running direct search..."
@@ -46,6 +66,11 @@ runSearchCommand searchLength useCached useAdvanced verbose = do
                 putStrLn ""
                 putStrLn "Program analysis:"
                 analyzeProgram (programBytes prog)
+    
+    when useCached $ do
+        putStrLn ""
+        putStrLn $ "💾 Cache file '" ++ cacheFile ++ "' updated."
+        putStrLn "🔄 Run again to benefit from cached results!"
 
 -- | Convert cached search result to standard search result
 convertCachedResult :: CachedSearchResult -> SearchResult

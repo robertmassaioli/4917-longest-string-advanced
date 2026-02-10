@@ -62,6 +62,8 @@ data SearchOptions = SearchOptions
     { searchLength :: Int
     , searchCached :: Bool
     , searchAdvanced :: Bool
+    , searchFresh :: Bool
+    , searchCacheFile :: String
     , searchVerbose :: Bool
     } deriving (Show, Eq)
 
@@ -157,27 +159,36 @@ testParser = do
 
 -- | Parser for search command
 searchParser :: Parser Command
-searchParser = do
-    length_ <- option auto
+searchParser = Search <$> (SearchOptions
+    <$> option auto
         ( long "length"
        <> short 'l'
        <> metavar "N"
        <> help "Program length to search"
        <> showDefault
        <> value 3 )
-    cached <- switch
-        ( long "cached"
-       <> short 'c'
-       <> help "Use persistent memoization cache" )
-    advanced <- switch
+    <*> (not <$> switch
+        ( long "no-cache"
+       <> help "Disable caching (caching is enabled by default)" ))
+    <*> switch
         ( long "advanced"
        <> short 'a'
        <> help "Use Phase 2 advanced pattern analysis" )
-    verbose <- switch
+    <*> switch
+        ( long "fresh"
+       <> short 'f'
+       <> help "Delete existing cache file before running (start fresh)" )
+    <*> strOption
+        ( long "cache-file"
+       <> short 'c'
+       <> metavar "FILE"
+       <> help "Cache file path (default: search_cache.json)"
+       <> showDefault
+       <> value "search_cache.json" )
+    <*> switch
         ( long "verbose"
        <> short 'v'
-       <> help "Enable verbose output" )
-    pure $ Search $ SearchOptions length_ cached advanced verbose
+       <> help "Enable verbose output" ))
 
 -- | Parser for solve command
 solveParser :: Parser Command
@@ -199,5 +210,5 @@ runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
 runCommand (Benchmark opts) = runBenchmarkCommand (benchmarkAll opts) (benchmarkVerbose opts)
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Test opts) = runTestCommand (testPattern opts) (testVerbose opts)
-runCommand (Search opts) = runSearchCommand (searchLength opts) (searchCached opts) (searchAdvanced opts) (searchVerbose opts)
+runCommand (Search opts) = runSearchCommand (searchLength opts) (searchCached opts) (searchAdvanced opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)
