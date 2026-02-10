@@ -3,6 +3,7 @@ module Commands.Search
     ) where
 
 import BruteForceSearch
+import InstructionAnalysis (analyzeProgram)
 import Text.Printf
 import Data.Word (Word8)
 import System.IO.Error (tryIOError)
@@ -81,34 +82,6 @@ convertCachedResult cached = SearchResult
     , programsWithOutput = cachedProgramsWithOutput cached
     }
 
--- | Analyze a program and explain what it does (basic analysis)
-analyzeProgram :: [Word8] -> IO ()
-analyzeProgram program = do
-    putStrLn "Instruction breakdown:"
-    mapM_ analyzeInstruction (zip [0..] (map fromIntegral program))
-  where
-    analyzeInstruction (addr, inst) = do
-        putStrLn $ "  " ++ show addr ++ ": " ++ show inst ++ " - " ++ instructionDescription inst
-
--- | Get description for an instruction
-instructionDescription :: Int -> String
-instructionDescription 0  = "HALT"
-instructionDescription 1  = "R0 = R0 + R1"
-instructionDescription 2  = "R0 = R0 - R1"
-instructionDescription 3  = "R0++"
-instructionDescription 4  = "R1++"
-instructionDescription 5  = "R0--"
-instructionDescription 6  = "R1--"
-instructionDescription 7  = "Ring Bell (NOP)"
-instructionDescription 8  = "PRINT (needs operand)"
-instructionDescription 9  = "LOAD R0 (needs address)"
-instructionDescription 10 = "LOAD R1 (needs address)"
-instructionDescription 11 = "STORE R0 (needs address)"
-instructionDescription 12 = "STORE R1 (needs address)"
-instructionDescription 13 = "JUMP (needs address)"
-instructionDescription 14 = "JUMP IF R0==0 (needs address)"
-instructionDescription 15 = "JUMP IF R0!=0 (needs address)"
-instructionDescription n   = "Unknown instruction (" ++ show n ++ ")"
 
 -- Helper to conditionally print
 when :: Bool -> IO () -> IO ()
