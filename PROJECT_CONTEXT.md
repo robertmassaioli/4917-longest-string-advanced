@@ -7,6 +7,11 @@ This project implements a brute-force search to find the **longest possible outp
 - **Architecture**: 4-bit processor with 16 memory locations (0-15)
 - **Registers**: R0, R1, PC (program counter)
 - **Memory**: 16 bytes total (programs and data share this space)
+- **Memory Model**: 
+  - Code is stored directly in memory locations 0-15
+  - Undefined memory locations default to zero
+  - Program counter wraps around (PC=16 becomes PC=0)
+- **Program Length**: Defined as the position of the last non-zero memory location + 1
 
 ### Complete Instruction Set
 The 4917 supports 16 instructions, divided into single and two-byte operations:
@@ -39,11 +44,15 @@ The 4917 supports 16 instructions, divided into single and two-byte operations:
 ### Key Constraints:
 - Programs are limited in length (typically 3-8 instructions)
 - Each instruction is 4 bits (0-15)
+- Program length = position of last non-zero byte + 1 (e.g., `[8, 15, 0, 0, 0...]` has length 3)
+- Memory beyond program length is implicitly zero
+- Program counter wraps at memory boundary (enables loops)
 - Output is measured in **character count** (digits 0-9 = 1 char, 10-15 = 2 chars)
 - Programs must terminate (no infinite loops) to be valid solutions
 
 ### Example:
-- Length 3 program: `[8, 15, 0]` = "PRINT 15; HALT" → outputs "15" (2 characters)
+- Length 3 program: `[8, 15, 0]` stored in memory[0-2] = "PRINT 15; HALT" → outputs "15" (2 characters)
+- Memory layout: `[8, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]` (positions 3-15 default to zero)
 - Goal: Find the length-3 program that outputs the most characters
 
 ## Implementation Architecture
