@@ -1,0 +1,18 @@
+build/
+dist/
+cabal-dev
+*.o
+*.hi
+*.chi
+*.chs.h
+.virtualenv
+.hsenv
+.cabal-sandbox/
+cabal.sandbox.config
+.stack-work/
+*.swp
+*.swo
+*~
+
+# Cache files and temporary data (exclude .json files at root level)
+/*.json
