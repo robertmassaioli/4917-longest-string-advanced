@@ -61,6 +61,7 @@ data TestOptions = TestOptions
 data SearchOptions = SearchOptions
     { searchLength :: Int
     , searchCached :: Bool
+    , searchAdvanced :: Bool
     , searchVerbose :: Bool
     } deriving (Show, Eq)
 
@@ -168,11 +169,15 @@ searchParser = do
         ( long "cached"
        <> short 'c'
        <> help "Use persistent memoization cache" )
+    advanced <- switch
+        ( long "advanced"
+       <> short 'a'
+       <> help "Use Phase 2 advanced pattern analysis" )
     verbose <- switch
         ( long "verbose"
        <> short 'v'
        <> help "Enable verbose output" )
-    pure $ Search $ SearchOptions length_ cached verbose
+    pure $ Search $ SearchOptions length_ cached advanced verbose
 
 -- | Parser for solve command
 solveParser :: Parser Command
@@ -194,5 +199,5 @@ runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
 runCommand (Benchmark opts) = runBenchmarkCommand (benchmarkAll opts) (benchmarkVerbose opts)
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Test opts) = runTestCommand (testPattern opts) (testVerbose opts)
-runCommand (Search opts) = runSearchCommand (searchLength opts) (searchCached opts) (searchVerbose opts)
+runCommand (Search opts) = runSearchCommand (searchLength opts) (searchCached opts) (searchAdvanced opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)

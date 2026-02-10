@@ -6,6 +6,7 @@ module BruteForceSearch
     , findLongestOutputProgramTimed
     , findLongestOutputProgramCached
     , findLongestOutputProgramCachedWithFile
+    , findLongestOutputProgramAdvanced
     , ProgramResult(..)
     , SearchResult(..)
     , CachedSearchResult(..)
@@ -17,6 +18,7 @@ module BruteForceSearch
 import Processor (Device(..), Byte, ProgramExecutionResult(..), createDevice, runProgramLoopCheck)
 import Data.List (maximumBy, foldl')
 import Data.Ord (comparing)
+import Control.Monad (when)
 import Data.Vector.Unboxed ((!))  -- For vector indexing
 import System.CPUTime (getCPUTime)
 import Text.Printf (printf)
@@ -24,6 +26,8 @@ import ExecutionTracing (runProgramWithTracing)
 import qualified ExecutionTracing as ET
 import PatternCache (loadCache, saveCache, lookupPattern, addPatternEntry, PatternResult(..))
 import qualified PatternCache as Cache
+import PatternAnalyzer (analyzeProgram, detectHaltPattern, detectLoopPattern)
+import AdvancedPatternCache (AdvancedPatternCache, createAdvancedCache, lookupByPattern, addPatternAnalysis)
 
 -- | Result of testing a program
 data ProgramResult = ProgramResult
@@ -247,3 +251,99 @@ findBestProgramsCached maxLength = do
                 putStrLn $ "  Cache: " ++ show (cachedCacheHits result) ++ " hits, " ++ 
                           show (cachedCacheMisses result) ++ " misses, " ++
                           show (cachedPatternsAdded result) ++ " patterns added"
+
+-- | Advanced pattern-based search with Phase 2 optimizations
+findLongestOutputProgramAdvanced :: Int -> IO CachedSearchResult
+findLongestOutputProgramAdvanced programLength 
+    | programLength <= 0 || programLength > 8 = return $ CachedSearchResult Nothing 0.0 0 0 0 0 0
+    | otherwise = do
+        start <- getCPUTime
+        advancedCache <- createAdvancedCache
+        
+        let allPrograms = generateAllPrograms programLength
+            totalPrograms = length allPrograms
+        
+        putStrLn $ "Testing " ++ show totalPrograms ++ " programs of length " ++ show programLength ++ " with advanced pattern analysis..."
+        
+        -- Phase 2.1: HALT Pattern Detection - Skip programs without reachable HALT
+        let haltOptimizedPrograms = if programLength <= 4
+                                   then filter (not . hasUnreachableHalt) allPrograms
+                                   else allPrograms  -- Only optimize for smaller lengths
+            optimizedCount = length haltOptimizedPrograms
+        
+        when (optimizedCount < totalPrograms) $
+            putStrLn $ "  HALT optimization: Skipped " ++ show (totalPrograms - optimizedCount) ++ " programs with unreachable HALT"
+        
+        -- Process programs with advanced pattern analysis
+        (results, finalCache, hits, misses, patternsAdded) <- processWithAdvancedCache advancedCache haltOptimizedPrograms 0 0 0 []
+        
+        let validResults = filter (\r -> outputLength r > 0) results
+            validCount = length validResults
+            bestResult = if null validResults 
+                        then Nothing
+                        else Just $ maximumBy (comparing outputLength) validResults
+        
+        end <- getCPUTime
+        let timeDiffMs = fromIntegral (end - start) / (10^9)
+        
+        putStrLn $ "  Pattern analysis: " ++ show patternsAdded ++ " new patterns detected"
+        
+        return $ CachedSearchResult bestResult timeDiffMs optimizedCount validCount hits misses patternsAdded
+  where
+    -- Phase 2.1: HALT pattern detection optimization
+    hasUnreachableHalt :: Device -> Bool
+    hasUnreachableHalt device =
+        let programBytes = take programLength $ extractProgramBytes device
+            haltPositions = [i | (i, instr) <- zip [0..] programBytes, instr == 0]
+            -- Simple reachability: check if HALT is after unconditional jumps to earlier positions
+            hasEarlyLoop = any (\(i, instr) -> instr == 13 && i < programLength - 1) (zip [0..] programBytes)
+        in not (null haltPositions) && hasEarlyLoop && last haltPositions > 2
+    
+    processWithAdvancedCache :: AdvancedPatternCache -> [Device] -> Int -> Int -> Int -> [BruteForceSearch.ProgramResult] 
+                            -> IO ([BruteForceSearch.ProgramResult], AdvancedPatternCache, Int, Int, Int)
+    processWithAdvancedCache cache [] hits misses added results = return (reverse results, cache, hits, misses, added)
+    processWithAdvancedCache cache (device:devices) hits misses added results = do
+        let programBytes = take programLength $ extractProgramBytes device
+        
+        -- Try advanced pattern lookup
+        (maybeResult, updatedCache) <- lookupByPattern programBytes cache
+        
+        case maybeResult of
+            Just cachedExecutionResult -> do
+                -- Cache hit - convert ExecutionTracing.ProgramResult to BruteForceSearch.ProgramResult
+                let outputLen = case ET.resultTermination cachedExecutionResult of
+                        ET.InfiniteLoop -> 0
+                        _ -> length (ET.resultOutput cachedExecutionResult)
+                    programResult = BruteForceSearch.ProgramResult
+                        { program = device
+                        , outputLength = outputLen
+                        , programBytes = programBytes
+                        }
+                processWithAdvancedCache updatedCache devices (hits + 1) misses added (programResult:results)
+            
+            Nothing -> do
+                -- Cache miss - compute with pattern analysis
+                executionResult <- runProgramWithTracing programBytes
+                
+                -- Phase 2.2: Loop Pattern Recognition
+                let loopPattern = detectLoopPattern executionResult
+                    haltPattern = detectHaltPattern programBytes executionResult
+                
+                -- Apply Phase 2 optimizations based on detected patterns
+                let outputLen = case ET.resultTermination executionResult of
+                        ET.InfiniteLoop -> 0  -- Infinite loops produce no useful output
+                        _ -> length (ET.resultOutput executionResult)
+                
+                let programResult = BruteForceSearch.ProgramResult
+                        { program = device
+                        , outputLength = outputLen
+                        , programBytes = programBytes
+                        }
+                
+                -- Add to advanced cache with pattern analysis
+                cacheWithPattern <- addPatternAnalysis programBytes executionResult updatedCache
+                
+                processWithAdvancedCache cacheWithPattern devices hits (misses + 1) (added + 1) (programResult:results)
+    
+    extractProgramBytes :: Device -> [Byte]
+    extractProgramBytes Device{..} = [memory ! i | i <- [0..15]]

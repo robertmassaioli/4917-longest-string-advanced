@@ -6,8 +6,10 @@ module ExecutionTracing
     , TerminationType(..)
     , ExecutionState(..)
     , TracePoint(..)
+    , ExecutionStep(..)
     , runProgramWithTracing
     , extractExecutionFingerprint
+    , extractExecutionSteps
     ) where
 
 import Processor (Device(..), Byte, createDevice, runStep, isHalted, getOutput)
@@ -53,6 +55,20 @@ instance NFData TracePoint where
     rnf (OutputTrace i s) = rnf i `seq` rnf s
     rnf (LoopDetected i s) = rnf i `seq` rnf s
     rnf (HaltTrace i s) = rnf i `seq` rnf s
+
+-- | Simplified execution step for pattern analysis
+data ExecutionStep = ExecutionStep
+    { stepProgramCounter :: Int
+    , stepInstruction :: Byte
+    , stepR0 :: Byte
+    , stepR1 :: Byte
+    , stepOutput :: String
+    , stepNumber :: Int
+    } deriving (Show, Eq)
+
+instance NFData ExecutionStep where
+    rnf (ExecutionStep pc inst r0 r1 out num) = 
+        rnf pc `seq` rnf inst `seq` rnf r0 `seq` rnf r1 `seq` rnf out `seq` rnf num
 
 -- | Complete execution trace
 data ExecutionTrace = ExecutionTrace
@@ -181,3 +197,48 @@ extractExecutionFingerprint result =
         outputLen = length (resultOutput result)
         steps = resultSteps result
     in concat [term, ":", show outputLen, ":", show steps]
+
+-- | Extract execution steps from trace for pattern analysis
+extractExecutionSteps :: ProgramResult -> [ExecutionStep]
+extractExecutionSteps result = 
+    let trace = resultTrace result
+        points = tracePoints trace
+    in concatMap convertTracePoint points
+  where
+    convertTracePoint :: TracePoint -> [ExecutionStep]
+    convertTracePoint (StepTrace stepNum state) = 
+        [ExecutionStep 
+            { stepProgramCounter = fromIntegral (statePC state)
+            , stepInstruction = maybe 0 id (stateLastInstruction state)
+            , stepR0 = stateR0 state
+            , stepR1 = stateR1 state
+            , stepOutput = stateOutput state
+            , stepNumber = stepNum
+            }]
+    convertTracePoint (OutputTrace stepNum output) = 
+        [ExecutionStep 
+            { stepProgramCounter = 0  -- Not available in OutputTrace
+            , stepInstruction = 0     -- Not available
+            , stepR0 = 0             -- Not available
+            , stepR1 = 0             -- Not available  
+            , stepOutput = output
+            , stepNumber = stepNum
+            }]
+    convertTracePoint (LoopDetected stepNum state) = 
+        [ExecutionStep 
+            { stepProgramCounter = fromIntegral (statePC state)
+            , stepInstruction = maybe 0 id (stateLastInstruction state)
+            , stepR0 = stateR0 state
+            , stepR1 = stateR1 state
+            , stepOutput = stateOutput state
+            , stepNumber = stepNum
+            }]
+    convertTracePoint (HaltTrace stepNum state) = 
+        [ExecutionStep 
+            { stepProgramCounter = fromIntegral (statePC state)
+            , stepInstruction = maybe 0 id (stateLastInstruction state)
+            , stepR0 = stateR0 state
+            , stepR1 = stateR1 state
+            , stepOutput = stateOutput state
+            , stepNumber = stepNum
+            }]

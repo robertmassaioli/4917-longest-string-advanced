@@ -21,6 +21,8 @@ library
                      , ExecutionTracing
                      , PatternCache
                      , PatternMatching
+                     , PatternAnalyzer
+                     , AdvancedPatternCache
                      , CLI
                      , Commands.Demo
                      , Commands.Benchmark

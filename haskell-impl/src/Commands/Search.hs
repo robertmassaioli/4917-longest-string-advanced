@@ -7,15 +7,20 @@ import Text.Printf
 import Data.Word (Word8)
 
 -- | Run the search command
-runSearchCommand :: Int -> Bool -> Bool -> IO ()
-runSearchCommand searchLength useCached verbose = do
+runSearchCommand :: Int -> Bool -> Bool -> Bool -> IO ()
+runSearchCommand searchLength useCached useAdvanced verbose = do
     when verbose $ putStrLn $ "Searching for optimal programs of length " ++ show searchLength
     
     putStrLn $ "=== Program Search (Length " ++ show searchLength ++ ") ==="
     putStrLn $ "Searching " ++ show (16^searchLength) ++ " possible programs..."
     putStrLn ""
     
-    result <- if useCached 
+    result <- if useAdvanced
+              then do
+                  when verbose $ putStrLn "Using Phase 2 advanced pattern analysis..."
+                  cachedResult <- findLongestOutputProgramAdvanced searchLength
+                  return $ convertCachedResult cachedResult
+              else if useCached 
               then do
                   when verbose $ putStrLn "Using persistent memoization cache..."
                   cachedResult <- findLongestOutputProgramCached searchLength
