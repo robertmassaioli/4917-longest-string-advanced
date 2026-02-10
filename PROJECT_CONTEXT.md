@@ -44,16 +44,17 @@ The 4917 supports 16 instructions, divided into single and two-byte operations:
 ### Key Constraints:
 - Programs are limited in length (typically 3-8 instructions)
 - Each instruction is 4 bits (0-15)
-- Program length = position of last non-zero byte + 1 (e.g., `[8, 15, 0, 0, 0...]` has length 3)
+- Program length = position of last non-zero byte + 1 (e.g., `[8, 15, 0, 0, 0...]` has length 2)
 - Memory beyond program length is implicitly zero
 - Program counter wraps at memory boundary (enables loops)
 - Output is measured in **character count** (digits 0-9 = 1 char, 10-15 = 2 chars)
 - Programs must terminate (no infinite loops) to be valid solutions
 
 ### Example:
+- Length 2 program: `[8, 15]` stored in memory[0-1] = "PRINT 15" → outputs "15" (2 characters)
+- Memory layout: `[8, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]` (positions 2-15 default to zero)
 - Length 3 program: `[8, 15, 0]` stored in memory[0-2] = "PRINT 15; HALT" → outputs "15" (2 characters)
-- Memory layout: `[8, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]` (positions 3-15 default to zero)
-- Goal: Find the length-3 program that outputs the most characters
+- Goal: Find the program of given length that outputs the most characters
 
 ## Implementation Architecture
 This project uses a **Haskell implementation** with advanced optimizations:
