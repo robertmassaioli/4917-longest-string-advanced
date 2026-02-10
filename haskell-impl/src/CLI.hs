@@ -73,7 +73,7 @@ parseCommand :: IO Command
 parseCommand = execParser $ info (commandParser <**> helper)
     ( fullDesc
    <> progDesc "4917 Processor - Longest String Problem Solver"
-   <> header "haskell-impl - A comprehensive toolkit for the 4917 processor" )
+   <> header "4917-cli - A comprehensive toolkit for the 4917 processor" )
 
 -- | Main command parser
 commandParser :: Parser Command
