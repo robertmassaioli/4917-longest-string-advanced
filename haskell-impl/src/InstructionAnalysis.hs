@@ -46,19 +46,25 @@ analyzeProgramToString program =
 
 -- | Parse a list of bytes into instruction information
 parseInstructions :: [Int] -> [InstructionInfo]
-parseInstructions = parseInstructionsAt 0
+parseInstructions program = 
+    let paddedProgram = take 16 (program ++ repeat 0)  -- Pad to 16 bytes with zeros
+    in parseInstructionsAt 0 paddedProgram
   where
     parseInstructionsAt :: Int -> [Int] -> [InstructionInfo]
-    parseInstructionsAt _ [] = []
-    parseInstructionsAt addr (inst:rest)
-        | hasOperand inst = case rest of
-            [] -> [InstructionInfo addr inst Nothing (instructionDescription inst ++ " (missing operand!)")]
-            (operand:remaining) -> 
-                let info = InstructionInfo addr inst (Just operand) (instructionDescriptionWithOperand inst operand)
-                in info : parseInstructionsAt (addr + 2) remaining
+    parseInstructionsAt addr memory
+        | addr >= length program = []  -- Stop parsing at end of actual program
         | otherwise = 
-            let info = InstructionInfo addr inst Nothing (instructionDescription inst)
-            in info : parseInstructionsAt (addr + 1) rest
+            let inst = memory !! addr
+            in if hasOperand inst
+               then if addr + 1 < 16  -- Check if operand address is within memory bounds
+                    then let operand = memory !! (addr + 1)
+                             info = InstructionInfo addr inst (Just operand) (instructionDescriptionWithOperand inst operand)
+                         in info : parseInstructionsAt (addr + 2) memory
+                    else let operand = memory !! ((addr + 1) `mod` 16)  -- Only wrap at actual memory boundary
+                             info = InstructionInfo addr inst (Just operand) (instructionDescriptionWithOperand inst operand)
+                         in [info]  -- Stop after wrapping instruction
+               else let info = InstructionInfo addr inst Nothing (instructionDescription inst)
+                    in info : parseInstructionsAt (addr + 1) memory
 
 -- | Check if an instruction has an operand
 hasOperand :: Int -> Bool
