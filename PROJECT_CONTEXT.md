@@ -82,6 +82,14 @@ This project uses a **Haskell implementation** with advanced optimizations:
 - **Length 4**: 65,536 programs  
 - **Length 6**: ~16.7 million programs
 - **Length 8**: ~4.3 billion programs
+- **Length 9**: ~68.7 billion programs
+- **Length 10**: ~1.1 trillion programs
+- **Length 11**: ~17.6 trillion programs
+- **Length 12**: ~281.5 trillion programs
+- **Length 13**: ~4.5 quadrillion programs
+- **Length 14**: ~72.1 quadrillion programs
+- **Length 15**: ~1.15 quintillion programs
+- **Length 16**: ~18.4 quintillion programs
 
 ## Key Components
 
@@ -98,6 +106,35 @@ This project uses a **Haskell implementation** with advanced optimizations:
 - `cache-demo`: Demonstrate caching performance benefits
 - `benchmark`: Performance testing across different program lengths
 - `test`: Run comprehensive test suite
+
+## Building and Running
+
+### Build System:
+This project uses **Haskell Stack** for dependency management and building:
+
+```bash
+# Build the project
+stack build
+
+# Run commands
+stack exec cli4917 -- <command> <options>
+```
+
+### Execution Safety:
+**Important for macOS users**: Use `gtimeout` to prevent system unresponsiveness during long-running searches:
+
+```bash
+# Install gtimeout via homebrew if not available
+brew install coreutils
+
+# Run with timeout (example: 2 minute timeout)
+gtimeout 120 stack exec cli4917 -- search --length 8
+
+# For other platforms, use regular timeout
+timeout 120 stack exec cli4917 -- search --length 8
+```
+
+This is especially important for longer program lengths (7+) where search times can become extremely long or potentially infinite due to the exponential search space.
 
 ## Why This Matters
 This is a **computational exploration project** that:
