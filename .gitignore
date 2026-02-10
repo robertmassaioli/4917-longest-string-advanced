@@ -2,32 +2,18 @@
 .*.swp
 *~
 
-# Ignore all library files
-*.o
-*.a
-
-# Ignore symlinks to the binary
-longest_string
-
-# Cmake Generated Files
-CMakeCache.txt
-CMakeFiles/
-Makefile
-cmake_install.cmake
-
 # Ignoring log files and out files
 *.log
 *.out
 
-# Ignore Generated Files
-cscope.*
-
-# GDB Files
-.gdb_history
-
-# build directory 
-localbuild
-build
-
 # Haskell Stack build artifacts
 .stack-work/
+
+# Haskell compiled files
+*.hi
+*.dyn_hi
+*.dyn_o
+
+# Cache files
+program_cache.json
+*.cache
