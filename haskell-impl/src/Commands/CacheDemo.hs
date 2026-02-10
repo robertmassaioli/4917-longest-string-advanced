@@ -5,13 +5,29 @@ module Commands.CacheDemo
 import BruteForceSearch
 import Text.Printf
 import System.CPUTime
+import System.IO.Error (tryIOError)
+import System.Directory (removeFile, doesFileExist)
 
 -- | Run the cache demo command
-runCacheDemoCommand :: Maybe Int -> Bool -> IO ()
-runCacheDemoCommand maybeLength verbose = do
+runCacheDemoCommand :: Maybe Int -> Bool -> Bool -> String -> IO ()
+runCacheDemoCommand maybeLength verbose fresh cacheFile = do
     let defaultLength = maybe 3 id maybeLength
     
-    when verbose $ putStrLn $ "Running persistent memoization demo with length " ++ show defaultLength
+    -- Handle fresh cache option
+    when fresh $ do
+        when verbose $ putStrLn $ "Deleting existing cache file: " ++ cacheFile
+        fileExists <- doesFileExist cacheFile
+        if fileExists
+            then do
+                result <- tryIOError $ removeFile cacheFile
+                case result of
+                    Left err -> putStrLn $ "Warning: Could not delete cache file: " ++ show err
+                    Right _ -> when verbose $ putStrLn "Cache file deleted successfully"
+            else when verbose $ putStrLn "Cache file does not exist (starting fresh automatically)"
+    
+    when verbose $ do
+        putStrLn $ "Using cache file: " ++ cacheFile
+        putStrLn $ "Running persistent memoization demo with length " ++ show defaultLength
     
     putStrLn "=== Persistent Memoization Demo ==="
     putStrLn "This demo shows how the caching system works across multiple runs.\\n"
@@ -23,7 +39,7 @@ runCacheDemoCommand maybeLength verbose = do
     -- First run (cache building)
     putStrLn "📝 Run 1: Building cache..."
     start1 <- getCPUTime
-    result1 <- findLongestOutputProgramCached defaultLength
+    result1 <- findLongestOutputProgramCachedWithFile cacheFile defaultLength
     end1 <- getCPUTime
     let time1 = fromIntegral (end1 - start1) / (10^9) :: Double
     
@@ -42,7 +58,7 @@ runCacheDemoCommand maybeLength verbose = do
     -- Second run (cache usage)
     putStrLn "🚀 Run 2: Using existing cache..."
     start2 <- getCPUTime  
-    result2 <- findLongestOutputProgramCached defaultLength
+    result2 <- findLongestOutputProgramCachedWithFile cacheFile defaultLength
     end2 <- getCPUTime
     let time2 = fromIntegral (end2 - start2) / (10^9) :: Double
     
@@ -90,13 +106,13 @@ runCacheDemoCommand maybeLength verbose = do
     putStrLn "   - Length 4-5: Better benefits (more computation to save)"
     putStrLn "   - Length 6+: Excellent benefits (exponential computation vs linear cache)"
     
-    putStrLn "\\n💾 Cache file 'program_cache.json' has been created/updated."
+    putStrLn $ "\\n💾 Cache file '" ++ cacheFile ++ "' has been created/updated."
     putStrLn "🔄 Run this demo again to see cumulative caching benefits!"
     
     -- Test additional length if different from default
     when (defaultLength < 4) $ do
         putStrLn "\\n🧪 Quick test of Length 4 (65,536 programs):"
-        result4 <- findLongestOutputProgramCached 4
+        result4 <- findLongestOutputProgramCachedWithFile cacheFile 4
         case cachedBestProgram result4 of
             Nothing -> putStrLn "❌ No programs found"
             Just prog -> do

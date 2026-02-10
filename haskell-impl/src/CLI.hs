@@ -47,6 +47,8 @@ data BenchmarkOptions = BenchmarkOptions
 data CacheDemoOptions = CacheDemoOptions
     { cacheDemoLength :: Maybe Int
     , cacheDemoVerbose :: Bool
+    , cacheDemoFresh :: Bool
+    , cacheDemoCacheFile :: String
     } deriving (Show, Eq)
 
 -- | Options for test command
@@ -125,7 +127,18 @@ cacheDemoParser = do
         ( long "verbose"
        <> short 'v'
        <> help "Enable verbose output" )
-    pure $ CacheDemo $ CacheDemoOptions length_ verbose
+    fresh <- switch
+        ( long "fresh"
+       <> short 'f'
+       <> help "Delete existing cache file before running (start fresh)" )
+    cacheFile <- strOption
+        ( long "cache-file"
+       <> short 'c'
+       <> metavar "FILE"
+       <> help "Cache file path (default: program_cache.json)"
+       <> showDefault
+       <> value "program_cache.json" )
+    pure $ CacheDemo $ CacheDemoOptions length_ verbose fresh cacheFile
 
 -- | Parser for test command
 testParser :: Parser Command
@@ -179,7 +192,7 @@ solveParser = do
 runCommand :: Command -> IO ()
 runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
 runCommand (Benchmark opts) = runBenchmarkCommand (benchmarkAll opts) (benchmarkVerbose opts)
-runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts)
+runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Test opts) = runTestCommand (testPattern opts) (testVerbose opts)
 runCommand (Search opts) = runSearchCommand (searchLength opts) (searchCached opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)

@@ -5,6 +5,7 @@ module BruteForceSearch
     , findLongestOutputProgram
     , findLongestOutputProgramTimed
     , findLongestOutputProgramCached
+    , findLongestOutputProgramCachedWithFile
     , ProgramResult(..)
     , SearchResult(..)
     , CachedSearchResult(..)
@@ -153,11 +154,15 @@ findBestPrograms maxLength = do
 
 -- | Cached version of findLongestOutputProgramTimed using persistent memoization
 findLongestOutputProgramCached :: Int -> IO CachedSearchResult
-findLongestOutputProgramCached programLength 
+findLongestOutputProgramCached = findLongestOutputProgramCachedWithFile "program_cache.json"
+
+-- | Cached version with custom cache file path
+findLongestOutputProgramCachedWithFile :: String -> Int -> IO CachedSearchResult
+findLongestOutputProgramCachedWithFile cacheFilePath programLength 
     | programLength <= 0 || programLength > 8 = return $ CachedSearchResult Nothing 0.0 0 0 0 0 0
     | otherwise = do
         start <- getCPUTime
-        cache <- loadCache "program_cache.json"
+        cache <- loadCache cacheFilePath
         
         let allPrograms = generateAllPrograms programLength
             totalPrograms = length allPrograms
