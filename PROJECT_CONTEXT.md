@@ -39,7 +39,7 @@ The 4917 supports 16 instructions, divided into single and two-byte operations:
 **Note**: This instruction set is surprisingly powerful - it can create quines, complex output patterns, and sophisticated control flow despite its minimal design.
 
 ## The Problem Being Solved
-**Find the program of a given length that produces the longest possible output string.**
+**Find the program of a given length that produces the longest possible output string and eventually halts.**
 
 ### Key Constraints:
 - Each instruction is 4 bits (0-15)
