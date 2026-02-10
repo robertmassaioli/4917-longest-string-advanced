@@ -166,23 +166,23 @@ countIterations trace cycle =
        else 1
 
 -- | Analyze output pattern in the trace
-analyzeOutputPattern :: [ExecutionStep] -> [String]
+analyzeOutputPattern :: [ExecutionStep] -> [Int]
 analyzeOutputPattern trace = 
-    [stepOutput step | step <- trace, not (null (stepOutput step))]
+    [stepOutput step | step <- trace, stepOutput step > 0]
 
 -- | Calculate output per loop iteration
-outputPerLoop :: [ExecutionStep] -> [String] -> Int
+outputPerLoop :: [ExecutionStep] -> [Int] -> Int
 outputPerLoop cycle outputPattern = 
-    let cycleOutputs = [stepOutput step | step <- cycle, not (null (stepOutput step))]
-        totalCycleOutput = sum [length out | out <- cycleOutputs]
+    let cycleOutputs = [stepOutput step | step <- cycle, stepOutput step > 0]
+        totalCycleOutput = sum cycleOutputs
     in totalCycleOutput
 
 -- | Generate formula for computing output based on pattern
 generateOutputFormula :: ProgramResult -> PatternType -> Maybe LoopPattern -> String
 generateOutputFormula result patternType loopPattern = 
     case patternType of
-        HaltPattern -> show (length (resultOutput result))
-        LinearPattern -> show (length (resultOutput result))
+        HaltPattern -> show (resultOutput result)
+        LinearPattern -> show (resultOutput result)
         SimpleLoopPattern -> 
             case loopPattern of
                 Nothing -> "infinite"

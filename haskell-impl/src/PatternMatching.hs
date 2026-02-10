@@ -188,12 +188,12 @@ commonPatterns =
       WildcardPattern 
         { patternTemplate = [Literal 8, Wildcard "value", Literal 0]
         , patternConstraints = Map.fromList [("value", \v -> v <= 15)]
-        , expectedResult = PatternResult "computed" 2 Halt 0.9
+        , expectedResult = PatternResult 8 2 Halt 0.9
         }
     , -- Simple infinite loop
       WildcardPattern
         { patternTemplate = [Literal 13, Literal 0] 
         , patternConstraints = Map.empty
-        , expectedResult = PatternResult "" 0 InfiniteLoop 1.0
+        , expectedResult = PatternResult 0 0 InfiniteLoop 1.0
         }
     ]

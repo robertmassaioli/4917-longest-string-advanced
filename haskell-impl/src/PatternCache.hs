@@ -55,7 +55,7 @@ instance FromJSON CacheStatistics where
 
 -- | Simplified pattern result for caching
 data PatternResult = PatternResult
-    { patternOutput :: String
+    { patternOutput :: Int
     , patternSteps :: Int
     , patternTermination :: TerminationType
     , patternConfidence :: Double

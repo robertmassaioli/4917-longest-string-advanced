@@ -34,7 +34,7 @@ createDevice memList = Device
     , r0 = 0
     , r1 = 0
     , pc = 0
-    , output = ""
+    , outputCount = 0
     }
 
 -- | The device structure representing the 4917 machine state
@@ -43,13 +43,13 @@ data Device = Device
     , r0     :: !Byte          -- Register 0
     , r1     :: !Byte          -- Register 1
     , pc     :: !Byte          -- Program Counter
-    , output :: !String        -- Accumulated output
+    , outputCount :: !Int      -- Count of output characters
     } deriving (Show, Eq)
 
 -- | Initialize a program to its starting state
 {-# INLINE initProgram #-}
 initProgram :: Device -> Device
-initProgram device = device { r0 = 0, r1 = 0, pc = 0, output = "" }
+initProgram device = device { r0 = 0, r1 = 0, pc = 0, outputCount = 0 }
 
 -- | Perform a single step of program execution
 -- Returns (newDevice, outputCount, programFinished)
@@ -72,9 +72,9 @@ stepProgram device@Device{..} =
         8  -> let !nextPC = (newPC + 1) .&. 0x0F
                   !nextValue = memory ! fromIntegral newPC
                   !outputStr = show nextValue
-                  !outputCount = length outputStr
-                  !newOutput = output ++ outputStr
-              in (device { pc = nextPC, output = newOutput }, outputCount, False)  -- OUTPUT
+                  !outputLen = length outputStr
+                  !newOutputCount = outputCount + outputLen
+              in (device { pc = nextPC, outputCount = newOutputCount }, outputLen, False)  -- OUTPUT
 
         9  -> let !nextPC = (newPC + 1) .&. 0x0F
                   !addr = memory ! fromIntegral newPC
@@ -189,6 +189,6 @@ isHalted Device{..} =
     let instruction = memory ! fromIntegral pc
     in instruction == 0
 
--- | Get accumulated output
-getOutput :: Device -> String
-getOutput Device{..} = output
+-- | Get accumulated output count
+getOutput :: Device -> Int
+getOutput Device{..} = outputCount

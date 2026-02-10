@@ -34,7 +34,7 @@ data ExecutionState = ExecutionState
     , stateR1 :: Byte
     , statePC :: Byte
     , stateStep :: Int
-    , stateOutput :: String
+    , stateOutput :: Int
     , stateLastInstruction :: Maybe Byte
     } deriving (Show, Eq)
 
@@ -45,7 +45,7 @@ instance NFData ExecutionState where
 -- | Key execution trace points
 data TracePoint 
     = StepTrace Int ExecutionState     -- Periodic state capture
-    | OutputTrace Int String          -- When output is generated
+    | OutputTrace Int Int             -- When output is generated
     | LoopDetected Int ExecutionState -- When loop is detected
     | HaltTrace Int ExecutionState    -- When HALT is executed
     deriving (Show, Eq)
@@ -62,7 +62,7 @@ data ExecutionStep = ExecutionStep
     , stepInstruction :: Byte
     , stepR0 :: Byte
     , stepR1 :: Byte
-    , stepOutput :: String
+    , stepOutput :: Int
     , stepNumber :: Int
     } deriving (Show, Eq)
 
@@ -83,7 +83,7 @@ instance NFData ExecutionTrace where
 
 -- | Enhanced program result with execution trace
 data ProgramResult = ProgramResult
-    { resultOutput :: String
+    { resultOutput :: Int
     , resultSteps :: Int
     , resultTermination :: TerminationType
     , resultTrace :: ExecutionTrace
@@ -101,7 +101,10 @@ runProgramWithTracing program = do
     timestamp <- getCurrentTime
     let device = createDeviceFromProgram program
         (finalDevice, trace, termination) = executeWithTracing device 1000  -- 1000 step limit
-        output = getOutput finalDevice
+        -- For infinite loops, discard the output since it's not a valid solution
+        output = case termination of
+            InfiniteLoop -> 0  -- Infinite loops produce no useful output
+            _ -> getOutput finalDevice
         steps = totalSteps trace
     
     return ProgramResult
@@ -170,7 +173,7 @@ captureState device@Device{..} step = ExecutionState
 addTracePoint :: Int -> ExecutionState -> [TracePoint] -> [TracePoint]
 addTracePoint step state traces
     | step `mod` 10 == 0 = StepTrace step state : traces  -- Trace every 10 steps
-    | not (null (stateOutput state)) && (null traces || outputChanged) = 
+    | stateOutput state > 0 && (null traces || outputChanged) = 
         OutputTrace step (stateOutput state) : traces
     | otherwise = traces
   where
@@ -194,7 +197,7 @@ extractExecutionFingerprint result =
             Timeout -> "T" 
             InfiniteLoop -> "L"
             Error -> "E"
-        outputLen = length (resultOutput result)
+        outputLen = resultOutput result
         steps = resultSteps result
     in concat [term, ":", show outputLen, ":", show steps]
 

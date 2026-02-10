@@ -204,7 +204,7 @@ findLongestOutputProgramCachedWithFile cacheFilePath programLength
                 -- Cache hit - create ProgramResult from cached data
                 let outputLen = case patternTermination cachedResult of
                         ET.InfiniteLoop -> 0  -- Infinite loops are never solutions
-                        _ -> length (patternOutput cachedResult)
+                        _ -> patternOutput cachedResult
                     programResult = ProgramResult 
                         { program = device
                         , outputLength = outputLen
@@ -217,7 +217,7 @@ findLongestOutputProgramCachedWithFile cacheFilePath programLength
                 tracedResult <- runProgramWithTracing programBytes
                 let outputLen = case ET.resultTermination tracedResult of
                         ET.InfiniteLoop -> 0  -- Infinite loops are never solutions
-                        _ -> length (ET.resultOutput tracedResult)
+                        _ -> ET.resultOutput tracedResult
                     programResult = ProgramResult
                         { program = device
                         , outputLength = outputLen
@@ -313,7 +313,7 @@ findLongestOutputProgramAdvanced programLength
                 -- Cache hit - convert ExecutionTracing.ProgramResult to BruteForceSearch.ProgramResult
                 let outputLen = case ET.resultTermination cachedExecutionResult of
                         ET.InfiniteLoop -> 0
-                        _ -> length (ET.resultOutput cachedExecutionResult)
+                        _ -> ET.resultOutput cachedExecutionResult
                     programResult = BruteForceSearch.ProgramResult
                         { program = device
                         , outputLength = outputLen
@@ -332,7 +332,7 @@ findLongestOutputProgramAdvanced programLength
                 -- Apply Phase 2 optimizations based on detected patterns
                 let outputLen = case ET.resultTermination executionResult of
                         ET.InfiniteLoop -> 0  -- Infinite loops produce no useful output
-                        _ -> length (ET.resultOutput executionResult)
+                        _ -> ET.resultOutput executionResult
                 
                 let programResult = BruteForceSearch.ProgramResult
                         { program = device
