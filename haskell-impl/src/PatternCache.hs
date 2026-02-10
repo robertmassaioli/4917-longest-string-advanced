@@ -13,6 +13,11 @@ module PatternCache
     , lookupPattern
     , addPatternEntry
     , updateStatistics
+    , incrementExecutionsSaved
+    , incrementWildcardHits
+    , incrementSimilarityHits
+    , incrementTotalExecutions
+    , addTimeSaved
     ) where
 
 import ExecutionTracing (ProgramResult(..), TerminationType(Halt, Timeout, InfiniteLoop, Error))
@@ -32,18 +37,29 @@ data CacheStatistics = CacheStatistics
     , cacheHits :: Int
     , cacheMisses :: Int
     , lastUpdated :: UTCTime
+    , executionsSaved :: Int        -- Programs that didn't need execution due to cache
+    , wildcardHits :: Int          -- Cache hits via wildcard pattern matching
+    , similarityHits :: Int        -- Cache hits via structural similarity  
+    , totalExecutions :: Int       -- Total programs actually executed (not cached)
+    , estimatedTimeSavedMs :: Double -- Estimated milliseconds saved by caching
     } deriving (Show, Eq, Generic)
 
 instance NFData CacheStatistics where
-    rnf (CacheStatistics tp ch cm lu) = 
-        rnf tp `seq` rnf ch `seq` rnf cm `seq` rnf lu
+    rnf (CacheStatistics tp ch cm lu es wh sh te ts) = 
+        rnf tp `seq` rnf ch `seq` rnf cm `seq` rnf lu `seq` 
+        rnf es `seq` rnf wh `seq` rnf sh `seq` rnf te `seq` rnf ts
 
 instance ToJSON CacheStatistics where
-    toJSON (CacheStatistics tp ch cm lu) = object
+    toJSON (CacheStatistics tp ch cm lu es wh sh te ts) = object
         [ "total_patterns" .= tp
         , "cache_hits" .= ch  
         , "cache_misses" .= cm
         , "last_updated" .= lu
+        , "executions_saved" .= es
+        , "wildcard_hits" .= wh
+        , "similarity_hits" .= sh
+        , "total_executions" .= te
+        , "estimated_time_saved_ms" .= ts
         ]
 
 instance FromJSON CacheStatistics where
@@ -52,6 +68,11 @@ instance FromJSON CacheStatistics where
         <*> o .: "cache_hits"
         <*> o .: "cache_misses"
         <*> o .: "last_updated"
+        <*> o .:? "executions_saved" .!= 0
+        <*> o .:? "wildcard_hits" .!= 0
+        <*> o .:? "similarity_hits" .!= 0
+        <*> o .:? "total_executions" .!= 0
+        <*> o .:? "estimated_time_saved_ms" .!= 0.0
 
 -- | Simplified pattern result for caching
 data PatternResult = PatternResult
@@ -158,7 +179,7 @@ emptyCache filepath = do
     return ProgramCache
         { cacheFilePath = filepath
         , cachePatterns = Map.empty
-        , cacheStatistics = CacheStatistics 0 0 0 now
+        , cacheStatistics = CacheStatistics 0 0 0 now 0 0 0 0 0.0
         , cacheVersion = "1.0"
         }
 
@@ -236,3 +257,19 @@ incrementMisses stats = stats { cacheMisses = cacheMisses stats + 1 }
 
 incrementPatterns :: CacheStatistics -> CacheStatistics
 incrementPatterns stats = stats { totalPatterns = totalPatterns stats + 1 }
+
+-- New helper functions for execution tracking
+incrementExecutionsSaved :: CacheStatistics -> CacheStatistics
+incrementExecutionsSaved stats = stats { executionsSaved = executionsSaved stats + 1 }
+
+incrementWildcardHits :: CacheStatistics -> CacheStatistics
+incrementWildcardHits stats = stats { wildcardHits = wildcardHits stats + 1 }
+
+incrementSimilarityHits :: CacheStatistics -> CacheStatistics
+incrementSimilarityHits stats = stats { similarityHits = similarityHits stats + 1 }
+
+incrementTotalExecutions :: CacheStatistics -> CacheStatistics
+incrementTotalExecutions stats = stats { totalExecutions = totalExecutions stats + 1 }
+
+addTimeSaved :: Double -> CacheStatistics -> CacheStatistics
+addTimeSaved timeMs stats = stats { estimatedTimeSavedMs = estimatedTimeSavedMs stats + timeMs }

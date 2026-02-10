@@ -16,7 +16,7 @@ module AdvancedPatternCache
 import PatternAnalyzer
 import qualified WildcardPatterns as WP
 import ExecutionTracing (ProgramResult(..), extractExecutionSteps)
-import PatternCache (ProgramCache(..), CacheStatistics(..))
+import PatternCache (ProgramCache(..), CacheStatistics(..), incrementExecutionsSaved, incrementWildcardHits, incrementSimilarityHits, addTimeSaved, incrementTotalExecutions)
 import qualified PatternCache as Basic
 import Processor (Byte)
 import Data.Time (UTCTime, getCurrentTime)
@@ -64,7 +64,7 @@ createAdvancedCache = do
         , patternIndex = Map.empty
         , haltPrograms = []
         , loopPrograms = []
-        , statistics = CacheStatistics 0 0 0 now
+        , statistics = CacheStatistics 0 0 0 now 0 0 0 0 0.0
         , cacheVersion = "2.0"
         }
 
@@ -81,18 +81,23 @@ lookupByPattern program cache = do
                     let newStats = incrementMisses (statistics cache)
                     return (Nothing, cache { statistics = newStats })
                 (similarEntry:_) -> do
-                    -- Update usage statistics
+                    -- Update usage statistics for wildcard/similarity hit
                     now <- getCurrentTime
                     let updatedEntry = similarEntry { entryLastUsed = now, entryUseCount = entryUseCount similarEntry + 1 }
                         updatedEntries = Map.insert (show (entryProgram updatedEntry)) updatedEntry (cacheEntries cache)
-                        newStats = incrementHits (statistics cache)
+                        -- Estimate time saved (assuming ~0.1ms average execution time)
+                        timeSavedMs = 0.1
+                        newStats = incrementHits $ incrementWildcardHits $ incrementExecutionsSaved $ 
+                                  addTimeSaved timeSavedMs (statistics cache)
                     return (Just (entryResult updatedEntry), cache { cacheEntries = updatedEntries, statistics = newStats })
         Just entry -> do
             -- Direct cache hit
             now <- getCurrentTime
             let updatedEntry = entry { entryLastUsed = now, entryUseCount = entryUseCount entry + 1 }
                 updatedEntries = Map.insert programKey updatedEntry (cacheEntries cache)
-                newStats = incrementHits (statistics cache)
+                -- Estimate time saved for exact match
+                timeSavedMs = 0.1
+                newStats = incrementHits $ incrementExecutionsSaved $ addTimeSaved timeSavedMs (statistics cache)
             return (Just (entryResult updatedEntry), cache { cacheEntries = updatedEntries, statistics = newStats })
 
 -- | Add a program with pattern analysis to the cache
@@ -125,8 +130,8 @@ addPatternAnalysis program result cache = do
             Nothing -> loopPrograms cache
             Just loopPat -> (programKey, loopPat) : loopPrograms cache
         
-        -- Update statistics
-        newStats = incrementPatterns (statistics cache)
+        -- Update statistics (this represents a program that was executed)
+        newStats = incrementPatterns $ incrementTotalExecutions (statistics cache)
     
     return cache 
         { cacheEntries = newEntries

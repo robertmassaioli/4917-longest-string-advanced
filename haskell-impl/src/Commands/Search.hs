@@ -1,3 +1,5 @@
+{-# LANGUAGE RecordWildCards #-}
+
 module Commands.Search
     ( runSearchCommand
     ) where
@@ -36,19 +38,20 @@ runSearchCommand searchLength useCached useAdvanced fresh cacheFile verbose = do
     putStrLn $ "Searching " ++ show (16^searchLength) ++ " possible programs..."
     putStrLn ""
     
-    result <- if useAdvanced
+    (result, maybeCachedResult) <- if useAdvanced
               then do
                   when verbose $ putStrLn "Using Phase 2 advanced pattern analysis..."
                   cachedResult <- findLongestOutputProgramAdvanced searchLength
-                  return $ convertCachedResult cachedResult
+                  return (convertCachedResult cachedResult, Just cachedResult)
               else if useCached 
               then do
                   when verbose $ putStrLn "Using persistent memoization cache..."
                   cachedResult <- findLongestOutputProgramCachedWithFile cacheFile searchLength
-                  return $ convertCachedResult cachedResult
+                  return (convertCachedResult cachedResult, Just cachedResult)
               else do
                   when verbose $ putStrLn "Running direct search..."
-                  findLongestOutputProgramTimed searchLength
+                  directResult <- findLongestOutputProgramTimed searchLength
+                  return (directResult, Nothing)
     
     case bestProgram result of
         Nothing -> do
@@ -68,6 +71,13 @@ runSearchCommand searchLength useCached useAdvanced fresh cacheFile verbose = do
                 putStrLn "Program analysis:"
                 analyzeProgram (programBytes prog)
     
+    -- Display cache statistics if using advanced caching
+    when (useCached && useAdvanced) $ do
+        putStrLn ""
+        case maybeCachedResult of
+            Just cachedResult -> displayCacheStatistics cachedResult
+            Nothing -> return ()
+    
     when useCached $ do
         putStrLn ""
         putStrLn $ "💾 Cache file '" ++ cacheFile ++ "' updated."
@@ -81,6 +91,35 @@ convertCachedResult cached = SearchResult
     , programsTested = cachedProgramsTested cached
     , programsWithOutput = cachedProgramsWithOutput cached
     }
+
+-- | Display cache effectiveness statistics
+displayCacheStatistics :: CachedSearchResult -> IO ()
+displayCacheStatistics CachedSearchResult{..} = do
+    putStrLn "📊 Cache Effectiveness Statistics:"
+    
+    -- Calculate cache effectiveness percentage
+    let totalLookups = cachedCacheHits + cachedCacheMisses
+        effectivenessPercent = if totalLookups > 0 
+                              then fromIntegral cachedExecutionsSaved / fromIntegral totalLookups * 100 
+                              else 0 :: Double
+    
+    putStrLn $ "   Cache hit rate: " ++ show cachedCacheHits ++ "/" ++ show totalLookups ++ 
+              " (" ++ printf "%.1f%%" (fromIntegral cachedCacheHits / fromIntegral totalLookups * 100 :: Double) ++ ")"
+    
+    putStrLn $ "   Executions saved: " ++ show cachedExecutionsSaved ++ 
+              " (" ++ printf "%.1f%%" effectivenessPercent ++ ")"
+    
+    when (cachedWildcardHits > 0) $
+        putStrLn $ "   Wildcard pattern hits: " ++ show cachedWildcardHits
+    
+    when (cachedSimilarityHits > 0) $
+        putStrLn $ "   Similarity hits: " ++ show cachedSimilarityHits
+    
+    putStrLn $ "   Programs executed: " ++ show cachedTotalExecutions
+    putStrLn $ "   Patterns learned: " ++ show cachedPatternsAdded
+    
+    when (cachedEstimatedTimeSavedMs > 0) $
+        putStrLn $ "   Estimated time saved: ~" ++ printf "%.1fms" cachedEstimatedTimeSavedMs
 
 
 -- Helper to conditionally print

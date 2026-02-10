@@ -24,10 +24,17 @@ import System.CPUTime (getCPUTime)
 import Text.Printf (printf)
 import ExecutionTracing (runProgramWithTracing)
 import qualified ExecutionTracing as ET
-import PatternCache (loadCache, saveCache, lookupPattern, addPatternEntry, PatternResult(..))
+import PatternCache (loadCache, saveCache, lookupPattern, addPatternEntry, PatternResult(..), incrementTotalExecutions)
 import qualified PatternCache as Cache
 import PatternAnalyzer (analyzeProgram, detectHaltPattern, detectLoopPattern)
-import AdvancedPatternCache (AdvancedPatternCache, createAdvancedCache, lookupByPattern, addPatternAnalysis)
+import AdvancedPatternCache (AdvancedPatternCache, createAdvancedCache, lookupByPattern, addPatternAnalysis, getCacheStatistics)
+
+-- | Calculate the actual length of a program (position of last non-zero byte + 1)
+calculateActualLength :: [Byte] -> Int
+calculateActualLength program = 
+    case [i | (i, byte) <- zip [0..] program, byte /= 0] of
+        [] -> 0  -- All zeros
+        indices -> maximum indices + 1  -- Last non-zero position + 1
 
 -- | Result of testing a program
 data ProgramResult = ProgramResult
@@ -53,6 +60,11 @@ data CachedSearchResult = CachedSearchResult
     , cachedCacheHits :: Int
     , cachedCacheMisses :: Int
     , cachedPatternsAdded :: Int
+    , cachedExecutionsSaved :: Int
+    , cachedWildcardHits :: Int
+    , cachedSimilarityHits :: Int
+    , cachedTotalExecutions :: Int
+    , cachedEstimatedTimeSavedMs :: Double
     } deriving (Show, Eq)
 
 -- | Generate all possible programs of a given length
@@ -62,6 +74,23 @@ generateAllPrograms programLength = map createDevice allPrograms
   where
     -- Generate all possible instruction sequences
     allPrograms = sequence (replicate programLength [0..15])
+
+-- | Generate programs with exactly the specified length (filtering by actual length)
+generateProgramsOfExactLength :: Int -> [Device]
+generateProgramsOfExactLength targetLength = 
+    let generationLength = targetLength + 2  -- Generate slightly larger to ensure enough valid programs
+        allCandidates = generateAllPrograms generationLength
+        validPrograms = filter hasExactLength allCandidates
+    in validPrograms
+  where
+    hasExactLength :: Device -> Bool
+    hasExactLength device = 
+        let programBytes = extractProgramBytes device
+            actualLength = calculateActualLength programBytes
+        in actualLength == targetLength
+    
+    extractProgramBytes :: Device -> [Byte]
+    extractProgramBytes Device{..} = [memory ! i | i <- [0..15]]
 
 -- | Find the program that produces the longest output string
 -- Returns Nothing if no programs produce output, or if length is too large
@@ -163,7 +192,11 @@ findLongestOutputProgramCached = findLongestOutputProgramCachedWithFile "program
 -- | Cached version with custom cache file path
 findLongestOutputProgramCachedWithFile :: String -> Int -> IO CachedSearchResult
 findLongestOutputProgramCachedWithFile cacheFilePath programLength 
-    | programLength <= 0 || programLength > 8 = return $ CachedSearchResult Nothing 0.0 0 0 0 0 0
+    | programLength <= 0 || programLength > 8 = return $ CachedSearchResult 
+        { cachedBestProgram = Nothing, cachedSearchTimeMs = 0.0, cachedProgramsTested = 0
+        , cachedProgramsWithOutput = 0, cachedCacheHits = 0, cachedCacheMisses = 0
+        , cachedPatternsAdded = 0, cachedExecutionsSaved = 0, cachedWildcardHits = 0
+        , cachedSimilarityHits = 0, cachedTotalExecutions = 0, cachedEstimatedTimeSavedMs = 0.0 }
     | otherwise = do
         start <- getCPUTime
         cache <- loadCache cacheFilePath
@@ -188,7 +221,12 @@ findLongestOutputProgramCachedWithFile cacheFilePath programLength
         end <- getCPUTime
         let timeDiffMs = fromIntegral (end - start) / (10^9)  -- Convert to milliseconds
         
-        return $ CachedSearchResult bestResult timeDiffMs totalPrograms validCount hits misses patternsAdded
+        return $ CachedSearchResult 
+            { cachedBestProgram = bestResult, cachedSearchTimeMs = timeDiffMs
+            , cachedProgramsTested = totalPrograms, cachedProgramsWithOutput = validCount
+            , cachedCacheHits = hits, cachedCacheMisses = misses, cachedPatternsAdded = patternsAdded
+            , cachedExecutionsSaved = 0, cachedWildcardHits = 0, cachedSimilarityHits = 0
+            , cachedTotalExecutions = patternsAdded, cachedEstimatedTimeSavedMs = 0.0 }
   where
     processWithCache :: Cache.ProgramCache -> [Device] -> Int -> Int -> Int -> [ProgramResult] 
                     -> IO ([ProgramResult], Cache.ProgramCache, Int, Int, Int)
@@ -257,24 +295,33 @@ findBestProgramsCached maxLength = do
 -- | Advanced pattern-based search with Phase 2 optimizations
 findLongestOutputProgramAdvanced :: Int -> IO CachedSearchResult
 findLongestOutputProgramAdvanced programLength 
-    | programLength <= 0 || programLength > 8 = return $ CachedSearchResult Nothing 0.0 0 0 0 0 0
+    | programLength <= 0 || programLength > 8 = return $ CachedSearchResult 
+        { cachedBestProgram = Nothing, cachedSearchTimeMs = 0.0, cachedProgramsTested = 0
+        , cachedProgramsWithOutput = 0, cachedCacheHits = 0, cachedCacheMisses = 0
+        , cachedPatternsAdded = 0, cachedExecutionsSaved = 0, cachedWildcardHits = 0
+        , cachedSimilarityHits = 0, cachedTotalExecutions = 0, cachedEstimatedTimeSavedMs = 0.0 }
     | otherwise = do
         start <- getCPUTime
         advancedCache <- createAdvancedCache
         
-        let allPrograms = generateAllPrograms programLength
-            totalPrograms = length allPrograms
+        let exactLengthPrograms = generateProgramsOfExactLength programLength
+            totalExactPrograms = length exactLengthPrograms
+            -- For comparison, show how many we would have generated without filtering
+            allPrograms = generateAllPrograms programLength
+            totalAllPrograms = length allPrograms
         
-        putStrLn $ "Testing " ++ show totalPrograms ++ " programs of length " ++ show programLength ++ " with advanced pattern analysis..."
+        putStrLn $ "Filtered to " ++ show totalExactPrograms ++ " programs with exact length " ++ show programLength ++ 
+                  " (from " ++ show totalAllPrograms ++ " total combinations)"
+        putStrLn $ "Testing " ++ show totalExactPrograms ++ " programs of exact length " ++ show programLength ++ " with advanced pattern analysis..."
         
         -- Phase 2.1: HALT Pattern Detection - Skip programs without reachable HALT
         let haltOptimizedPrograms = if programLength <= 4
-                                   then filter (not . hasUnreachableHalt) allPrograms
-                                   else allPrograms  -- Only optimize for smaller lengths
+                                   then filter (not . hasUnreachableHalt) exactLengthPrograms
+                                   else exactLengthPrograms  -- Only optimize for smaller lengths
             optimizedCount = length haltOptimizedPrograms
         
-        when (optimizedCount < totalPrograms) $
-            putStrLn $ "  HALT optimization: Skipped " ++ show (totalPrograms - optimizedCount) ++ " programs with unreachable HALT"
+        when (optimizedCount < totalExactPrograms) $
+            putStrLn $ "  HALT optimization: Skipped " ++ show (totalExactPrograms - optimizedCount) ++ " programs with unreachable HALT"
         
         -- Process programs with advanced pattern analysis
         (results, finalCache, hits, misses, patternsAdded) <- processWithAdvancedCache advancedCache haltOptimizedPrograms 0 0 0 []
@@ -287,10 +334,24 @@ findLongestOutputProgramAdvanced programLength
         
         end <- getCPUTime
         let timeDiffMs = fromIntegral (end - start) / (10^9)
+            cacheStats = getCacheStatistics finalCache
         
         putStrLn $ "  Pattern analysis: " ++ show patternsAdded ++ " new patterns detected"
         
-        return $ CachedSearchResult bestResult timeDiffMs optimizedCount validCount hits misses patternsAdded
+        return $ CachedSearchResult 
+            { cachedBestProgram = bestResult
+            , cachedSearchTimeMs = timeDiffMs
+            , cachedProgramsTested = optimizedCount
+            , cachedProgramsWithOutput = validCount
+            , cachedCacheHits = hits
+            , cachedCacheMisses = misses
+            , cachedPatternsAdded = patternsAdded
+            , cachedExecutionsSaved = Cache.executionsSaved cacheStats
+            , cachedWildcardHits = Cache.wildcardHits cacheStats
+            , cachedSimilarityHits = Cache.similarityHits cacheStats
+            , cachedTotalExecutions = Cache.totalExecutions cacheStats
+            , cachedEstimatedTimeSavedMs = Cache.estimatedTimeSavedMs cacheStats
+            }
   where
     -- Phase 2.1: HALT pattern detection optimization
     hasUnreachableHalt :: Device -> Bool

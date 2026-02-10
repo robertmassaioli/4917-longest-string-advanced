@@ -81,31 +81,31 @@ hasOperand _  = False
 -- | Get description for an instruction
 instructionDescription :: Int -> String
 instructionDescription 0  = "HALT"
-instructionDescription 1  = "R0 = R0 + R1"
-instructionDescription 2  = "R0 = R0 - R1"
-instructionDescription 3  = "R0++"
-instructionDescription 4  = "R1++"
-instructionDescription 5  = "R0--"
-instructionDescription 6  = "R1--"
-instructionDescription 7  = "Ring Bell (NOP)"
-instructionDescription 8  = "PRINT (needs operand)"
+instructionDescription 1  = "ADD R0, R1"
+instructionDescription 2  = "SUB R0, R1"
+instructionDescription 3  = "INC R0"
+instructionDescription 4  = "INC R1"
+instructionDescription 5  = "DEC R0"
+instructionDescription 6  = "DEC R1"
+instructionDescription 7  = "NOP"
+instructionDescription 8  = "OUTPUT (needs operand)"
 instructionDescription 9  = "LOAD R0 (needs address)"
 instructionDescription 10 = "LOAD R1 (needs address)"
 instructionDescription 11 = "STORE R0 (needs address)"
 instructionDescription 12 = "STORE R1 (needs address)"
-instructionDescription 13 = "JUMP (needs address)"
-instructionDescription 14 = "JUMP IF R0==0 (needs address)"
-instructionDescription 15 = "JUMP IF R0!=0 (needs address)"
+instructionDescription 13 = "JMP (needs address)"
+instructionDescription 14 = "JZ (needs address)"
+instructionDescription 15 = "JNZ (needs address)"
 instructionDescription n   = "Unknown instruction (" ++ show n ++ ")"
 
 -- | Get description for an instruction with its operand
 instructionDescriptionWithOperand :: Int -> Int -> String
-instructionDescriptionWithOperand 8 operand  = "PRINT " ++ show operand
-instructionDescriptionWithOperand 9 operand  = "LOAD R0 from address " ++ show operand
-instructionDescriptionWithOperand 10 operand = "LOAD R1 from address " ++ show operand
-instructionDescriptionWithOperand 11 operand = "STORE R0 to address " ++ show operand
-instructionDescriptionWithOperand 12 operand = "STORE R1 to address " ++ show operand
-instructionDescriptionWithOperand 13 operand = "JUMP to address " ++ show operand
-instructionDescriptionWithOperand 14 operand = "JUMP to address " ++ show operand ++ " if R0==0"
-instructionDescriptionWithOperand 15 operand = "JUMP to address " ++ show operand ++ " if R0!=0"
+instructionDescriptionWithOperand 8 operand  = "OUTPUT " ++ show operand
+instructionDescriptionWithOperand 9 operand  = "LOAD R0, [" ++ show operand ++ "]"
+instructionDescriptionWithOperand 10 operand = "LOAD R1, [" ++ show operand ++ "]"
+instructionDescriptionWithOperand 11 operand = "STORE R0, [" ++ show operand ++ "]"
+instructionDescriptionWithOperand 12 operand = "STORE R1, [" ++ show operand ++ "]"
+instructionDescriptionWithOperand 13 operand = "JMP to address " ++ show operand
+instructionDescriptionWithOperand 14 operand = "JZ to address " ++ show operand ++ " if R0==0"
+instructionDescriptionWithOperand 15 operand = "JNZ to address " ++ show operand ++ " if R0!=0"
 instructionDescriptionWithOperand inst operand = "Unknown instruction " ++ show inst ++ " with operand " ++ show operand
