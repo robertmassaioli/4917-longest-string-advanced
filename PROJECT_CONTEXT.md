@@ -11,7 +11,7 @@ This project implements a brute-force search to find the **longest possible outp
   - Code is stored directly in memory locations 0-15
   - Undefined memory locations default to zero
   - Program counter wraps around (PC=16 becomes PC=0)
-- **Program Length**: Defined as the position of the last non-zero memory location + 1
+- **Program Length**: Defined as the position of the last non-zero memory location (zero-indexed)
 
 ### Complete Instruction Set
 The 4917 supports 16 instructions, divided into single and two-byte operations:
@@ -44,16 +44,22 @@ The 4917 supports 16 instructions, divided into single and two-byte operations:
 ### Key Constraints:
 - Programs are limited in length (typically 3-8 instructions)
 - Each instruction is 4 bits (0-15)
-- Program length = position of last non-zero byte + 1 (e.g., `[8, 15, 0, 0, 0...]` has length 2)
+- Program length = position of last non-zero byte (e.g., `[8, 15, 0, 0, 0...]` has length 1)
 - Memory beyond program length is implicitly zero
 - Program counter wraps at memory boundary (enables loops)
 - Output is measured in **character count** (digits 0-9 = 1 char, 10-15 = 2 chars)
 - Programs must terminate (no infinite loops) to be valid solutions
 
-### Example:
-- Length 2 program: `[8, 15]` stored in memory[0-1] = "PRINT 15" → outputs "15" (2 characters)
-- Memory layout: `[8, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]` (positions 2-15 default to zero)
-- Length 3 program: `[8, 15, 0]` stored in memory[0-2] = "PRINT 15; HALT" → outputs "15" (2 characters)
+### Program Length Examples:
+- `[8, 15]` → length 1 (last non-zero byte at position 1)
+- `[8, 15, 0]` → length 1 (last non-zero byte at position 1, trailing zeros ignored)
+- `[8, 15, 0, 0]` → length 1 (last non-zero byte at position 1, trailing zeros ignored)
+- `[8, 15, 0, 4]` → length 3 (last non-zero byte at position 3)
+- `[8, 15, 0, 4, 0]` → length 3 (last non-zero byte at position 3, trailing zeros ignored)
+
+### Execution Example:
+- Length 1 program: `[8, 15]` = "PRINT 15" → outputs "15" (2 characters)
+- Length 3 program: `[8, 15, 0, 0]` = "PRINT 15; HALT; HALT" → outputs "15" (2 characters)
 - Goal: Find the program of given length that outputs the most characters
 
 ## Implementation Architecture
