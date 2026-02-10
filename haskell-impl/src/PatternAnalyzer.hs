@@ -11,10 +11,13 @@ module PatternAnalyzer
     , generatePattern
     , matchesPattern
     , patternConfidence
+    , generateWildcardPattern
+    , matchesWildcardPattern
     ) where
 
 import ExecutionTracing (ProgramResult(..), TerminationType(..), ExecutionStep(..), extractExecutionSteps)
 import Processor (Byte)
+import WildcardPatterns (WildcardPattern, wildcardFromProgram, matchWildcardPattern)
 import Data.List (isPrefixOf, findIndex, nub)
 import Control.DeepSeq (NFData, rnf)
 import GHC.Generics (Generic)
@@ -48,6 +51,7 @@ data ProgramPattern = ProgramPattern
     , patternOutputFormula :: String  -- Formula for computing output
     , patternStepsFormula :: String   -- Formula for computing steps
     , patternConfidenceScore :: Double -- How confident we are (0.0-1.0)
+    , patternWildcard :: Maybe WildcardPattern -- Wildcard generalization
     } deriving (Show, Eq, Generic)
 
 instance NFData ProgramPattern
@@ -58,6 +62,7 @@ analyzeProgram program result =
     let patternType = detectPatternType result
         loopPattern = detectLoopPattern result
         confidence = patternConfidence result patternType
+        wildcardPattern = generateWildcardPattern program patternType
     in ProgramPattern
         { patternProgram = program
         , patternType = patternType
@@ -65,6 +70,7 @@ analyzeProgram program result =
         , patternOutputFormula = generateOutputFormula result patternType loopPattern
         , patternStepsFormula = generateStepsFormula result patternType loopPattern
         , patternConfidenceScore = confidence
+        , patternWildcard = wildcardPattern
         }
 
 -- | Detect the primary pattern type from execution result
@@ -225,9 +231,29 @@ generatePattern = analyzeProgram
 -- | Check if a program matches an existing pattern
 matchesPattern :: [Byte] -> ProgramPattern -> Bool
 matchesPattern program pattern = 
-    -- For Phase 2, we do exact matching
-    -- Phase 3 will add wildcard and constraint-based matching
-    program == patternProgram pattern
+    -- First try exact matching
+    if program == patternProgram pattern
+        then True
+        -- Then try wildcard matching if available
+        else case patternWildcard pattern of
+            Nothing -> False
+            Just wildcardPat -> matchesWildcardPattern program wildcardPat
+
+-- | Generate wildcard pattern for a program based on its pattern type
+generateWildcardPattern :: [Byte] -> PatternType -> Maybe WildcardPattern
+generateWildcardPattern program patternType = 
+    case patternType of
+        HaltPattern -> Just $ wildcardFromProgram program "Terminating program pattern"
+        SimpleLoopPattern -> Just $ wildcardFromProgram program "Simple loop pattern"
+        ComplexLoopPattern -> Just $ wildcardFromProgram program "Complex loop pattern"
+        LinearPattern -> Nothing  -- Linear patterns are too specific for wildcards
+
+-- | Check if a program matches a wildcard pattern
+matchesWildcardPattern :: [Byte] -> WildcardPattern -> Bool
+matchesWildcardPattern program wildcardPat = 
+    case matchWildcardPattern program wildcardPat of
+        Just _ -> True
+        Nothing -> False
 
 -- Note: stepInstruction, stepProgramCounter, and stepOutput are now 
 -- direct field accessors from the ExecutionStep record, so no helper functions needed.

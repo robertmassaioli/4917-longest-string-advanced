@@ -14,6 +14,7 @@ module AdvancedPatternCache
     ) where
 
 import PatternAnalyzer
+import qualified WildcardPatterns as WP
 import ExecutionTracing (ProgramResult(..), extractExecutionSteps)
 import PatternCache (ProgramCache(..), CacheStatistics(..))
 import qualified PatternCache as Basic
@@ -21,6 +22,7 @@ import Processor (Byte)
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Data.List (sortBy)
 import Data.Aeson
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData, rnf)
@@ -146,6 +148,13 @@ findSimilarPrograms program cache = do
         similarEntries = [entry | key <- similarKeys, Just entry <- [Map.lookup key (cacheEntries cache)]]
     
     return $ take 5 $ filter (isSimilarProgram program) similarEntries
+  where
+    isSimilarProgram :: [Byte] -> PatternEntry -> Bool
+    isSimilarProgram prog entry = 
+        -- Try wildcard pattern matching first
+        matchesPattern prog (entryPattern entry) ||
+        -- Fallback to basic similarity
+        (length prog == length (entryProgram entry))
 
 -- | Predict pattern type from program structure (heuristic)
 predictPatternType :: [Byte] -> PatternType
