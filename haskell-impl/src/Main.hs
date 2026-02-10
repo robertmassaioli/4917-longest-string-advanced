@@ -1,6 +1,7 @@
 module Main where
 
 import Processor
+import Processor (ProgramExecutionResult(..))
 import SolveTask
 import ClientResults
 import PackProcessor
@@ -74,7 +75,9 @@ runExample name device = do
 
     -- Run with loop detection
     let loopCheckResult = runProgramLoopCheck device
-    putStrLn $ "Run with loop detection: " ++ show loopCheckResult ++ " characters output"
+    case loopCheckResult of
+        ProgramTerminated count -> putStrLn $ "Run with loop detection: " ++ show count ++ " characters output"
+        InfiniteLoopDetected -> putStrLn "Run with loop detection: Infinite loop detected!"
 
     -- Show final state after a few steps
     let initialDevice = initProgram device

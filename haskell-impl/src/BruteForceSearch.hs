@@ -4,18 +4,25 @@ module BruteForceSearch
     ( generateAllPrograms
     , findLongestOutputProgram
     , findLongestOutputProgramTimed
+    , findLongestOutputProgramCached
     , ProgramResult(..)
     , SearchResult(..)
+    , CachedSearchResult(..)
     , showProgramResult
     , findBestPrograms
+    , findBestProgramsCached
     ) where
 
-import Processor (Device(..), Byte, createDevice, runProgramLoopCheck)
+import Processor (Device(..), Byte, ProgramExecutionResult(..), createDevice, runProgramLoopCheck)
 import Data.List (maximumBy, foldl')
 import Data.Ord (comparing)
 import Data.Vector.Unboxed ((!))  -- For vector indexing
 import System.CPUTime (getCPUTime)
 import Text.Printf (printf)
+import ExecutionTracing (runProgramWithTracing)
+import qualified ExecutionTracing as ET
+import PatternCache (loadCache, saveCache, lookupPattern, addPatternEntry, PatternResult(..))
+import qualified PatternCache as Cache
 
 -- | Result of testing a program
 data ProgramResult = ProgramResult
@@ -30,6 +37,17 @@ data SearchResult = SearchResult
     , searchTimeMs :: Double
     , programsTested :: Int
     , programsWithOutput :: Int
+    } deriving (Show, Eq)
+
+-- | Result of a cached search with cache statistics
+data CachedSearchResult = CachedSearchResult
+    { cachedBestProgram :: Maybe ProgramResult
+    , cachedSearchTimeMs :: Double
+    , cachedProgramsTested :: Int
+    , cachedProgramsWithOutput :: Int
+    , cachedCacheHits :: Int
+    , cachedCacheMisses :: Int
+    , cachedPatternsAdded :: Int
     } deriving (Show, Eq)
 
 -- | Generate all possible programs of a given length
@@ -56,7 +74,10 @@ findLongestOutputProgram programLength
   where
     testProgram :: Device -> ProgramResult
     testProgram device = 
-        let output = runProgramLoopCheck device
+        let result = runProgramLoopCheck device
+            output = case result of
+                ProgramTerminated count -> count
+                InfiniteLoopDetected -> 0  -- Infinite loops are never solutions
             bytes = take programLength $ extractProgramBytes device
         in ProgramResult
             { program = device
@@ -99,7 +120,10 @@ findLongestOutputProgramTimed programLength
   where
     testProgram :: Device -> ProgramResult
     testProgram device = 
-        let output = runProgramLoopCheck device
+        let result = runProgramLoopCheck device
+            output = case result of
+                ProgramTerminated count -> count
+                InfiniteLoopDetected -> 0  -- Infinite loops are never solutions
             bytes = take programLength $ extractProgramBytes device
         in ProgramResult
             { program = device
@@ -126,3 +150,95 @@ findBestPrograms maxLength = do
                 putStrLn $ "  (" ++ show (programsWithOutput result) ++ "/" ++ 
                           show (programsTested result) ++ " programs produced output, " ++
                           printf "%.1fms" (searchTimeMs result) ++ ")"
+
+-- | Cached version of findLongestOutputProgramTimed using persistent memoization
+findLongestOutputProgramCached :: Int -> IO CachedSearchResult
+findLongestOutputProgramCached programLength 
+    | programLength <= 0 || programLength > 8 = return $ CachedSearchResult Nothing 0.0 0 0 0 0 0
+    | otherwise = do
+        start <- getCPUTime
+        cache <- loadCache "program_cache.json"
+        
+        let allPrograms = generateAllPrograms programLength
+            totalPrograms = length allPrograms
+        
+        putStrLn $ "Testing " ++ show totalPrograms ++ " programs of length " ++ show programLength ++ " with caching..."
+        
+        -- Process programs with cache lookup
+        (results, finalCache, hits, misses, patternsAdded) <- processWithCache cache allPrograms 0 0 0 []
+        
+        -- Save updated cache
+        saveCache finalCache
+        
+        let validResults = filter (\r -> outputLength r > 0) results
+            validCount = length validResults
+            bestResult = if null validResults 
+                        then Nothing
+                        else Just $ maximumBy (comparing outputLength) validResults
+        
+        end <- getCPUTime
+        let timeDiffMs = fromIntegral (end - start) / (10^9)  -- Convert to milliseconds
+        
+        return $ CachedSearchResult bestResult timeDiffMs totalPrograms validCount hits misses patternsAdded
+  where
+    processWithCache :: Cache.ProgramCache -> [Device] -> Int -> Int -> Int -> [ProgramResult] 
+                    -> IO ([ProgramResult], Cache.ProgramCache, Int, Int, Int)
+    processWithCache cache [] hits misses added results = return (reverse results, cache, hits, misses, added)
+    processWithCache cache (device:devices) hits misses added results = do
+        let programBytes = take programLength $ extractProgramBytes device
+        
+        -- Try cache lookup
+        (maybeResult, updatedCache) <- lookupPattern programBytes cache
+        
+        case maybeResult of
+            Just cachedResult -> do
+                -- Cache hit - create ProgramResult from cached data
+                let outputLen = case patternTermination cachedResult of
+                        ET.InfiniteLoop -> 0  -- Infinite loops are never solutions
+                        _ -> length (patternOutput cachedResult)
+                    programResult = ProgramResult 
+                        { program = device
+                        , outputLength = outputLen
+                        , programBytes = programBytes
+                        }
+                processWithCache updatedCache devices (hits + 1) misses added (programResult:results)
+            
+            Nothing -> do
+                -- Cache miss - compute result and add to cache
+                tracedResult <- runProgramWithTracing programBytes
+                let outputLen = case ET.resultTermination tracedResult of
+                        ET.InfiniteLoop -> 0  -- Infinite loops are never solutions
+                        _ -> length (ET.resultOutput tracedResult)
+                    programResult = ProgramResult
+                        { program = device
+                        , outputLength = outputLen
+                        , programBytes = programBytes
+                        }
+                
+                -- Add to cache
+                cacheWithNewPattern <- addPatternEntry programBytes tracedResult updatedCache
+                
+                processWithCache cacheWithNewPattern devices hits (misses + 1) (added + 1) (programResult:results)
+    
+    -- Extract the program bytes from a device's memory
+    extractProgramBytes :: Device -> [Byte]
+    extractProgramBytes Device{..} = [memory ! i | i <- [0..15]]
+
+-- | Cached version of findBestPrograms
+findBestProgramsCached :: Int -> IO ()
+findBestProgramsCached maxLength = do
+    putStrLn $ "Finding best programs for lengths 1 to " ++ show maxLength ++ " using persistent memoization..."
+    mapM_ findAndShowBestCached [1..maxLength]
+  where
+    findAndShowBestCached len = do
+        result <- findLongestOutputProgramCached len
+        case cachedBestProgram result of
+            Nothing -> putStrLn $ "Length " ++ show len ++ ": No programs found that produce output"
+            Just prog -> do
+                putStrLn $ "Length " ++ show len ++ ": " ++ showProgramResult prog
+                putStrLn $ "  (" ++ show (cachedProgramsWithOutput result) ++ "/" ++ 
+                          show (cachedProgramsTested result) ++ " programs tested, " ++
+                          printf "%.1fms" (cachedSearchTimeMs result) ++ ")"
+                putStrLn $ "  Cache: " ++ show (cachedCacheHits result) ++ " hits, " ++ 
+                          show (cachedCacheMisses result) ++ " misses, " ++
+                          show (cachedPatternsAdded result) ++ " patterns added"

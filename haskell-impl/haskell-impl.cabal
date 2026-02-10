@@ -18,10 +18,15 @@ library
                      , Benchmark
                      , ProcessorTests
                      , BruteForceSearch
+                     , ExecutionTracing
+                     , PatternCache
+                     , PatternMatching
   build-depends:       base >=4.7 && <5
                      , vector >=0.12 && <0.14
                      , time >=1.9 && <1.13
                      , deepseq >=1.4 && <1.6
+                     , aeson >=2.0 && <2.3
+                     , containers >=0.6 && <0.8
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
@@ -30,6 +35,10 @@ executable haskell-impl
   main-is:             Main.hs
   build-depends:       base >=4.7 && <5
                      , vector >=0.12 && <0.14
+                     , time >=1.9 && <1.13
+                     , deepseq >=1.4 && <1.6
+                     , aeson >=2.0 && <2.3
+                     , containers >=0.6 && <0.8
                      , haskell-impl
   hs-source-dirs:      src
   default-language:    Haskell2010
@@ -54,3 +63,16 @@ executable haskell-impl-test
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
+
+executable haskell-impl-cache-demo
+  main-is:             CachingDemo.hs
+  build-depends:       base >=4.7 && <5
+                     , vector >=0.12 && <0.14
+                     , time >=1.9 && <1.13
+                     , deepseq >=1.4 && <1.6
+                     , aeson >=2.0 && <2.3
+                     , containers >=0.6 && <0.8
+                     , haskell-impl
+  hs-source-dirs:      src
+  default-language:    Haskell2010
+  ghc-options:         -Wall -threaded

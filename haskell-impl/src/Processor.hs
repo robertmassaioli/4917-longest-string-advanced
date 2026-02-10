@@ -4,6 +4,7 @@
 module Processor
     ( Device(..)
     , Byte
+    , ProgramExecutionResult(..)
     , createDevice
     , initProgram
     , stepProgram
@@ -12,6 +13,9 @@ module Processor
     , copyProgram
     , comparePrograms
     , programLength
+    , runStep
+    , isHalted
+    , getOutput
     ) where
 
 import Data.Word (Word8)
@@ -30,20 +34,22 @@ createDevice memList = Device
     , r0 = 0
     , r1 = 0
     , pc = 0
+    , output = ""
     }
 
 -- | The device structure representing the 4917 machine state
 data Device = Device
     { memory :: !(Vector Byte)  -- 16 memory locations
-    , r0     :: !Byte          -- Register 0 oaeh
+    , r0     :: !Byte          -- Register 0
     , r1     :: !Byte          -- Register 1
     , pc     :: !Byte          -- Program Counter
+    , output :: !String        -- Accumulated output
     } deriving (Show, Eq)
 
 -- | Initialize a program to its starting state
 {-# INLINE initProgram #-}
 initProgram :: Device -> Device
-initProgram device = device { r0 = 0, r1 = 0, pc = 0 }
+initProgram device = device { r0 = 0, r1 = 0, pc = 0, output = "" }
 
 -- | Perform a single step of program execution
 -- Returns (newDevice, outputCount, programFinished)
@@ -65,8 +71,10 @@ stepProgram device@Device{..} =
         -- Complex instructions need more computation
         8  -> let !nextPC = (newPC + 1) .&. 0x0F
                   !nextValue = memory ! fromIntegral newPC
-                  !outputCount = if nextValue > 9 then 2 else 1
-              in (device { pc = nextPC }, outputCount, False)  -- OUTPUT
+                  !outputStr = show nextValue
+                  !outputCount = length outputStr
+                  !newOutput = output ++ outputStr
+              in (device { pc = nextPC, output = newOutput }, outputCount, False)  -- OUTPUT
 
         9  -> let !nextPC = (newPC + 1) .&. 0x0F
                   !addr = memory ! fromIntegral newPC
@@ -127,9 +135,15 @@ runProgram device timeout = go (initProgram device) timeout 0
                then newOutputAcc
                else go newDev (t - 1) newOutputAcc
 
+-- | Result of running a program with loop detection
+data ProgramExecutionResult 
+    = ProgramTerminated Int  -- ^ Program terminated normally with output count
+    | InfiniteLoopDetected   -- ^ Infinite loop was detected
+    deriving (Show, Eq)
+
 -- | Run a program with loop detection using Floyd's cycle detection algorithm
--- Returns the total output count, or 0 if infinite loop detected
-runProgramLoopCheck :: Device -> Int
+-- Returns either the total output count if terminated, or InfiniteLoopDetected
+runProgramLoopCheck :: Device -> ProgramExecutionResult
 runProgramLoopCheck device = go slowDev fastDev 0
   where
     slowDev = initProgram device
@@ -143,9 +157,9 @@ runProgramLoopCheck device = go slowDev fastDev 0
                                               else stepProgram fast1
             newOutputAcc = outputAcc + output1 + output2
         in if fast2Finished
-           then newOutputAcc
+           then ProgramTerminated newOutputAcc
            else if comparePrograms newSlow fast2
-                then 0  -- Loop detected
+                then InfiniteLoopDetected  -- Loop detected
                 else go newSlow fast2 newOutputAcc
 
 -- | Copy a program (create a deep copy)
@@ -162,3 +176,19 @@ programLength Device{..} =
     case [i | i <- [15, 14 .. 0], memory ! i /= 0] of
         [] -> 0
         (i:_) -> i + 1
+
+-- | Run a single step (for tracing support)
+runStep :: Device -> Device
+runStep device =
+    let (newDevice, _, _) = stepProgram device
+    in newDevice
+
+-- | Check if device is halted
+isHalted :: Device -> Bool
+isHalted Device{..} =
+    let instruction = memory ! fromIntegral pc
+    in instruction == 0
+
+-- | Get accumulated output
+getOutput :: Device -> String
+getOutput Device{..} = output

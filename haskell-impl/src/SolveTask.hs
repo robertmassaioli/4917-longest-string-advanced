@@ -9,7 +9,7 @@ import Data.Word (Word32)
 import qualified Data.Vector.Unboxed as V
 import Data.Vector.Unboxed ((!), (//))
 import Data.Bits ((.&.))
-import Processor (Device(..), Byte, runProgramLoopCheck, programLength)
+import Processor (Device(..), Byte, ProgramExecutionResult(..), runProgramLoopCheck, programLength)
 import PackProcessor (unpackHalfDevice, packDevice)
 import ClientResults (ClientResults, newClientResults, addResult)
 
@@ -36,7 +36,10 @@ solveLoop currentProgram clientResults = go currentProgram clientResults
         let (newProgram, shouldContinue) = incrementProgram program 8
         in if not shouldContinue
            then results
-           else let charactersPrinted = runProgramLoopCheck newProgram
+           else let result = runProgramLoopCheck newProgram
+                    charactersPrinted = case result of
+                        ProgramTerminated count -> count
+                        InfiniteLoopDetected -> 0  -- Treat infinite loops as producing no useful output
                     packedProgram = packDevice newProgram
                     updatedResults = addResult results newProgram charactersPrinted packedProgram
                 in go newProgram updatedResults
