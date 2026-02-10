@@ -7,18 +7,37 @@ This project implements a brute-force search to find the **longest possible outp
 - **Architecture**: 4-bit processor with 16 memory locations (0-15)
 - **Registers**: R0, R1, PC (program counter)
 - **Memory**: 16 bytes total (programs and data share this space)
-- **Instruction Set**: 16 instructions (0-15):
-  - `0`: HALT
-  - `1-7`: Basic arithmetic/register ops (ADD, SUB, INC, DEC, NOP)
-  - `8 x`: PRINT x (outputs the value x to screen)
-  - `9-12 x`: Memory operations (LOAD/STORE to/from registers)
-  - `13-15 x`: Control flow (JMP, JZ, JNZ)
+
+### Complete Instruction Set
+The 4917 supports 16 instructions, divided into single and two-byte operations:
+
+#### Single Byte Instructions (0-7):
+- `0` - **HALT**: Terminate program execution
+- `1` - **ADD**: R0 = R0 + R1
+- `2` - **SUB**: R0 = R0 - R1
+- `3` - **INC R0**: R0++
+- `4` - **INC R1**: R1++
+- `5` - **DEC R0**: R0--
+- `6` - **DEC R1**: R1--
+- `7` - **NOP**: Ring Bell (no-op, side effect only)
+
+#### Two Byte Instructions (8-15):
+- `8 x` - **PRINT x**: Output value x to screen
+- `9 x` - **LOAD R0**: Load value at memory location x into R0
+- `10 x` - **LOAD R1**: Load value at memory location x into R1
+- `11 x` - **STORE R0**: Store R0 value into memory location x
+- `12 x` - **STORE R1**: Store R1 value into memory location x
+- `13 x` - **JMP x**: Unconditional jump to location x
+- `14 x` - **JZ x**: Jump to x if R0 == 0
+- `15 x` - **JNZ x**: Jump to x if R0 != 0
+
+**Note**: This instruction set is surprisingly powerful - it can create quines, complex output patterns, and sophisticated control flow despite its minimal design.
 
 ## The Problem Being Solved
 **Find the program of a given length that produces the longest possible output string.**
 
 ### Key Constraints:
-- Programs can be limited in length (typically 3-8 instructions)
+- Programs are limited in length (typically 3-8 instructions)
 - Each instruction is 4 bits (0-15)
 - Output is measured in **character count** (digits 0-9 = 1 char, 10-15 = 2 chars)
 - Programs must terminate (no infinite loops) to be valid solutions
@@ -27,23 +46,16 @@ This project implements a brute-force search to find the **longest possible outp
 - Length 3 program: `[8, 15, 0]` = "PRINT 15; HALT" → outputs "15" (2 characters)
 - Goal: Find the length-3 program that outputs the most characters
 
-## Architecture Overview
-The project has both **C++ (original)** and **Haskell (optimized)** implementations:
+## Implementation Architecture
+This project uses a **Haskell implementation** with advanced optimizations:
 
-### C++ Implementation (Client/Server)
-- **Server**: Distributes work tasks across multiple clients
-- **Client**: Executes brute-force search on assigned program ranges
-- **Protocol**: Custom binary protocol for efficient task distribution
-- **Purpose**: Distributed computing to handle exponential search space
-
-### Haskell Implementation (Advanced)
-- **Optimizations**: 
-  - Persistent memoization/caching
-  - Pattern analysis and detection
-  - Advanced loop/halt detection
-  - Execution tracing for debugging
-- **Search Strategies**: Multiple algorithms for efficient exploration
-- **Performance**: Significantly faster than naive brute force
+### Core Features:
+- **Persistent memoization/caching**: Results cached across runs
+- **Pattern analysis and detection**: Recognizes execution patterns
+- **Advanced loop/halt detection**: Optimizes program filtering
+- **Execution tracing**: Detailed debugging and analysis
+- **Search strategies**: Multiple algorithms for efficient exploration
+- **Performance optimization**: Significantly faster than naive brute force
 
 ## Search Space Complexity
 - **Length N programs**: 16^N possible combinations
@@ -55,29 +67,30 @@ The project has both **C++ (original)** and **Haskell (optimized)** implementati
 ## Key Components
 
 ### Core Modules:
-- **Processor**: 4917 CPU emulator
-- **BruteForceSearch**: Exhaustive program testing
-- **ExecutionTracing**: Detailed execution analysis
-- **PatternCache**: Persistent memoization system
-- **Commands**: CLI interface for various operations
+- **Processor**: 4917 CPU emulator with optimized execution
+- **BruteForceSearch**: Exhaustive program testing with advanced filtering
+- **ExecutionTracing**: Detailed execution analysis and debugging
+- **PatternCache**: Persistent memoization system for performance
+- **AdvancedPatternCache**: Enhanced caching with pattern recognition
+- **Commands**: CLI interface for search, benchmarking, and testing
 
-### Important Commands:
-- `search`: Find longest output for given program length
+### Available Commands:
+- `search --length N`: Find longest output programs for length N
 - `cache-demo`: Demonstrate caching performance benefits
-- `benchmark`: Performance testing across different lengths
-
-## The Cache Demo Bug Context
-The cache demo should find programs that produce output, but it's incorrectly reporting "No programs found" because:
-
-1. **Expected Behavior**: Programs like `[8, 15, 0]` should output "15" (2 characters)
-2. **Actual Behavior**: All programs report 0 output due to a logic error
-3. **Root Cause**: The filtering logic incorrectly sets output to 0 for certain termination conditions
+- `benchmark`: Performance testing across different program lengths
+- `test`: Run comprehensive test suite
 
 ## Why This Matters
-This is a **computational exploration project** to:
-- Discover interesting programs and patterns in a minimal instruction set
-- Test distributed computing and optimization techniques
-- Explore the boundaries of what's possible in constrained computational environments
-- Demonstrate advanced caching and pattern recognition in brute-force search
+This is a **computational exploration project** that:
+- **Discovers emergent patterns** in minimal instruction set architectures
+- **Pushes optimization boundaries** in exponential search spaces
+- **Demonstrates advanced caching** and pattern recognition techniques
+- **Explores computational creativity** within severe constraints
 
-The goal is not just finding solutions, but efficiently exploring a massive search space and discovering emergent computational patterns.
+The project reveals how much computational complexity can emerge from just 16 simple instructions, and showcases techniques for efficiently searching massive program spaces that would otherwise be computationally intractable.
+
+### Research Value:
+- **Algorithmic optimization**: Advanced techniques for brute-force search acceleration
+- **Pattern recognition**: Automated detection of program execution patterns
+- **Computational archaeology**: Discovering interesting programs in constrained environments
+- **Performance engineering**: Balancing cache overhead with computation savings
