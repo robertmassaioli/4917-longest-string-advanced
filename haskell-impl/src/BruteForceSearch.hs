@@ -52,22 +52,11 @@ generateAllPrograms programLength = map createDevice allPrograms
     -- Generate all possible instruction sequences
     allPrograms = sequence (replicate programLength [0..15])
 
--- | Generate programs with exactly the specified length (filtering by actual length)
+-- | Generate programs with exactly the specified length
+-- This generates all possible programs of the given length, which means
+-- all combinations of instructions for positions 0 to (targetLength-1)
 generateProgramsOfExactLength :: Int -> [Device]
-generateProgramsOfExactLength targetLength = 
-    let generationLength = targetLength + 2  -- Generate slightly larger to ensure enough valid programs
-        allCandidates = generateAllPrograms generationLength
-        validPrograms = filter hasExactLength allCandidates
-    in validPrograms
-  where
-    hasExactLength :: Device -> Bool
-    hasExactLength device = 
-        let programBytes = extractProgramBytes device
-            actualLength = calculateActualLength programBytes
-        in actualLength == targetLength
-    
-    extractProgramBytes :: Device -> [Byte]
-    extractProgramBytes Device{..} = [memory ! i | i <- [0..15]]
+generateProgramsOfExactLength targetLength = generateAllPrograms targetLength
 
 
 
@@ -107,9 +96,11 @@ findLongestOutputProgramAdvanced cacheFilePath programLength
         
         let validResults = filter (\r -> ET.resultOutput r > 0) results
             validCount = length validResults
+            totalResults = length results
             bestResult = if null validResults 
                         then Nothing
                         else Just $ maximumBy (comparing ET.resultOutput) validResults
+        
         
         end <- getCPUTime
         let timeDiffMs = fromIntegral (end - start) / (10^9)
@@ -192,6 +183,7 @@ findLongestOutputProgramAdvanced cacheFilePath programLength
                         , resultProgram = programBytes
                         , resultTimestamp = ET.resultTimestamp executionResult
                         }
+                
                 
                 -- Add to advanced cache with pattern analysis
                 cacheWithPattern <- addPatternAnalysis programBytes executionResult updatedCache

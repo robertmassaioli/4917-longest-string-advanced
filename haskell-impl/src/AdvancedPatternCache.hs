@@ -149,8 +149,9 @@ findSimilarPrograms program cache = do
   where
     isSimilarProgram :: [Byte] -> PatternEntry -> Bool
     isSimilarProgram prog entry = 
-        -- Basic similarity: same length
-        length prog == length (entryProgram entry)
+        -- Strict similarity: programs must be identical for now
+        -- TODO: Implement proper pattern-based similarity later
+        prog == entryProgram entry
 
 
 -- | Get cache statistics
