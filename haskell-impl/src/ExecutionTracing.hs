@@ -182,12 +182,12 @@ addTracePoint step state traces
         _ -> True
 
 -- | Check if two states are effectively equal (for loop detection)
+-- Note: Output is excluded from comparison since it accumulates and would prevent loop detection
 statesEqual :: ExecutionState -> ExecutionState -> Bool
 statesEqual s1 s2 = 
     stateR0 s1 == stateR0 s2 &&
     stateR1 s1 == stateR1 s2 &&
-    statePC s1 == statePC s2 &&
-    stateOutput s1 == stateOutput s2
+    statePC s1 == statePC s2
 
 -- | Extract a fingerprint for pattern matching
 extractExecutionFingerprint :: ProgramResult -> String
