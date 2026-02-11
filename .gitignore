@@ -17,3 +17,6 @@
 # Cache files
 program_cache.json
 *.cache
+
+# Scratch files
+Scratch Prompts.md

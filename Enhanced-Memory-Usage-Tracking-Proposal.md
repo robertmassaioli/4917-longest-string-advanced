@@ -151,7 +151,7 @@ executeInstructionWithTracking instruction device =
 
 ## Enhanced WildcardPattern Logic
 
-### New Memory Usage Analysis
+### Enhanced Memory Usage Analysis
 
 ```haskell
 data MemoryUsageType = 
@@ -166,13 +166,14 @@ data EnhancedMemoryAnalysis = EnhancedMemoryAnalysis
     , operandOutputOptimizations :: [(Int, [Byte])]  -- Position and equivalent output-length values
     } deriving (Show, Eq)
 
--- Enhanced program analysis
-data EnhancedProgramAnalysis = EnhancedProgramAnalysis
+-- Enhanced existing ProgramAnalysis (no new data type needed)
+data ProgramAnalysis = ProgramAnalysis
     { programOriginal :: [Byte]
+    , unusedMemoryPositions :: [Int]
     , deadRegisterPositions :: [Int]  
     , registerAnalysis :: DeadOperationAnalysis
     , trackedDevice :: TrackedDevice
-    , memoryAnalysis :: EnhancedMemoryAnalysis  -- NEW
+    , memoryAnalysis :: EnhancedMemoryAnalysis  -- NEW FIELD ADDED
     } deriving (Show)
 
 analyzeMemoryUsage :: TrackedDevice -> EnhancedMemoryAnalysis
@@ -234,8 +235,8 @@ doubleCharOutput = [10..15]
 ### Enhanced Classification Logic
 
 ```haskell
--- Enhanced memory position classification
-classifyEnhancedMemoryPosition :: EnhancedProgramAnalysis -> Int -> OptimizedInstruction  
+-- Enhanced memory position classification using updated ProgramAnalysis
+classifyEnhancedMemoryPosition :: ProgramAnalysis -> Int -> OptimizedInstruction  
 classifyEnhancedMemoryPosition analysis pos 
     | pos >= 16 = error "Invalid memory position"
     | otherwise = 
@@ -271,11 +272,13 @@ classifyEnhancedMemoryPosition analysis pos
 5. **Update all instruction cases** to maintain dual tracking
 
 ### Phase 3: WildcardPattern Integration
-1. **Create EnhancedMemoryAnalysis** data structures
-2. **Implement analyzeMemoryUsage** function
-3. **Add operand output optimization** logic
-4. **Update classifyMemoryPosition** to use enhanced analysis
-5. **Modify optimizeProgram** to use enhanced classification
+1. **Add memoryAnalysis field** to existing ProgramAnalysis data structure
+2. **Create EnhancedMemoryAnalysis** data types
+3. **Implement analyzeMemoryUsage** function
+4. **Add operand output optimization** logic
+5. **Update analyzeProgram** to compute memory analysis
+6. **Update classifyMemoryPosition** to use enhanced analysis
+7. **Modify optimizeProgram** to use enhanced classification
 
 ### Phase 4: Testing & Validation
 1. **Update all existing tests** to expect enhanced behavior
