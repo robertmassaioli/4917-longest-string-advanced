@@ -106,27 +106,22 @@ r1DeadCodeEquivalent :: [Byte]
 r1DeadCodeEquivalent = r1ManipulatingOnly ++ bothRegisterOperations  -- [4, 6, 10, 1, 2]
 -- When R1 is never consumed, these operations are equivalent
 
--- | Complete pattern analysis using TrackedDevice
-analyzeProgram :: [Byte] -> Either String ProgramAnalysis
-analyzeProgram program = do
-    case createTrackedDevice program of
-        Left err -> Left $ "Error creating device: " ++ show err
-        Right device -> do
-            let finalDevice = runTrackedProgram device 1000
-            
-            -- 1. Unused Memory Analysis  
-            let unusedMemory = identifyUnusedMemory program finalDevice
-            
-            -- 2. Dead Register Analysis
-            let (regAnalysis, deadPositions) = analyzeRegisterOperations program finalDevice
-            
-            return $ ProgramAnalysis
-                { programOriginal = program
-                , unusedMemoryPositions = unusedMemory  
-                , deadRegisterPositions = deadPositions
-                , registerAnalysis = regAnalysis
-                , trackedDevice = finalDevice
-                }
+-- | Complete pattern analysis using already-executed TrackedDevice
+analyzeProgram :: [Byte] -> TrackedDevice -> ProgramAnalysis
+analyzeProgram program device = 
+    -- 1. Unused Memory Analysis  
+    let unusedMemory = identifyUnusedMemory program device
+    
+    -- 2. Dead Register Analysis
+        (regAnalysis, deadPositions) = analyzeRegisterOperations program device
+    
+    in ProgramAnalysis
+        { programOriginal = program
+        , unusedMemoryPositions = unusedMemory  
+        , deadRegisterPositions = deadPositions
+        , registerAnalysis = regAnalysis
+        , trackedDevice = device
+        }
 
 -- | Identify unused memory locations that can be wildcarded
 identifyUnusedMemory :: [Byte] -> TrackedDevice -> [Int]
