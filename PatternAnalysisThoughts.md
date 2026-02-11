@@ -379,38 +379,66 @@ classifyPosition analysis (pos, originalByte)
     | pos `elem` deadRegisterPositions analysis = classifyDeadRegisterPosition originalByte
     | otherwise = Required originalByte
 
--- | Handle dead register positions with instruction grouping
+-- | Handle dead register positions with instruction grouping  
 classifyDeadRegisterPosition :: Byte -> OptimizedInstruction
-classifyDeadRegisterPosition originalByte = case originalByte of
-    -- If it's a register-manipulating instruction, allow any register-manipulating instruction
-    1 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
-    2 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation  
-    3 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
-    4 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
-    5 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
-    6 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation  
-    9 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
-    10 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10] -- Any register operation
-    -- For other instructions, keep them as required (shouldn't happen in dead register analysis)
-    _ -> Required originalByte
+classifyDeadRegisterPosition originalByte 
+    | originalByte `elem` registerManipulating = AnyOf deadCodeEquivalentInstructions
+    | otherwise = Required originalByte  -- Non-register instructions must stay as-is
 ```
 
 ### Advanced Pattern Applications
 
-#### 1. Register Operation Equivalence
+#### 1. Instruction Category Constants
 ```haskell
--- Define instruction categories for AnyOf patterns
+-- Core instruction categories based on observable effects
 registerManipulating :: [Byte]
-registerManipulating = [1, 2, 3, 4, 5, 6, 9, 10]  -- All register-manipulating instructions
+registerManipulating = [1, 2, 3, 4, 5, 6, 9, 10]
+-- Instructions that modify register values but have no direct observable effect
+-- 1=ADD, 2=SUB, 3=INC_R0, 4=INC_R1, 5=DEC_R0, 6=DEC_R1, 9=LOAD_R0, 10=LOAD_R1
 
 registerConsuming :: [Byte] 
-registerConsuming = [11, 12, 14, 15]  -- All register-consuming instructions
+registerConsuming = [11, 12, 14, 15]
+-- Instructions that use register values for observable effects (memory/control flow)
+-- 11=STORE_R0, 12=STORE_R1, 14=JZ, 15=JNZ
 
-r0Operations :: [Byte]
-r0Operations = [1, 2, 3, 5, 9, 11, 14, 15]  -- All R0-related instructions
+nonRegisterInstructions :: [Byte]
+nonRegisterInstructions = [0, 7, 8, 13]
+-- Instructions that don't involve registers at all
+-- 0=HALT, 7=NOP, 8=PRINT, 13=JMP
 
-r1Operations :: [Byte]  
-r1Operations = [1, 2, 4, 6, 10, 12]  -- All R1-related instructions
+-- Register-specific operation categories
+r0ManipulatingOnly :: [Byte]  
+r0ManipulatingOnly = [3, 5, 9]
+-- Instructions that only manipulate R0: INC_R0, DEC_R0, LOAD_R0
+
+r1ManipulatingOnly :: [Byte]
+r1ManipulatingOnly = [4, 6, 10] 
+-- Instructions that only manipulate R1: INC_R1, DEC_R1, LOAD_R1
+
+bothRegisterOperations :: [Byte]
+bothRegisterOperations = [1, 2]
+-- Instructions that manipulate both registers: ADD, SUB
+
+r0ConsumingOnly :: [Byte]
+r0ConsumingOnly = [11, 14, 15]
+-- Instructions that only consume R0: STORE_R0, JZ, JNZ
+
+r1ConsumingOnly :: [Byte] 
+r1ConsumingOnly = [12]
+-- Instructions that only consume R1: STORE_R1
+
+-- Derived categories for common use cases
+deadCodeEquivalentInstructions :: [Byte]
+deadCodeEquivalentInstructions = registerManipulating
+-- When registers are never consumed, all register-manipulating instructions are equivalent
+
+r0DeadCodeEquivalent :: [Byte]
+r0DeadCodeEquivalent = r0ManipulatingOnly ++ bothRegisterOperations  -- [3, 5, 9, 1, 2]
+-- When R0 is never consumed, these operations are equivalent
+
+r1DeadCodeEquivalent :: [Byte] 
+r1DeadCodeEquivalent = r1ManipulatingOnly ++ bothRegisterOperations  -- [4, 6, 10, 1, 2]
+-- When R1 is never consumed, these operations are equivalent
 
 -- | Create more sophisticated patterns based on register usage
 createAdvancedPattern :: ProgramAnalysis -> [OptimizedInstruction]
@@ -421,7 +449,7 @@ classifyAdvancedPosition :: ProgramAnalysis -> (Int, Byte) -> OptimizedInstructi
 classifyAdvancedPosition analysis (pos, byte)
     | pos `elem` unusedMemoryPositions analysis = Wildcard
     | pos `elem` deadRegisterPositions analysis && byte `elem` registerManipulating = 
-        AnyOf registerManipulating  -- Any register manipulation is equivalent
+        AnyOf deadCodeEquivalentInstructions  -- Any register manipulation is equivalent when dead
     | otherwise = Required byte
 ```
 
@@ -450,28 +478,57 @@ instructionSpaceSize instruction = case instruction of
 
 ### Practical Pattern Examples
 
-#### Example 1: Memory and Register Optimization
+#### Example 1: Complete Dead Register Analysis
 ```haskell
--- Original: [8, 5, 3, 4, 0, X, X, X] (length 5, positions 5+ unused)
--- Analysis: positions 2,3 are dead register ops, positions 5+ unused
--- Pattern: [Required 8, Required 5, AnyOf [1,2,3,4,5,6,9,10], AnyOf [1,2,3,4,5,6,9,10], Required 0, Wildcard, Wildcard, Wildcard]
--- Reduction: 16^8 → 1×1×8×8×1×16×16×16 = 262,144 vs original 4,294,967,296 = 16,384× reduction
+-- Original: [8, 5, 3, 4, 0] -- PRINT 5, INC R0, INC R1, HALT
+-- Analysis: R0 and R1 never consumed, positions 2,3 are dead register operations
+-- Pattern: [Required 8, Required 5, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0]
+-- Reduction: 16^5 → 1×1×8×8×1 = 64 vs original 1,048,576 = 16,384× reduction
 ```
 
-#### Example 2: Complex Register Dependencies  
+#### Example 2: Mixed Memory and Register Optimization  
+```haskell
+-- Original: [8, 5, 3, 4, 0, X, X, X] (length 5, positions 5+ unused)
+-- Analysis: positions 2,3 are dead register ops, positions 5+ unused  
+-- Pattern: [Required 8, Required 5, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0, Wildcard, Wildcard, Wildcard]
+-- Reduction: 16^8 → 1×1×8×8×1×16×16×16 = 262,144 vs original 4.3B = 16,384× reduction
+```
+
+#### Example 3: Partial Register Consumption
 ```haskell
 -- Original: [3, 4, 1, 11, 0] -- INC R0, INC R1, ADD, STORE R0, HALT
--- Analysis: All register operations meaningful due to consumption
+-- Analysis: R0 consumed (via STORE), R1 consumed (via ADD combination), all operations meaningful
 -- Pattern: [Required 3, Required 4, Required 1, Required 11, Required 0]
 -- Reduction: 16^5 → 1×1×1×1×1 = No reduction (optimal program)
 ```
 
-#### Example 3: Selective Register Equivalence
+#### Example 4: Selective Register Dead Code
 ```haskell
--- If we know R0 is never consumed, R0 operations become equivalent:
--- AnyOf [3, 5, 9] for any R0-manipulating position  
--- AnyOf [4, 6, 10] for any R1-manipulating position
--- This allows grouping programs with different but equivalent register operations
+-- Scenario: R0 never consumed, but R1 is consumed
+-- R0-only operations can use: AnyOf r0DeadCodeEquivalent  -- [3, 5, 9, 1, 2]  
+-- R1-only operations must stay: Required (because R1 is meaningful)
+-- Both-register operations (ADD/SUB): Depends on analysis context
+
+-- Example program: [3, 4, 12, 1, 0] -- INC R0, INC R1, STORE R1, HALT  
+-- Analysis: R0 never consumed, R1 consumed by STORE R1
+-- Pattern: [AnyOf r0DeadCodeEquivalent, Required 4, Required 12, Required 1, Required 0]
+-- The INC R0 can become any R0-manipulating instruction since R0 is never used
+```
+
+#### Example 5: Advanced Instruction Category Usage
+```haskell
+-- Using specific instruction categories for targeted optimization:
+
+-- When only memory operations matter:
+nonMemoryInstructions = nonRegisterInstructions ++ registerManipulating
+-- [0, 7, 8, 13] ++ [1, 2, 3, 4, 5, 6, 9, 10] = all non-memory-affecting instructions
+
+-- When only control flow matters:
+controlFlowInstructions = [0, 13, 14, 15]  -- HALT, JMP, JZ, JNZ
+
+-- When register modifications don't matter but consumption does:
+meaningfulInstructions = nonRegisterInstructions ++ registerConsuming
+-- [0, 7, 8, 13] ++ [11, 12, 14, 15] = instructions that have direct observable effects
 ```
 ```
 
