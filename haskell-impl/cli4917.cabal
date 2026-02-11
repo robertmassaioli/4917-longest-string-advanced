@@ -72,6 +72,7 @@ test-suite spec
                      , ProcessorSpec
                      , TrackedProcessorSpec
                      , LegacyWildcardPatternsSpec
+                     , WildcardPatternSpec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base >=4.7 && <5
                      , hspec >=2.7 && <2.12

@@ -18,6 +18,13 @@ module WildcardPattern
     , deadCodeEquivalentInstructions
     , r0DeadCodeEquivalent
     , r1DeadCodeEquivalent
+    -- Internal functions for testing
+    , identifyUnusedMemory
+    , generateEquivalenceClass
+    , instructionSpaceSize
+    , findRegisterManipulatingPositions
+    , findR0ManipulatingPositions
+    , findR1ManipulatingPositions
     ) where
 
 import TrackedProcessor
