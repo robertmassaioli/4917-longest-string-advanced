@@ -66,6 +66,11 @@ test-suite spec
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test, src
   main-is:             Spec.hs
+  other-modules:       AdvancedPatternCacheSpec
+                     , PatternAnalyzerSpec
+                     , ProcessorSpec
+                     , TrackedProcessorSpec
+                     , WildcardPatternsSpec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base >=4.7 && <5
                      , hspec >=2.7 && <2.12
