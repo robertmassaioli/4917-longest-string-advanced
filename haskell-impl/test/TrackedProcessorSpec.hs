@@ -478,6 +478,14 @@ spec = describe "TrackedProcessor" $ do
         getR1WasConsumed final `shouldBe` True  -- Both direct (STORE R1) and via combination
         getR0ContainsCombination final `shouldBe` True
 
+      it "R1 consumption preserves R0 combination tracking" $ do
+        let program = [3, 4, 1, 12, 1, 0]  -- INC R0, INC R1, ADD, STORE R1, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` False  -- R0 never consumed directly
+        getR1WasConsumed final `shouldBe` True   -- R1 consumed by STORE R1
+        getR0ContainsCombination final `shouldBe` True  -- Combination flag preserved
+
       it "no combination but direct consumption" $ do
         let program = [3, 4, 11, 2, 12, 3, 0]  -- INC R0, INC R1, STORE R0, STORE R1, HALT
             tracked = createTestDevice program
