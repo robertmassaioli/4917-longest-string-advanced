@@ -90,8 +90,9 @@ detectLoopComplexity trace =
     let positions = map stepProgramCounter trace
         cycleLength = findCycleLength positions
         hasConditionalJumps = any (\step -> stepInstruction step `elem` [14, 15]) trace
-        -- Simple loop: has a detected cycle, short cycle length, no conditional jumps
-    in if cycleLength > 0 && cycleLength <= 5 && not hasConditionalJumps
+        -- Simple loop: has a detected cycle, short cycle length (≤3), no conditional jumps
+        -- Complex loop: has conditional jumps OR longer cycle length
+    in if cycleLength > 0 && cycleLength <= 3 && not hasConditionalJumps
        then SimpleLoopPattern
        else ComplexLoopPattern
 
@@ -133,12 +134,13 @@ analyzeLoopStructure trace
            then let cycleStart = if null positions then 0 else minimum positions
                     cycleEnd = if null positions then 0 else maximum positions
                     iterations = length trace `div` max 1 cycleLength
+                    outputPerCycle = max 1 (length $ filter (\step -> stepOutput step > 0) trace)
                 in Just $ LoopPattern
                     { loopStart = cycleStart
                     , loopEnd = cycleEnd
                     , loopCondition = detectLoopCondition trace
                     , loopIterations = iterations
-                    , outputPerIteration = 0  -- Simplified for now
+                    , outputPerIteration = outputPerCycle
                     }
            else Nothing
 
