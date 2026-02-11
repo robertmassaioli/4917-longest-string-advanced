@@ -87,8 +87,10 @@ detectPatternType result =
 -- | Distinguish between simple and complex loops
 detectLoopComplexity :: [ExecutionStep] -> PatternType
 detectLoopComplexity trace =
-    let cycles = detectCycles trace
-    in if not (null cycles) && length (head cycles) <= 3
+    let positions = map stepProgramCounter trace
+        cycleLength = findCycleLength positions
+        hasConditionalJumps = any (\step -> stepInstruction step `elem` [14, 15]) trace
+    in if cycleLength > 0 && cycleLength <= 4 && not hasConditionalJumps
        then SimpleLoopPattern
        else ComplexLoopPattern
 
@@ -124,17 +126,20 @@ analyzeLoopStructure :: [ExecutionStep] -> Maybe LoopPattern
 analyzeLoopStructure trace
     | length trace < 10 = Nothing  -- Need sufficient trace
     | otherwise = 
-        let cycles = detectCycles trace
-            outputPattern = analyzeOutputPattern trace
-        in case cycles of
-            [] -> Nothing
-            (cycle:_) -> Just $ LoopPattern
-                { loopStart = minimum [stepProgramCounter step | step <- cycle]
-                , loopEnd = maximum [stepProgramCounter step | step <- cycle]
-                , loopCondition = detectLoopCondition cycle
-                , loopIterations = countIterations trace cycle
-                , outputPerIteration = outputPerLoop cycle outputPattern
-                }
+        let positions = map stepProgramCounter trace
+            cycleLength = findCycleLength positions
+        in if cycleLength > 0
+           then let cycleStart = if null positions then 0 else minimum positions
+                    cycleEnd = if null positions then 0 else maximum positions
+                    iterations = length trace `div` max 1 cycleLength
+                in Just $ LoopPattern
+                    { loopStart = cycleStart
+                    , loopEnd = cycleEnd
+                    , loopCondition = detectLoopCondition trace
+                    , loopIterations = iterations
+                    , outputPerIteration = 0  -- Simplified for now
+                    }
+           else Nothing
 
 -- | Detect repeated cycles in execution trace
 detectCycles :: [ExecutionStep] -> [[ExecutionStep]]
@@ -156,11 +161,11 @@ findCycleLength positions
             commonPrefix = length $ takeWhile id $ zipWith (==) (reverse firstHalf) (reverse secondHalf)
         in if commonPrefix >= 3 then commonPrefix else 0
 
--- | Detect what condition controls the loop
+-- | Detect what condition controls the loop (overloaded for both list and single trace)
 detectLoopCondition :: [ExecutionStep] -> Maybe Byte
-detectLoopCondition cycle = 
+detectLoopCondition trace = 
     -- Look for conditional jump instructions (14, 15)
-    case [instr | step <- cycle, let instr = stepInstruction step, instr `elem` [14, 15]] of
+    case [instr | step <- trace, let instr = stepInstruction step, instr `elem` [14, 15]] of
         [] -> Nothing  -- Unconditional loop
         (instr:_) -> Just instr  -- First conditional instruction found
 

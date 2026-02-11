@@ -260,10 +260,13 @@ createTestProgramResult program outputLen steps termType pcSequence = do
         , resultTimestamp = timestamp
         }
 
+-- | Create a proper execution trace that can be analyzed by PatternAnalyzer
 createSampleTrace :: [Int] -> Int -> ExecutionTrace
 createSampleTrace pcSequence steps =
-    let tracePointList = zipWith (\pc step -> 
+    let -- Create enough trace points for pattern analysis (minimum 20 steps)
+        extendedPC = take (max 20 steps) (cycle pcSequence)
+        tracePointList = zipWith (\pc step -> 
             let state = ExecutionState 0 0 (fromIntegral pc) step 0 Nothing
-            in StepTrace step state) pcSequence [0..]
+            in StepTrace step state) extendedPC [0..]
         finalState = ExecutionState 0 0 (fromIntegral $ if null pcSequence then 0 else head pcSequence) steps 0 Nothing
     in ExecutionTrace tracePointList steps finalState

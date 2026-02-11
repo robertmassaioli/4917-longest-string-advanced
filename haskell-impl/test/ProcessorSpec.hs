@@ -186,7 +186,10 @@ spec = describe "Processor" $ do
       let program = [3, 13, 0]  -- INC R0, JMP 0 (infinite loop)
           device = createDevice (program ++ repeat 0)
           finalDevice = runProgramLimited device 5  -- Limited steps
-      r0 finalDevice `shouldSatisfy` (>= 5)  -- Should have incremented multiple times
+      -- The loop is: INC R0 (at PC=0), JMP 0 (at PC=1), repeat
+      -- Each iteration increments R0 and takes 2 steps
+      -- After 5 steps: Step 0->1->0->1->0 = 2.5 iterations, so R0 should be 2 or 3
+      r0 finalDevice `shouldSatisfy` (>= 2)  -- Should have incremented at least twice
       isHalted finalDevice `shouldBe` False  -- Should not halt in 5 steps
 
 -- | Helper function to run a program for a limited number of steps
