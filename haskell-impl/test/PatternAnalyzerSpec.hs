@@ -29,7 +29,7 @@ spec = describe "PatternAnalyzer" $ do
     it "Complex Loop Pattern Detection" $ do
       let program = [8, 15, 14, 5, 13, 0]  -- PRINT 15, JZ 5, JMP 0
           pcSequence = [0, 1, 2, 4, 0, 1, 2, 4]  -- Conditional loop
-      result <- createTestProgramResult program 0 50 Timeout pcSequence
+      result <- createTestProgramResultWithInstructions program 0 50 Timeout pcSequence [8, 15, 14, 5]  -- Include conditional jump
       let pattern = analyzeProgram program result
       patternType pattern `shouldBe` ComplexLoopPattern
 
@@ -65,7 +65,7 @@ spec = describe "PatternAnalyzer" $ do
     it "Conditional Loop Detection" $ do
       let program = [3, 14, 4, 13, 1]  -- INC R0, JZ 4, INC R1, JMP 1
           pcSequence = [0, 1, 2, 3, 1, 2, 3, 1, 4]  -- Conditional loop that eventually exits
-      result <- createTestProgramResult program 0 25 Timeout pcSequence
+      result <- createTestProgramResultWithInstructions program 0 25 Timeout pcSequence [3, 14, 4, 13]  -- Include conditional jump
       let pattern = analyzeProgram program result
       -- Note: This test was failing - we expect current behavior  
       case patternLoop pattern of
@@ -260,13 +260,39 @@ createTestProgramResult program outputLen steps termType pcSequence = do
         , resultTimestamp = timestamp
         }
 
+-- Helper for tests that need specific instruction sequences
+createTestProgramResultWithInstructions :: [Byte] -> Int -> Int -> TerminationType -> [Int] -> [Byte] -> IO ProgramResult
+createTestProgramResultWithInstructions program outputLen steps termType pcSequence instructions = do
+    timestamp <- getCurrentTime
+    let trace = createSampleTraceWithInstructions pcSequence steps instructions
+    return ProgramResult
+        { resultOutput = outputLen
+        , resultSteps = steps
+        , resultTermination = termType
+        , resultTrace = trace
+        , resultProgram = program
+        , resultTimestamp = timestamp
+        }
+
 -- | Create a proper execution trace that can be analyzed by PatternAnalyzer
 createSampleTrace :: [Int] -> Int -> ExecutionTrace
 createSampleTrace pcSequence steps =
-    let -- Create enough trace points for pattern analysis (minimum 20 steps)
+    let -- Create enough trace points for pattern analysis and ensure proper instruction data
         extendedPC = take (max 20 steps) (cycle pcSequence)
-        tracePointList = zipWith (\pc step -> 
-            let state = ExecutionState 0 0 (fromIntegral pc) step 0 Nothing
-            in StepTrace step state) extendedPC [0..]
+        -- Mock instruction data - for simple loops use JMP (13), for complex use conditional jumps
+        mockInstructions = cycle [8, 10, 13]  -- PRINT, PRINT operand, JMP (simple loop)
+        tracePointList = zipWith3 (\pc step instr -> 
+            let state = ExecutionState 0 0 (fromIntegral pc) step 0 (Just (fromIntegral instr))
+            in StepTrace step state) extendedPC [0..] mockInstructions
+        finalState = ExecutionState 0 0 (fromIntegral $ if null pcSequence then 0 else head pcSequence) steps 0 Nothing
+    in ExecutionTrace tracePointList steps finalState
+
+createSampleTraceWithInstructions :: [Int] -> Int -> [Byte] -> ExecutionTrace
+createSampleTraceWithInstructions pcSequence steps instructions =
+    let extendedPC = take (max 20 steps) (cycle pcSequence)
+        extendedInstr = take (max 20 steps) (cycle instructions)
+        tracePointList = zipWith3 (\pc step instr -> 
+            let state = ExecutionState 0 0 (fromIntegral pc) step 0 (Just instr)
+            in StepTrace step state) extendedPC [0..] extendedInstr
         finalState = ExecutionState 0 0 (fromIntegral $ if null pcSequence then 0 else head pcSequence) steps 0 Nothing
     in ExecutionTrace tracePointList steps finalState

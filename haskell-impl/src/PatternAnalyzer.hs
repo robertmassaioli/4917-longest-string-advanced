@@ -90,7 +90,8 @@ detectLoopComplexity trace =
     let positions = map stepProgramCounter trace
         cycleLength = findCycleLength positions
         hasConditionalJumps = any (\step -> stepInstruction step `elem` [14, 15]) trace
-    in if cycleLength > 0 && cycleLength <= 4 && not hasConditionalJumps
+        -- Simple loop: has a detected cycle, short cycle length, no conditional jumps
+    in if cycleLength > 0 && cycleLength <= 5 && not hasConditionalJumps
        then SimpleLoopPattern
        else ComplexLoopPattern
 
@@ -153,13 +154,27 @@ detectCycles trace =
 -- | Find length of repeating cycle in program counter sequence
 findCycleLength :: [Int] -> Int
 findCycleLength positions
-    | length positions < 20 = 0  -- Need enough data
-    | otherwise = 
-        let halfLength = length positions `div` 2
-            firstHalf = take halfLength positions
-            secondHalf = drop halfLength positions
-            commonPrefix = length $ takeWhile id $ zipWith (==) (reverse firstHalf) (reverse secondHalf)
-        in if commonPrefix >= 3 then commonPrefix else 0
+    | length positions < 6 = 0  -- Need at least 2 complete cycles
+    | otherwise = findSmallestCycle positions 1 (min 10 (length positions `div` 2))
+  where
+    findSmallestCycle :: [Int] -> Int -> Int -> Int
+    findSmallestCycle pos currentLen maxLen
+        | currentLen > maxLen = 0
+        | otherwise =
+            if isRepeatingPattern pos currentLen
+            then currentLen
+            else findSmallestCycle pos (currentLen + 1) maxLen
+    
+    isRepeatingPattern :: [Int] -> Int -> Bool
+    isRepeatingPattern pos patternLen = 
+        let pattern = take patternLen pos
+            chunks = chunksOf patternLen pos
+            validChunks = filter (\chunk -> length chunk == patternLen) chunks
+        in length validChunks >= 2 && all (== pattern) validChunks
+    
+    chunksOf :: Int -> [a] -> [[a]]
+    chunksOf _ [] = []
+    chunksOf n xs = take n xs : chunksOf n (drop n xs)
 
 -- | Detect what condition controls the loop (overloaded for both list and single trace)
 detectLoopCondition :: [ExecutionStep] -> Maybe Byte
@@ -196,12 +211,7 @@ generateOutputFormula result patternType loopPattern =
     case patternType of
         HaltPattern -> show (resultOutput result)
         LinearPattern -> show (resultOutput result)
-        SimpleLoopPattern -> 
-            case loopPattern of
-                Nothing -> "infinite"
-                Just loop -> if outputPerIteration loop > 0 
-                           then "infinite"  -- Infinite output
-                           else "0"         -- No output in loop
+        SimpleLoopPattern -> "infinite"  -- Simple loops produce infinite output
         ComplexLoopPattern -> "complex_formula"  -- TODO: More sophisticated analysis
 
 -- | Generate formula for computing steps based on pattern
