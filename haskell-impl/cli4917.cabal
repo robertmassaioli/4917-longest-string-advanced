@@ -26,6 +26,7 @@ library
                      , InstructionAnalysis
                      , WildcardPatterns
                      , WildcardPatternTests
+                     , AdvancedPatternCacheTests
                      , CLI
                      , Commands.Demo
                      , Commands.Benchmark
@@ -41,6 +42,7 @@ library
                      , containers >=0.6 && <0.8
                      , optparse-applicative >=0.16 && <0.19
                      , directory >=1.3 && <1.4
+                     , temporary >=1.3 && <1.4
   hs-source-dirs:      src
   default-language:    Haskell2010
   ghc-options:         -Wall
@@ -55,6 +57,7 @@ executable 4917-cli
                      , containers >=0.6 && <0.8
                      , optparse-applicative >=0.16 && <0.19
                      , directory >=1.3 && <1.4
+                     , temporary >=1.3 && <1.4
                      , cli4917
   hs-source-dirs:      src
   default-language:    Haskell2010

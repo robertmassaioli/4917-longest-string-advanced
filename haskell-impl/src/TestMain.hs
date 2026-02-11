@@ -2,6 +2,7 @@ module Main where
 
 import ProcessorTests
 import WildcardPatternTests
+import AdvancedPatternCacheTests
 import System.Exit
 
 main :: IO ()
@@ -16,7 +17,10 @@ main = do
     -- Run wildcard pattern tests
     wildcardResults <- runWildcardPatternTests
     
-    let allResults = processorResults ++ wildcardResults
+    -- Run advanced pattern cache tests
+    cacheResults <- runAdvancedPatternCacheTests
+    
+    let allResults = processorResults ++ wildcardResults ++ cacheResults
         failures = filter (not . testPassed) allResults
         totalTests = length allResults
         passedTests = totalTests - length failures

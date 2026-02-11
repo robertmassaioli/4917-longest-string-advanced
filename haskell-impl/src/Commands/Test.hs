@@ -4,6 +4,7 @@ module Commands.Test
 
 import ProcessorTests
 import WildcardPatternTests
+import AdvancedPatternCacheTests
 
 -- | Run the test command
 runTestCommand :: Maybe String -> Bool -> IO ()
@@ -13,18 +14,19 @@ runTestCommand maybePattern verbose = do
     putStrLn "=== 4917 Processor Test Suite ==="
     putStrLn ""
     
-    (processorResults, wildcardResults) <- case maybePattern of
+    (processorResults, wildcardResults, cacheResults) <- case maybePattern of
         Nothing -> do
             putStrLn "Running all tests..."
             proc <- runAllTests
             wild <- runWildcardPatternTests
-            return (proc, wild)
+            cache <- runAdvancedPatternCacheTests
+            return (proc, wild, cache)
         Just pattern -> do
             putStrLn $ "Running tests matching pattern: " ++ pattern
-            (proc, wild) <- runFilteredTests pattern
-            return (proc, wild)
+            (proc, wild, cache) <- runFilteredTests pattern
+            return (proc, wild, cache)
     
-    let allResults = processorResults ++ wildcardResults
+    let allResults = processorResults ++ wildcardResults ++ cacheResults
         failures = filter (not . testPassed) allResults
         totalTests = length allResults
         passedTests = totalTests - length failures
@@ -49,22 +51,24 @@ when True action = action
 when False _ = return ()
 
 -- | Run filtered tests with pattern matching
-runFilteredTests :: String -> IO ([TestResult], [TestResult])
+runFilteredTests :: String -> IO ([TestResult], [TestResult], [TestResult])
 runFilteredTests pattern = do
     putStrLn $ "Filtering tests by pattern: " ++ pattern
     
     allProcessorResults <- runAllTests
     allWildcardResults <- runWildcardPatternTests
+    allCacheResults <- runAdvancedPatternCacheTests
     
     let filteredProcessor = filter (matchesPattern pattern) allProcessorResults
         filteredWildcard = filter (matchesPattern pattern) allWildcardResults
+        filteredCache = filter (matchesPattern pattern) allCacheResults
         
-        totalFiltered = length filteredProcessor + length filteredWildcard
-        totalAll = length allProcessorResults + length allWildcardResults
+        totalFiltered = length filteredProcessor + length filteredWildcard + length filteredCache
+        totalAll = length allProcessorResults + length allWildcardResults + length allCacheResults
     
     putStrLn $ "Matched " ++ show totalFiltered ++ " out of " ++ show totalAll ++ " tests"
     
-    return (filteredProcessor, filteredWildcard)
+    return (filteredProcessor, filteredWildcard, filteredCache)
   where
     -- Simple pattern matching - check if pattern is substring of test name (case-insensitive)
     matchesPattern :: String -> TestResult -> Bool
