@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module WildcardPatterns
     ( PatternElement(..)
@@ -20,6 +21,7 @@ import Data.Word (Word8)
 import Data.List (group, sort, isInfixOf)
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData, rnf)
+import Data.Aeson (ToJSON, FromJSON)
 
 -- | A single element in a wildcard pattern
 data PatternElement
@@ -28,7 +30,7 @@ data PatternElement
     | AnyByte                   -- Wildcard matching any single byte
     | InstructionWildcard       -- Matches any instruction (0-15)
     | AddressWildcard           -- Matches any memory address (0-15)
-    deriving (Show, Eq, Ord, Generic)
+    deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 instance NFData PatternElement where
     rnf (FixedByte b) = rnf b
@@ -44,7 +46,7 @@ data Constraint
     | InRange String Word8 Word8 -- Variable must be in range [min, max]
     | SameAs String String      -- Two variables must have same value
     | DifferentFrom String String -- Two variables must have different values
-    deriving (Show, Eq, Ord, Generic)
+    deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 instance NFData Constraint
 
@@ -57,7 +59,7 @@ data WildcardPattern = WildcardPattern
     , wildcardConstraints :: [Constraint]   -- Constraints on variables
     , wildcardDescription :: String         -- Human-readable description
     , wildcardConfidence :: Double          -- Confidence in this pattern (0.0-1.0)
-    } deriving (Show, Eq, Generic)
+    } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance NFData WildcardPattern where
     rnf (WildcardPattern elems constrs desc conf) = 

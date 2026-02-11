@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 
 module PatternAnalyzer
     ( ProgramPattern(..)
@@ -21,6 +22,7 @@ import WildcardPatterns (WildcardPattern, wildcardFromProgram, matchWildcardPatt
 import Data.List (isPrefixOf, findIndex, nub)
 import Control.DeepSeq (NFData, rnf)
 import GHC.Generics (Generic)
+import Data.Aeson (ToJSON, FromJSON)
 
 -- | Types of patterns we can detect
 data PatternType
@@ -28,7 +30,7 @@ data PatternType
     | SimpleLoopPattern -- Simple infinite loop detected
     | ComplexLoopPattern -- Complex loop with conditions
     | LinearPattern     -- No loops, straight execution
-    deriving (Show, Eq, Ord, Generic)
+    deriving (Show, Eq, Ord, Generic, ToJSON, FromJSON)
 
 instance NFData PatternType
 
@@ -39,11 +41,11 @@ data LoopPattern = LoopPattern
     , loopCondition :: Maybe Byte -- Loop condition if conditional
     , loopIterations :: Int     -- Number of iterations observed
     , outputPerIteration :: Int -- Output produced per iteration
-    } deriving (Show, Eq, Generic)
+    } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance NFData LoopPattern
 
--- | A detected program pattern
+-- | A detected program pattern (simplified for JSON serialization)
 data ProgramPattern = ProgramPattern
     { patternProgram :: [Byte]      -- The original program
     , patternType :: PatternType    -- Type of pattern detected
@@ -51,8 +53,8 @@ data ProgramPattern = ProgramPattern
     , patternOutputFormula :: String  -- Formula for computing output
     , patternStepsFormula :: String   -- Formula for computing steps
     , patternConfidenceScore :: Double -- How confident we are (0.0-1.0)
-    , patternWildcard :: Maybe WildcardPattern -- Wildcard generalization
-    } deriving (Show, Eq, Generic)
+    , patternWildcard :: Maybe WildcardPattern -- Wildcard generalization (not serialized)
+    } deriving (Show, Eq, Generic, ToJSON, FromJSON)
 
 instance NFData ProgramPattern
 
