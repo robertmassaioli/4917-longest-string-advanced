@@ -4,7 +4,6 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
 import Processor
 import Data.Vector.Unboxed ((!))
-import qualified ProcessorTests as Legacy
 
 -- | Convert legacy tests to Hspec format while maintaining exact same pass/fail behavior
 spec :: Spec

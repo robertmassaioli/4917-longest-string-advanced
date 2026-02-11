@@ -5,7 +5,6 @@ module CLI
     , DemoOptions(..)
     , BenchmarkOptions(..)
     , CacheDemoOptions(..)
-    , TestOptions(..)
     , SearchOptions(..)
     , SolveOptions(..)
     , parseCommand
@@ -17,7 +16,6 @@ import Data.Semigroup ((<>))
 import Commands.Demo (runDemoCommand)
 import Commands.Benchmark (runBenchmarkCommand)
 import Commands.CacheDemo (runCacheDemoCommand)
-import Commands.Test (runTestCommand)
 import Commands.Search (runSearchCommand)
 import Commands.Solve (runSolveCommand)
 
@@ -26,7 +24,6 @@ data Command
     = Demo DemoOptions
     | Benchmark BenchmarkOptions  
     | CacheDemo CacheDemoOptions
-    | Test TestOptions
     | Search SearchOptions
     | Solve SolveOptions
     deriving (Show, Eq)
@@ -51,11 +48,6 @@ data CacheDemoOptions = CacheDemoOptions
     , cacheDemoCacheFile :: String
     } deriving (Show, Eq)
 
--- | Options for test command
-data TestOptions = TestOptions
-    { testPattern :: Maybe String
-    , testVerbose :: Bool
-    } deriving (Show, Eq)
 
 -- | Options for search command
 data SearchOptions = SearchOptions
@@ -84,7 +76,6 @@ commandParser = hsubparser
     ( command "demo"       (info demoParser       (progDesc "Run processor demonstration"))
    <> command "benchmark"  (info benchmarkParser  (progDesc "Run performance benchmarks"))
    <> command "cache-demo" (info cacheDemoParser  (progDesc "Demonstrate persistent memoization"))
-   <> command "test"       (info testParser       (progDesc "Run processor tests"))
    <> command "search"     (info searchParser     (progDesc "Search for optimal programs"))
    <> command "solve"      (info solveParser      (progDesc "Solve specific tasks"))
    )
@@ -141,19 +132,6 @@ cacheDemoParser = do
        <> value "program_cache.json" )
     pure $ CacheDemo $ CacheDemoOptions length_ verbose fresh cacheFile
 
--- | Parser for test command
-testParser :: Parser Command
-testParser = do
-    pattern_ <- optional $ strOption
-        ( long "pattern"
-       <> short 'p'
-       <> metavar "PATTERN"
-       <> help "Run tests matching pattern" )
-    verbose <- switch
-        ( long "verbose"
-       <> short 'v'
-       <> help "Enable verbose output" )
-    pure $ Test $ TestOptions pattern_ verbose
 
 -- | Parser for search command
 searchParser :: Parser Command
@@ -200,6 +178,5 @@ runCommand :: Command -> IO ()
 runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
 runCommand (Benchmark opts) = runBenchmarkCommand (benchmarkAll opts) (benchmarkVerbose opts)
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
-runCommand (Test opts) = runTestCommand (testPattern opts) (testVerbose opts)
 runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)

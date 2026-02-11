@@ -16,7 +16,6 @@ library
                      , PackProcessor
                      , SolveTask
                      , Benchmark
-                     , ProcessorTests
                      , BruteForceSearch
                      , ExecutionTracing
                      , PatternCache
@@ -25,14 +24,10 @@ library
                      , AdvancedPatternCache
                      , InstructionAnalysis
                      , WildcardPatterns
-                     , WildcardPatternTests
-                     , AdvancedPatternCacheTests
-                     , PatternAnalyzerTests
                      , CLI
                      , Commands.Demo
                      , Commands.Benchmark
                      , Commands.CacheDemo
-                     , Commands.Test
                      , Commands.Search
                      , Commands.Solve
   build-depends:       base >=4.7 && <5
