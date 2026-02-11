@@ -341,7 +341,7 @@ spec = describe "TrackedProcessor" $ do
       [100, 5, 0] `shouldFailWith` InvalidInstructionValue
 
     it "handles all valid instructions 0-15" $ do
-      let program = [7, 0]  -- NOP, HALT  
+      let program = [7, 0]  -- NOP, HALT
           tracked = createTestDevice program
           step1 = stepTrackedProgram tracked
           step2 = stepTrackedProgram step1
