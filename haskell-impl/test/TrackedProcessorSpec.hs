@@ -30,6 +30,9 @@ spec = describe "TrackedProcessor" $ do
       getR0 tracked `shouldBe` 0
       getR1 tracked `shouldBe` 0
       getSteps tracked `shouldBe` 0
+      getR0WasConsumed tracked `shouldBe` False
+      getR1WasConsumed tracked `shouldBe` False
+      getR0ContainsCombination tracked `shouldBe` False
 
     it "preserves original Device functionality" $ do
       let program = [8, 15, 0]  -- PRINT 15, HALT
@@ -348,3 +351,145 @@ spec = describe "TrackedProcessor" $ do
       isHalted step2 `shouldBe` True
       getPc step2 `shouldBe` 1
       getAccessedLocations step2 `shouldBe` Set.fromList [0, 1]
+
+  context "Register Consumption Tracking" $ do
+    describe "Non-consuming operations" $ do
+      it "register manipulations without consumption don't set flags" $ do
+        let program = [3, 4, 5, 6, 0]  -- INC R0, INC R1, DEC R0, DEC R1, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` False
+        getR1WasConsumed final `shouldBe` False
+        getR0ContainsCombination final `shouldBe` False
+
+      it "LOAD operations without consumption don't set flags" $ do
+        let program = [9, 5, 10, 6, 0, 7, 8]  -- LOAD R0 from 5, LOAD R1 from 6, HALT, data
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` False
+        getR1WasConsumed final `shouldBe` False
+        getR0ContainsCombination final `shouldBe` False
+
+    describe "Combination tracking" $ do
+      it "ADD sets combination flag" $ do
+        let program = [3, 4, 1, 0]  -- INC R0, INC R1, ADD, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0ContainsCombination final `shouldBe` True
+        getR0WasConsumed final `shouldBe` False  -- Not consumed yet
+        getR1WasConsumed final `shouldBe` False  -- Not consumed yet
+
+      it "SUB sets combination flag" $ do
+        let program = [3, 4, 2, 0]  -- INC R0, INC R1, SUB, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0ContainsCombination final `shouldBe` True
+        getR0WasConsumed final `shouldBe` False
+        getR1WasConsumed final `shouldBe` False
+
+      it "combination flag persists through R0 modifications" $ do
+        let program = [3, 4, 1, 3, 5, 0]  -- INC R0, INC R1, ADD, INC R0, DEC R0, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0ContainsCombination final `shouldBe` True  -- Latch behavior
+        getR0WasConsumed final `shouldBe` False
+        getR1WasConsumed final `shouldBe` False
+
+      it "combination flag persists through LOAD R0" $ do
+        let program = [3, 4, 1, 9, 6, 0, 7]  -- INC R0, INC R1, ADD, LOAD R0 from 6, HALT, data
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0ContainsCombination final `shouldBe` True  -- Latch behavior
+        getR0WasConsumed final `shouldBe` False
+        getR1WasConsumed final `shouldBe` False
+
+    describe "Direct register consumption" $ do
+      it "STORE R0 sets R0 consumed flag" $ do
+        let program = [3, 11, 0, 0]  -- INC R0, STORE R0 to address 0, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` False
+        getR0ContainsCombination final `shouldBe` False
+
+      it "STORE R1 sets R1 consumed flag" $ do
+        let program = [4, 12, 0, 0]  -- INC R1, STORE R1 to address 0, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` False
+        getR1WasConsumed final `shouldBe` True
+        getR0ContainsCombination final `shouldBe` False
+
+      it "JZ sets R0 consumed flag" $ do
+        let program = [14, 4, 0, 0, 7]  -- JZ 4 (R0=0), HALT, NOP
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` False
+        getR0ContainsCombination final `shouldBe` False
+
+      it "JNZ sets R0 consumed flag" $ do
+        let program = [3, 15, 4, 0, 7]  -- INC R0, JNZ 4 (R0=1), HALT, NOP
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` False
+        getR0ContainsCombination final `shouldBe` False
+
+    describe "Combination consumption" $ do
+      it "STORE R0 after ADD consumes both registers" $ do
+        let program = [3, 4, 1, 11, 0, 0]  -- INC R0, INC R1, ADD, STORE R0, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` True  -- Consumed via combination
+        getR0ContainsCombination final `shouldBe` True
+
+      it "JZ after SUB consumes both registers" $ do
+        let program = [3, 4, 2, 14, 6, 0, 7]  -- INC R0, INC R1, SUB, JZ 6, HALT, NOP
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` True  -- Consumed via combination
+        getR0ContainsCombination final `shouldBe` True
+
+      it "JNZ after ADD consumes both registers" $ do
+        let program = [3, 4, 1, 15, 7, 0, 0, 7]  -- INC R0, INC R1, ADD, JNZ 7, HALT, padding, NOP
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` True  -- Consumed via combination
+        getR0ContainsCombination final `shouldBe` True
+
+      it "combination consumption persists through modifications" $ do
+        let program = [3, 4, 1, 3, 5, 11, 0, 0]  -- INC R0, INC R1, ADD, INC R0, DEC R0, STORE R0, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` True  -- Still consumed via original combination
+        getR0ContainsCombination final `shouldBe` True
+
+    describe "Mixed scenarios" $ do
+      it "direct R1 consumption with R0 combination" $ do
+        let program = [3, 4, 1, 12, 1, 11, 2, 0]  -- INC R0, INC R1, ADD, STORE R1, STORE R0, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` True  -- Both direct (STORE R1) and via combination
+        getR0ContainsCombination final `shouldBe` True
+
+      it "no combination but direct consumption" $ do
+        let program = [3, 4, 11, 2, 12, 3, 0]  -- INC R0, INC R1, STORE R0, STORE R1, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` True
+        getR0ContainsCombination final `shouldBe` False  -- No ADD/SUB operations
+
+      it "complex program with multiple combinations and consumptions" $ do
+        let program = [3, 4, 1, 11, 5, 3, 4, 2, 12, 6, 0]  -- INC R0, INC R1, ADD, STORE R0, INC R1, SUB, STORE R1, HALT
+            tracked = createTestDevice program
+            final = runTrackedProgram tracked 100
+        getR0WasConsumed final `shouldBe` True
+        getR1WasConsumed final `shouldBe` True
+        getR0ContainsCombination final `shouldBe` True
