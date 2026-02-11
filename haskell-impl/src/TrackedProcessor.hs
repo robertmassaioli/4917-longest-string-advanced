@@ -15,6 +15,11 @@ module TrackedProcessor
     , getMemory
     , getSteps
     , getAccessedLocations
+    , getInstructionLocations
+    , getOperandLocations
+    , getInstructionOnlyLocations
+    , getOperandOnlyLocations
+    , getMixedUsageLocations
     , getR0WasConsumed
     , getR1WasConsumed
     , getR0ContainsCombination
@@ -51,10 +56,11 @@ data TrackedDevice = TrackedDevice
     , outputLength :: Int               -- Output character count
     , halted :: Bool                    -- Execution state
     , steps :: Int                      -- Step counter
-    , accessedLocations :: Set Int      -- Which memory locations were read
     , r0WasConsumed :: Bool             -- True if R0 was ever consumed
     , r1WasConsumed :: Bool             -- True if R1 was ever consumed
     , r0ContainsCombination :: Bool     -- True if R0 contains result of ADD/SUB using both registers
+    , instructionLocations :: Set Int   -- Positions accessed as instructions (PC reads)
+    , operandLocations :: Set Int       -- Positions accessed as operands (instruction parameter reads)
     } deriving (Show, Eq)
 
 -- Create TrackedDevice from program with validation
@@ -71,10 +77,11 @@ createTrackedDevice program = do
         , outputLength = 0
         , halted = False
         , steps = 0
-        , accessedLocations = Set.empty
         , r0WasConsumed = False
         , r1WasConsumed = False
         , r0ContainsCombination = False
+        , instructionLocations = Set.empty
+        , operandLocations = Set.empty
         }
 
 -- Validate program for 4-bit processor constraints
@@ -124,8 +131,30 @@ getMemory = memory
 getSteps :: TrackedDevice -> Int
 getSteps = steps
 
+-- Updated: Now derived from instruction and operand locations
 getAccessedLocations :: TrackedDevice -> Set Int
-getAccessedLocations = accessedLocations
+getAccessedLocations device = 
+    instructionLocations device `Set.union` operandLocations device
+
+-- New accessor functions for enhanced tracking
+getInstructionLocations :: TrackedDevice -> Set Int
+getInstructionLocations = instructionLocations
+
+getOperandLocations :: TrackedDevice -> Set Int  
+getOperandLocations = operandLocations
+
+-- Derived analysis functions
+getInstructionOnlyLocations :: TrackedDevice -> Set Int
+getInstructionOnlyLocations device = 
+    instructionLocations device `Set.difference` operandLocations device
+
+getOperandOnlyLocations :: TrackedDevice -> Set Int
+getOperandOnlyLocations device = 
+    operandLocations device `Set.difference` instructionLocations device
+
+getMixedUsageLocations :: TrackedDevice -> Set Int
+getMixedUsageLocations device = 
+    instructionLocations device `Set.intersection` operandLocations device
 
 getR0WasConsumed :: TrackedDevice -> Bool
 getR0WasConsumed = r0WasConsumed
@@ -153,16 +182,16 @@ stepTrackedProgram device
         let currentPc = pc device
             instruction = memory device ! fromIntegral currentPc
             
-            -- Track instruction fetch
-            instructionAccess = Set.insert (fromIntegral currentPc) (accessedLocations device)
+            -- Track that current PC was accessed as an instruction
+            deviceWithInstrTracking = device { instructionLocations = Set.insert (fromIntegral currentPc) (instructionLocations device) }
             
-            -- Execute instruction and track additional accesses
-            (newDevice, additionalAccesses) = executeInstructionWithTracking instruction device
+            -- Execute instruction and track operand accesses
+            (newDevice, operandAccesses) = executeInstructionWithTracking instruction deviceWithInstrTracking
             
-            -- Combine all accessed locations
-            allAccesses = Set.union instructionAccess additionalAccesses
+            -- Update operand locations with any new accesses
+            finalDevice = newDevice { operandLocations = Set.union (operandLocations newDevice) operandAccesses }
             
-        in newDevice { accessedLocations = allAccesses, steps = steps device + 1 }
+        in finalDevice { steps = steps device + 1 }
 
 -- Execute single instruction with memory access tracking
 executeInstructionWithTracking :: Byte -> TrackedDevice -> (TrackedDevice, Set Int)
@@ -206,24 +235,28 @@ executeInstructionWithTracking instruction device =
                      { pc = (pc device + 2) `mod` 16
                      , outputLength = outputLength device + outputChars
                      }
-                 accesses = Set.singleton operandLoc
-             in (newDevice, accesses)
+                 operandAccesses = Set.singleton operandLoc  -- Only the operand position
+             in (newDevice, operandAccesses)
         
         -- LOAD R0 (9): R0 = memory[operand]
         9 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
                  address = memory device ! operandLoc
-                 value = memory device ! fromIntegral address
+                 dataLoc = fromIntegral address
+                 value = memory device ! dataLoc
                  newDevice = device { r0 = value, pc = (pc device + 2) `mod` 16 }
-                 accesses = Set.fromList [operandLoc, fromIntegral address]
-             in (newDevice, accesses)
+                 -- Return both operand and data accesses for backward compatibility
+                 operandAccesses = Set.fromList [operandLoc, dataLoc]
+             in (newDevice, operandAccesses)
         
         -- LOAD R1 (10): R1 = memory[operand]
         10 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
                   address = memory device ! operandLoc
-                  value = memory device ! fromIntegral address
+                  dataLoc = fromIntegral address
+                  value = memory device ! dataLoc
                   newDevice = device { r1 = value, pc = (pc device + 2) `mod` 16 }
-                  accesses = Set.fromList [operandLoc, fromIntegral address]
-              in (newDevice, accesses)
+                  -- Return both operand and data accesses for backward compatibility
+                  operandAccesses = Set.fromList [operandLoc, dataLoc]
+              in (newDevice, operandAccesses)
         
         -- STORE R0 (11): memory[operand] = R0
         11 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
@@ -234,8 +267,8 @@ executeInstructionWithTracking instruction device =
                   consumedDevice = device { r0WasConsumed = r0WasConsumed device || consumesR0
                                           , r1WasConsumed = r1WasConsumed device || consumesR1 }
                   newDevice = consumedDevice { memory = newMemory, pc = (pc device + 2) `mod` 16 }
-                  accesses = Set.singleton operandLoc  -- Only read operand, don't track writes
-              in (newDevice, accesses)
+                  operandAccesses = Set.singleton operandLoc  -- Only the operand access
+              in (newDevice, operandAccesses)
         
         -- STORE R1 (12): memory[operand] = R1
         12 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
@@ -244,15 +277,15 @@ executeInstructionWithTracking instruction device =
                   -- R1 is always consumed directly
                   consumedDevice = device { r1WasConsumed = True }
                   newDevice = consumedDevice { memory = newMemory, pc = (pc device + 2) `mod` 16 }
-                  accesses = Set.singleton operandLoc  -- Only read operand, don't track writes
-              in (newDevice, accesses)
+                  operandAccesses = Set.singleton operandLoc  -- Only the operand access
+              in (newDevice, operandAccesses)
         
         -- JMP (13): Unconditional jump
         13 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
                   address = memory device ! operandLoc
                   newDevice = device { pc = address `mod` 16 }
-                  accesses = Set.singleton operandLoc
-              in (newDevice, accesses)
+                  operandAccesses = Set.singleton operandLoc
+              in (newDevice, operandAccesses)
         
         -- JZ (14): Jump if R0 == 0
         14 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
@@ -263,8 +296,8 @@ executeInstructionWithTracking instruction device =
                   consumedDevice = device { r0WasConsumed = r0WasConsumed device || consumesR0
                                           , r1WasConsumed = r1WasConsumed device || consumesR1 }
                   newDevice = consumedDevice { pc = newPc }
-                  accesses = Set.singleton operandLoc
-              in (newDevice, accesses)
+                  operandAccesses = Set.singleton operandLoc
+              in (newDevice, operandAccesses)
         
         -- JNZ (15): Jump if R0 != 0
         15 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
@@ -275,8 +308,8 @@ executeInstructionWithTracking instruction device =
                   consumedDevice = device { r0WasConsumed = r0WasConsumed device || consumesR0
                                           , r1WasConsumed = r1WasConsumed device || consumesR1 }
                   newDevice = consumedDevice { pc = newPc }
-                  accesses = Set.singleton operandLoc
-              in (newDevice, accesses)
+                  operandAccesses = Set.singleton operandLoc
+              in (newDevice, operandAccesses)
         
         -- Invalid instruction - treat as NOP
         _ -> (device { pc = (pc device + 1) `mod` 16 }, Set.empty)
