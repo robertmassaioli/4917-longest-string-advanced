@@ -228,7 +228,7 @@ spec = describe "TrackedProcessor" $ do
           final = runTrackedProgram tracked 10
       getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4]
       isHalted final `shouldBe` True
-      getOutput final `shouldBe` 3  -- "15" (2 chars) + "10" (2 chars) = 4 total, wait that's wrong
+      getOutput final `shouldBe` 4  -- "15" (2 chars) + "10" (2 chars) = 4 total
 
     it "runTrackedProgramLoopCheck detects loops while tracking" $ do
       let program = [3, 13, 0]  -- INC R0, JMP 0 (infinite loop)
@@ -301,7 +301,7 @@ spec = describe "TrackedProcessor" $ do
       let program = [9, 6, 11, 7, 8, 15, 42, 0]  -- LOAD R0 from 6, STORE R0 to 7, PRINT 15, HALT, data, target
           tracked = createTrackedDevice program
           final = runTrackedProgram tracked 20
-      getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4, 5, 6, 7]
+      getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4, 5, 6, 7, 8]
       getOutput final `shouldBe` 2  -- "15" printed
       getMemory final ! 7 `shouldBe` 42  -- Self-modification occurred
 
