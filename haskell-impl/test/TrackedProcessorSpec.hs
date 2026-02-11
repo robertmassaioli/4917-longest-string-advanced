@@ -301,7 +301,7 @@ spec = describe "TrackedProcessor" $ do
       let program = [9, 6, 11, 7, 8, 15, 42, 0]  -- LOAD R0 from 6, STORE R0 to 7, PRINT 15, HALT, data, target
           tracked = createTrackedDevice program
           final = runTrackedProgram tracked 20
-      getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4, 5, 6]
+      getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4, 5, 6, 7]
       getOutput final `shouldBe` 2  -- "15" printed
       getMemory final ! 7 `shouldBe` 42  -- Self-modification occurred
 
