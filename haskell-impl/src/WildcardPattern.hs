@@ -30,6 +30,8 @@ module WildcardPattern
 import TrackedProcessor
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Maybe (mapMaybe)
+import qualified Data.Vector.Unboxed as Vector
 
 -- | Core pattern types for program optimization
 data OptimizedInstruction = 
@@ -46,13 +48,28 @@ data OptimizedProgram = OptimizedProgram
     , equivalenceClass :: String -- Canonical representation for grouping
     } deriving (Show)
 
--- | Complete analysis results for a program
+-- | Memory usage classification for enhanced analysis
+data MemoryUsageType = 
+    InstructionOnly     -- Only accessed as instruction
+  | OperandOnly         -- Only accessed as operand
+  | MixedUsage          -- Used as both instruction and operand
+  | Unused              -- Never accessed
+  deriving (Show, Eq)
+
+-- | Enhanced memory analysis results  
+data EnhancedMemoryAnalysis = EnhancedMemoryAnalysis
+    { memoryUsageTypes :: [MemoryUsageType]  -- Usage type for each of 16 memory positions
+    , operandOutputOptimizations :: [(Int, [Byte])]  -- Position and equivalent output-length values
+    } deriving (Show, Eq)
+
+-- | Complete analysis results for a program (enhanced)
 data ProgramAnalysis = ProgramAnalysis
     { programOriginal :: [Byte]
     , unusedMemoryPositions :: [Int]
     , deadRegisterPositions :: [Int]  
     , registerAnalysis :: DeadOperationAnalysis
     , trackedDevice :: TrackedDevice
+    , memoryAnalysis :: EnhancedMemoryAnalysis  -- NEW: Enhanced memory usage analysis
     } deriving (Show)
 
 -- | Detailed register usage breakdown
@@ -121,6 +138,9 @@ analyzeProgram program device =
     
     -- 2. Dead Register Analysis
         (regAnalysis, deadPositions) = analyzeRegisterOperations program device
+        
+    -- 3. Enhanced Memory Usage Analysis
+        memoryUsageAnalysis = analyzeMemoryUsage device
     
     in ProgramAnalysis
         { programOriginal = program
@@ -128,6 +148,7 @@ analyzeProgram program device =
         , deadRegisterPositions = deadPositions
         , registerAnalysis = regAnalysis
         , trackedDevice = device
+        , memoryAnalysis = memoryUsageAnalysis
         }
 
 -- | Identify unused memory locations that can be wildcarded
@@ -197,13 +218,67 @@ findR1OpsAfterCombination program =
     -- This would need to track when combinations occur and what R1 operations happen after
     []
 
+-- | Analyze memory usage patterns using enhanced tracking
+analyzeMemoryUsage :: TrackedDevice -> EnhancedMemoryAnalysis
+analyzeMemoryUsage device = 
+    let instrLocs = Set.toList (getInstructionLocations device)
+        operandLocs = Set.toList (getOperandLocations device)
+        mixedLocs = Set.toList (getMixedUsageLocations device)
+        instrOnlyLocs = Set.toList (getInstructionOnlyLocations device)
+        operandOnlyLocs = Set.toList (getOperandOnlyLocations device)
+        
+        -- Classify each memory position
+        usageTypes = map (classifyPositionUsageType instrLocs operandLocs mixedLocs) [0..15]
+        
+        -- Identify operand optimization opportunities
+        operandOptimizations = findOperandOptimizations device operandOnlyLocs
+        
+    in EnhancedMemoryAnalysis usageTypes operandOptimizations
+
+-- | Classify a single memory position's usage type
+classifyPositionUsageType :: [Int] -> [Int] -> [Int] -> Int -> MemoryUsageType
+classifyPositionUsageType instrLocs operandLocs mixedLocs pos
+    | pos `elem` mixedLocs = MixedUsage
+    | pos `elem` instrLocs = InstructionOnly  
+    | pos `elem` operandLocs = OperandOnly
+    | otherwise = Unused
+
+-- | Find operand positions that can be optimized by output length
+findOperandOptimizations :: TrackedDevice -> [Int] -> [(Int, [Byte])]
+findOperandOptimizations device operandOnlyLocs = 
+    let program = Vector.toList (getMemory device)
+        optimizations = mapMaybe (analyzeOperandPosition program) operandOnlyLocs
+    in optimizations
+
+-- | Analyze a specific operand position for optimization opportunities  
+analyzeOperandPosition :: [Byte] -> Int -> Maybe (Int, [Byte])
+analyzeOperandPosition program pos = 
+    if pos > 0 && pos < length program
+    then case program !! (pos - 1) of
+        8 -> -- PRINT instruction operand
+            let currentValue = program !! pos
+                currentOutputLength = if currentValue <= 9 then 1 else 2
+                equivalentValues = if currentOutputLength == 1 
+                                  then singleCharOutput     -- All single-digit outputs
+                                  else doubleCharOutput     -- All double-digit outputs
+            in Just (pos, equivalentValues)
+        _ -> Nothing  -- Other instruction operands aren't easily optimizable
+    else Nothing
+
+-- Output length categories for print operand optimization
+singleCharOutput :: [Byte]
+singleCharOutput = [0..9]
+
+doubleCharOutput :: [Byte] 
+doubleCharOutput = [10..15]
+
 -- | Apply optimizations based on analysis results
 optimizeProgram :: ProgramAnalysis -> OptimizedProgram
 optimizeProgram analysis = 
     let program = programOriginal analysis
         
-        -- Always create pattern for full 16-byte memory space
-        wildcardPattern = map (classifyMemoryPosition analysis) [0..15]
+        -- Always create pattern for full 16-byte memory space using enhanced classification
+        wildcardPattern = map (classifyEnhancedMemoryPosition analysis) [0..15]
             
     in OptimizedProgram
         { originalProgram = program
@@ -212,18 +287,26 @@ optimizeProgram analysis =
         , equivalenceClass = generateEquivalenceClass wildcardPattern
         }
 
--- | Classify each memory position based on analysis (for full 16-byte space)
-classifyMemoryPosition :: ProgramAnalysis -> Int -> OptimizedInstruction  
-classifyMemoryPosition analysis pos 
-    | pos `elem` unusedMemoryPositions analysis = Wildcard
-    | pos `elem` deadRegisterPositions analysis = 
-        let program = programOriginal analysis
-        in if pos < length program
-           then classifyDeadRegisterPosition (program !! pos)
-           else Wildcard  -- Beyond program length
-    | pos < length (programOriginal analysis) = 
-        Required ((programOriginal analysis) !! pos)
-    | otherwise = Wildcard  -- Beyond program length
+-- | Enhanced memory position classification using memory usage analysis
+classifyEnhancedMemoryPosition :: ProgramAnalysis -> Int -> OptimizedInstruction  
+classifyEnhancedMemoryPosition analysis pos 
+    | pos >= 16 = error "Invalid memory position"
+    | otherwise = 
+        let usageType = (memoryUsageTypes (memoryAnalysis analysis)) !! pos
+            program = programOriginal analysis
+            operandOptimizations = operandOutputOptimizations (memoryAnalysis analysis)
+        in case usageType of
+            Unused -> Wildcard
+            MixedUsage -> Required (program !! pos)  -- Must be exact due to dual usage
+            InstructionOnly -> 
+                if pos `elem` deadRegisterPositions analysis 
+                then classifyDeadRegisterPosition (program !! pos)
+                else Required (program !! pos)
+            OperandOnly -> 
+                case lookup pos operandOptimizations of
+                    Just equivalentValues -> AnyOf equivalentValues  -- Optimize by output length
+                    Nothing -> Required (program !! pos)            -- Default to required
+
 
 -- | Classify each program position based on analysis
 classifyPosition :: ProgramAnalysis -> (Int, Byte) -> OptimizedInstruction
