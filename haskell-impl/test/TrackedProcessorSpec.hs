@@ -112,7 +112,7 @@ spec = describe "TrackedProcessor" $ do
       it "PRINT (8) - outputs double digit" $ do
         let program = [8, 15, 0]  -- PRINT 15, HALT
             tracked = createTrackedDevice program
-            stepped = stepTrackedProgram stepped
+            stepped = stepTrackedProgram tracked
         getOutput stepped `shouldBe` 2  -- Double digit = 2 characters
         getPc stepped `shouldBe` 2
         getAccessedLocations stepped `shouldBe` Set.fromList [0, 1]
