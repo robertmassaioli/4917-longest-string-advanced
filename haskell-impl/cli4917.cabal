@@ -27,6 +27,7 @@ library
                      , WildcardPatterns
                      , WildcardPatternTests
                      , AdvancedPatternCacheTests
+                     , PatternAnalyzerTests
                      , CLI
                      , Commands.Demo
                      , Commands.Benchmark
