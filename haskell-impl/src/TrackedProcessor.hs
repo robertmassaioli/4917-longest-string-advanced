@@ -15,6 +15,10 @@ module TrackedProcessor
     , getMemory
     , getSteps
     , getAccessedLocations
+    , getR0WasConsumed
+    , getR1WasConsumed
+    , getR0ContainsCombination
+    , classifyRegisterConsumption
     ) where
 
 import Data.Vector.Unboxed (Vector, (!), (//))
@@ -48,6 +52,9 @@ data TrackedDevice = TrackedDevice
     , halted :: Bool                    -- Execution state
     , steps :: Int                      -- Step counter
     , accessedLocations :: Set Int      -- Which memory locations were read
+    , r0WasConsumed :: Bool             -- True if R0 was ever consumed
+    , r1WasConsumed :: Bool             -- True if R1 was ever consumed
+    , r0ContainsCombination :: Bool     -- True if R0 contains result of ADD/SUB using both registers
     } deriving (Show, Eq)
 
 -- Create TrackedDevice from program with validation
@@ -65,6 +72,9 @@ createTrackedDevice program = do
         , halted = False
         , steps = 0
         , accessedLocations = Set.empty
+        , r0WasConsumed = False
+        , r1WasConsumed = False
+        , r0ContainsCombination = False
         }
 
 -- Validate program for 4-bit processor constraints
@@ -117,6 +127,24 @@ getSteps = steps
 getAccessedLocations :: TrackedDevice -> Set Int
 getAccessedLocations = accessedLocations
 
+getR0WasConsumed :: TrackedDevice -> Bool
+getR0WasConsumed = r0WasConsumed
+
+getR1WasConsumed :: TrackedDevice -> Bool
+getR1WasConsumed = r1WasConsumed
+
+getR0ContainsCombination :: TrackedDevice -> Bool
+getR0ContainsCombination = r0ContainsCombination
+
+-- | Determine which registers an instruction consumes, accounting for combination tracking
+classifyRegisterConsumption :: Byte -> TrackedDevice -> (Bool, Bool)  -- (consumesR0, consumesR1)
+classifyRegisterConsumption instruction device = case instruction of
+    11 -> (True, r0ContainsCombination device)  -- STORE R0: uses R0, and R1 if R0 contains combination
+    12 -> (False, True)                         -- STORE R1: uses R1 directly
+    14 -> (True, r0ContainsCombination device)  -- JZ: uses R0, and R1 if R0 contains combination  
+    15 -> (True, r0ContainsCombination device)  -- JNZ: uses R0, and R1 if R0 contains combination
+    _  -> (False, False)                        -- All other instructions don't consume register values
+
 -- Complete independent step function with integrated access tracking
 stepTrackedProgram :: TrackedDevice -> TrackedDevice
 stepTrackedProgram device
@@ -145,11 +173,15 @@ executeInstructionWithTracking instruction device =
         
         -- ADD (1): R0 = R0 + R1
         1 -> let newR0 = (r0 device + r1 device) `mod` 16
-             in (device { r0 = newR0, pc = (pc device + 1) `mod` 16 }, Set.empty)
+                 -- R0 now contains a combination of both registers
+                 combinationDevice = device { r0ContainsCombination = True }
+             in (combinationDevice { r0 = newR0, pc = (pc device + 1) `mod` 16 }, Set.empty)
         
         -- SUB (2): R0 = R0 - R1  
         2 -> let newR0 = (r0 device - r1 device) `mod` 16
-             in (device { r0 = newR0, pc = (pc device + 1) `mod` 16 }, Set.empty)
+                 -- R0 now contains a combination of both registers
+                 combinationDevice = device { r0ContainsCombination = True }
+             in (combinationDevice { r0 = newR0, pc = (pc device + 1) `mod` 16 }, Set.empty)
         
         -- INC R0 (3)
         3 -> (device { r0 = (r0 device + 1) `mod` 16, pc = (pc device + 1) `mod` 16 }, Set.empty)
@@ -197,7 +229,11 @@ executeInstructionWithTracking instruction device =
         11 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
                   address = memory device ! operandLoc
                   newMemory = memory device // [(fromIntegral address, r0 device)]
-                  newDevice = device { memory = newMemory, pc = (pc device + 2) `mod` 16 }
+                  -- Classify consumption based on combination tracking
+                  (consumesR0, consumesR1) = classifyRegisterConsumption 11 device
+                  consumedDevice = device { r0WasConsumed = r0WasConsumed device || consumesR0
+                                          , r1WasConsumed = r1WasConsumed device || consumesR1 }
+                  newDevice = consumedDevice { memory = newMemory, pc = (pc device + 2) `mod` 16 }
                   accesses = Set.singleton operandLoc  -- Only read operand, don't track writes
               in (newDevice, accesses)
         
@@ -205,7 +241,9 @@ executeInstructionWithTracking instruction device =
         12 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
                   address = memory device ! operandLoc
                   newMemory = memory device // [(fromIntegral address, r1 device)]
-                  newDevice = device { memory = newMemory, pc = (pc device + 2) `mod` 16 }
+                  -- R1 is always consumed directly
+                  consumedDevice = device { r1WasConsumed = True }
+                  newDevice = consumedDevice { memory = newMemory, pc = (pc device + 2) `mod` 16 }
                   accesses = Set.singleton operandLoc  -- Only read operand, don't track writes
               in (newDevice, accesses)
         
@@ -220,7 +258,11 @@ executeInstructionWithTracking instruction device =
         14 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
                   address = memory device ! operandLoc
                   newPc = if r0 device == 0 then address `mod` 16 else (pc device + 2) `mod` 16
-                  newDevice = device { pc = newPc }
+                  -- Classify consumption based on combination tracking
+                  (consumesR0, consumesR1) = classifyRegisterConsumption 14 device
+                  consumedDevice = device { r0WasConsumed = r0WasConsumed device || consumesR0
+                                          , r1WasConsumed = r1WasConsumed device || consumesR1 }
+                  newDevice = consumedDevice { pc = newPc }
                   accesses = Set.singleton operandLoc
               in (newDevice, accesses)
         
@@ -228,7 +270,11 @@ executeInstructionWithTracking instruction device =
         15 -> let operandLoc = fromIntegral ((pc device + 1) `mod` 16)
                   address = memory device ! operandLoc
                   newPc = if r0 device /= 0 then address `mod` 16 else (pc device + 2) `mod` 16
-                  newDevice = device { pc = newPc }
+                  -- Classify consumption based on combination tracking
+                  (consumesR0, consumesR1) = classifyRegisterConsumption 15 device
+                  consumedDevice = device { r0WasConsumed = r0WasConsumed device || consumesR0
+                                          , r1WasConsumed = r1WasConsumed device || consumesR1 }
+                  newDevice = consumedDevice { pc = newPc }
                   accesses = Set.singleton operandLoc
               in (newDevice, accesses)
         
