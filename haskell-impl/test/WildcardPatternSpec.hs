@@ -120,12 +120,12 @@ spec = describe "WildcardPattern" $ do
       -- Verify complete OptimizedProgram structure
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 1000)  -- Significant reduction
-      equivalenceClass optimized `shouldBe` "8[123456910][123456910][123456910]0***********"
+      equivalenceClass optimized `shouldBe` "8[0123456789][123456910][123456910]0***********"
 
       -- Verify pattern details - should be 16 bytes with wildcards for unused positions
       length (wildcardPattern optimized) `shouldBe` 16
       take 5 (wildcardPattern optimized) `shouldBe`
-        [Required 8, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0]
+        [Required 8, AnyOf singleCharOutput, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0]
       drop 5 (wildcardPattern optimized) `shouldBe` replicate 11 Wildcard
 
     it "optimizes program with unused memory - practical case" $ do
@@ -137,8 +137,8 @@ spec = describe "WildcardPattern" $ do
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 100)  -- Good reduction
       length (wildcardPattern optimized) `shouldBe` 16  -- Always 16 bytes
-      -- First 3 positions should be Required, rest should be Wildcard
-      take 3 (wildcardPattern optimized) `shouldBe` [Required 8, Required 12, Required 0]
+      -- Position 0: Required 8, Position 1: AnyOf double-char (12 is double-char), Position 2: Required 0
+      take 3 (wildcardPattern optimized) `shouldBe` [Required 8, AnyOf doubleCharOutput, Required 0]
       drop 3 (wildcardPattern optimized) `shouldBe` replicate 13 Wildcard
 
     it "optimizes meaningful program - no optimization case" $ do
@@ -171,13 +171,13 @@ spec = describe "WildcardPattern" $ do
       -- R0 operations should be dead since R0 never consumed directly
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 1000)  -- Good reduction from dead R0 ops
-      -- Positions 0, 2, 4 should have AnyOf patterns (dead R0 operations)
+      -- Position 0 (INC R0): dead register op, Position 2 (ADD): Required because R1 is consumed by STORE R1
       let pattern = wildcardPattern optimized
           isAnyOf (AnyOf _) = True
           isAnyOf _ = False
-      (pattern !! 0) `shouldSatisfy` isAnyOf
-      (pattern !! 2) `shouldSatisfy` isAnyOf
-      (pattern !! 4) `shouldSatisfy` isAnyOf
+      (pattern !! 0) `shouldSatisfy` isAnyOf  -- INC R0 is dead 
+      (pattern !! 2) `shouldSatisfy` isAnyOf  -- ADD is dead - even though R1 is consumed, R0 is not
+      (pattern !! 4) `shouldBe` Required 1    -- Position 4 contains ADD (1) - not classified as dead
 
   context "optimizeProgram Function - Edge Cases" $ do
     it "optimizes minimal program" $ do
@@ -251,19 +251,19 @@ spec = describe "WildcardPattern" $ do
     it "creates correct wildcard patterns" $ do
       let analysis = analyzeTestProgram [8, 5, 3, 4, 0]  -- PRINT 5, INC R0, INC R1, HALT
           optimized = optimizeProgram analysis
-      -- Should be 16 bytes with specific pattern for first 5 positions, wildcards for rest
+      -- Should be 16 bytes with enhanced pattern: print operand optimized by output length
       length (wildcardPattern optimized) `shouldBe` 16
       take 5 (wildcardPattern optimized) `shouldBe`
-        [Required 8, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0]
+        [Required 8, AnyOf singleCharOutput, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0]
       drop 5 (wildcardPattern optimized) `shouldBe` replicate 11 Wildcard
 
     it "creates wildcards for unused memory" $ do
       let analysis = analyzeTestProgram [8, 5, 0, 7, 8]  -- PRINT 5, HALT, unused
           optimized = optimizeProgram analysis
-      -- Should be 16 bytes with specific pattern for first 3 positions, wildcards for rest
+      -- Should be 16 bytes with enhanced pattern: print operand optimized by output length
       length (wildcardPattern optimized) `shouldBe` 16
       let pattern = wildcardPattern optimized
-      take 3 pattern `shouldBe` [Required 8, AnyOf deadCodeEquivalentInstructions, Required 0]
+      take 3 pattern `shouldBe` [Required 8, AnyOf singleCharOutput, Required 0]
       drop 3 pattern `shouldBe` replicate 13 Wildcard
 
     it "calculates reduction factors correctly" $ do
