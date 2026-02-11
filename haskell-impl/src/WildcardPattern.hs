@@ -133,10 +133,10 @@ analyzeProgram program device =
 -- | Identify unused memory locations that can be wildcarded
 identifyUnusedMemory :: [Byte] -> TrackedDevice -> [Int]
 identifyUnusedMemory program device = 
-    let programLength = length program
-        allPossibleLocations = [0..(programLength - 1)]
+    let -- Consider all 16 memory locations available on the 4917 processor
+        allMemoryLocations = [0..15]
         accessedLocs = Set.toList (getAccessedLocations device)
-    in filter (`notElem` accessedLocs) allPossibleLocations
+    in filter (`notElem` accessedLocs) allMemoryLocations
 
 -- | Create wildcard pattern from program by marking unused locations  
 createMemoryWildcardPattern :: [Byte] -> TrackedDevice -> [Maybe Byte]
@@ -204,8 +204,15 @@ optimizeProgram analysis =
         unused = Set.fromList (unusedMemoryPositions analysis)  
         dead = Set.fromList (deadRegisterPositions analysis)
         
-        -- Create sophisticated pattern  
-        wildcardPattern = map (classifyPosition analysis) (zip [0..] program)
+        -- For practical optimization, create pattern only up to last meaningful position
+        -- This includes the program length but can be extended if there are accessed positions beyond
+        programLength = length program
+        maxAccessedPos = if null (Set.toList (getAccessedLocations (trackedDevice analysis)))
+                        then programLength - 1
+                        else maximum (Set.toList (getAccessedLocations (trackedDevice analysis)))
+        patternLength = max programLength (maxAccessedPos + 1)
+        
+        wildcardPattern = map (classifyMemoryPosition analysis) [0..patternLength-1]
             
     in OptimizedProgram
         { originalProgram = program
@@ -213,6 +220,19 @@ optimizeProgram analysis =
         , reductionFactor = calculateReductionFactor wildcardPattern
         , equivalenceClass = generateEquivalenceClass wildcardPattern
         }
+
+-- | Classify each memory position based on analysis (for full 16-byte space)
+classifyMemoryPosition :: ProgramAnalysis -> Int -> OptimizedInstruction  
+classifyMemoryPosition analysis pos 
+    | pos `elem` unusedMemoryPositions analysis = Wildcard
+    | pos `elem` deadRegisterPositions analysis = 
+        let program = programOriginal analysis
+        in if pos < length program
+           then classifyDeadRegisterPosition (program !! pos)
+           else Wildcard  -- Beyond program length
+    | pos < length (programOriginal analysis) = 
+        Required ((programOriginal analysis) !! pos)
+    | otherwise = Wildcard  -- Beyond program length
 
 -- | Classify each program position based on analysis
 classifyPosition :: ProgramAnalysis -> (Int, Byte) -> OptimizedInstruction
