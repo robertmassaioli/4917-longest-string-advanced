@@ -11,6 +11,14 @@ Create a module that can analyze a `TrackedDevice` and program execution results
 3. **Register Role Equivalence**: Detect when R0/R1 can be systematically swapped
 4. **Output Pattern Classification**: Group programs by output characteristics
 
+## Implementation Using TrackedDevice Fields
+
+The enhanced `TrackedDevice` now provides the following fields for pattern analysis:
+- `accessedLocations :: Set Int` - Memory locations that were read during execution
+- `r0WasConsumed :: Bool` - True if R0 was ever consumed by observable operations
+- `r1WasConsumed :: Bool` - True if R1 was ever consumed by observable operations  
+- `r0ContainsCombination :: Bool` - True if R0 contains result of ADD/SUB operations
+
 ## Core Principle
 
 **Observable Equivalence**: Two programs are equivalent if they produce identical output and termination behavior, regardless of internal register/memory states that don't affect execution flow.
@@ -36,10 +44,30 @@ Program halts immediately (instruction 0), so positions 1+ are never accessed.
 [8, 5, 13, 0, X] → Position 4+ unused (jumps to 0)
 ```
 
-### Detection Strategy
-- Track all memory reads (instructions 9, 10) and jump targets (13, 14, 15)
-- Mark unaccessed locations as wildcards
-- Consider self-modifying code (stores that affect executed locations)
+### Detection Strategy Using TrackedDevice
+```haskell
+-- | Identify unused memory locations that can be wildcarded
+identifyUnusedMemory :: [Byte] -> TrackedDevice -> [Int]  -- Returns unused positions
+identifyUnusedMemory program device = 
+    let programLength = length program
+        allPossibleLocations = [0..(programLength - 1)]
+        accessedLocs = Set.toList (getAccessedLocations device)
+    in allPossibleLocations \\ accessedLocs
+
+-- | Create wildcard pattern from program by marking unused locations  
+createMemoryWildcardPattern :: [Byte] -> TrackedDevice -> [Maybe Byte]
+createMemoryWildcardPattern program device =
+    let unusedPositions = Set.fromList (identifyUnusedMemory program device)
+    in map (\(pos, byte) -> if pos `Set.member` unusedPositions 
+                           then Nothing  -- Wildcard
+                           else Just byte) (zip [0..] program)
+```
+
+**Implementation Details:**
+- Use `getAccessedLocations device` to get all memory positions that were read
+- Compare against program length to find positions never accessed
+- Self-modifying code automatically tracked via memory read operations
+- Return `Nothing` for wildcardable positions, `Just value` for required positions
 
 ---
 
@@ -79,10 +107,76 @@ The ADD operation (instruction 1) is dead because R0 and R1 values are never con
 [9, 5, 14, 8, 0]    → Load R0 from [5], JZ 8 (R0 consumed by jump)
 ```
 
-### Implementation Strategy
-1. **Backwards Analysis**: Start from consuming operations, trace back to meaningful manipulations
-2. **Data Flow Tracking**: Monitor register def-use chains throughout execution
-3. **Wildcard Replacement**: Replace dead operation sequences with NOPs or wildcards
+### Implementation Strategy Using TrackedDevice
+```haskell
+-- | Analyze register operations to identify dead code
+analyzeRegisterOperations :: [Byte] -> TrackedDevice -> (DeadOperationAnalysis, [Int])
+analyzeRegisterOperations program device = 
+    let r0Used = getR0WasConsumed device
+        r1Used = getR1WasConsumed device
+        r0HasCombination = getR0ContainsCombination device
+        
+        -- Identify all register-manipulating instruction positions
+        regOpPositions = findRegisterManipulatingPositions program
+        
+        -- Classify dead operations based on consumption flags
+        deadR0Ops = if not r0Used then findR0ManipulatingPositions program else []
+        deadR1Ops = if not r1Used && not r0HasCombination then findR1ManipulatingPositions program 
+                   else if not r1Used && r0HasCombination then findR1OpsAfterCombination program
+                   else []
+        
+        analysis = DeadOperationAnalysis
+            { deadR0Operations = deadR0Ops
+            , deadR1Operations = deadR1Ops  
+            , r0ConsumptionStatus = if r0Used then "Consumed" else "Never Used"
+            , r1ConsumptionStatus = if r1Used then "Consumed" 
+                                   else if r0HasCombination then "Used in Combination" 
+                                   else "Never Used"
+            }
+            
+    in (analysis, deadR0Ops ++ deadR1Ops)
+
+data DeadOperationAnalysis = DeadOperationAnalysis
+    { deadR0Operations :: [Int]     -- Program positions with dead R0 operations
+    , deadR1Operations :: [Int]     -- Program positions with dead R1 operations
+    , r0ConsumptionStatus :: String -- Human readable status
+    , r1ConsumptionStatus :: String -- Human readable status  
+    } deriving (Show, Eq)
+
+-- | Find all positions of register-manipulating instructions
+findRegisterManipulatingPositions :: [Byte] -> [Int]
+findRegisterManipulatingPositions program = 
+    let regManipulating = [1, 2, 3, 4, 5, 6, 9, 10]  -- ADD, SUB, INC, DEC, LOAD
+    in [pos | (pos, instr) <- zip [0..] program, instr `elem` regManipulating]
+
+-- | Find R0-specific manipulating instructions  
+findR0ManipulatingPositions :: [Byte] -> [Int]
+findR0ManipulatingPositions program =
+    let r0Manipulating = [1, 2, 3, 5, 9]  -- ADD, SUB, INC R0, DEC R0, LOAD R0
+    in [pos | (pos, instr) <- zip [0..] program, instr `elem` r0Manipulating]
+
+-- | Find R1-specific manipulating instructions
+findR1ManipulatingPositions :: [Byte] -> [Int] 
+findR1ManipulatingPositions program =
+    let r1Manipulating = [1, 2, 4, 6, 10]  -- ADD, SUB, INC R1, DEC R1, LOAD R1
+    in [pos | (pos, instr) <- zip [0..] program, instr `elem` r1Manipulating]
+
+-- | Handle complex case: R1 operations after combination
+findR1OpsAfterCombination :: [Byte] -> [Int]
+findR1OpsAfterCombination program = 
+    -- More sophisticated analysis needed here:
+    -- Find R1 operations that occur after the combination was created
+    -- but before any consumption occurs
+    -- This requires execution order analysis
+    []  -- Placeholder for now
+```
+
+**Implementation Details:**
+- **Simple Case**: If `r0WasConsumed = False`, all R0-manipulating operations are dead
+- **Simple Case**: If `r1WasConsumed = False` AND `r0ContainsCombination = False`, all R1-manipulating operations are dead  
+- **Complex Case**: If `r1WasConsumed = False` but `r0ContainsCombination = True`, R1 was used indirectly
+- **Combination Tracking**: The latch behavior ensures we never miss indirect R1 usage through arithmetic
+- **Position Mapping**: Return actual program positions for optimization/replacement
 
 ---
 
@@ -170,6 +264,216 @@ Print operations (instruction 8) output different character counts:
 ### Phase 3: Advanced Optimizations
 6. **Loop Pattern Recognition**: Detect and optimize loop structures
 7. **Self-Modification Handling**: Handle dynamic code modification cases
+
+## Practical Implementation Examples
+
+### Example 1: Complete Analysis Workflow
+```haskell
+-- | Complete pattern analysis using TrackedDevice
+analyzeProgram :: [Byte] -> IO (ProgramAnalysis)
+analyzeProgram program = do
+    case createTrackedDevice program of
+        Left err -> return $ ProgramAnalysis program [] [] "Error: " ++ show err
+        Right device -> do
+            let finalDevice = runTrackedProgram device 1000
+            
+            -- 1. Unused Memory Analysis  
+            let unusedMemory = identifyUnusedMemory program finalDevice
+                memoryPattern = createMemoryWildcardPattern program finalDevice
+            
+            -- 2. Dead Register Analysis
+            let (regAnalysis, deadPositions) = analyzeRegisterOperations program finalDevice
+            
+            return $ ProgramAnalysis
+                { originalProgram = program
+                , unusedMemoryPositions = unusedMemory  
+                , deadRegisterPositions = deadPositions
+                , analysisReport = formatAnalysisReport memoryPattern regAnalysis
+                }
+
+data ProgramAnalysis = ProgramAnalysis
+    { originalProgram :: [Byte]
+    , unusedMemoryPositions :: [Int]
+    , deadRegisterPositions :: [Int]  
+    , analysisReport :: String
+    } deriving (Show)
+```
+
+### Example 2: Real Program Analysis Results
+```haskell
+-- Program: [8, 5, 3, 4, 1, 11, 0, 0] 
+-- PRINT 5, INC R0, INC R1, ADD, STORE R0, HALT
+
+Expected Results:
+- accessedLocations: {0, 1, 2, 3, 4, 5, 6}  -- All instructions + operands executed
+- r0WasConsumed: True     -- R0 consumed by STORE R0  
+- r1WasConsumed: True     -- R1 consumed via ADD combination
+- r0ContainsCombination: True  -- ADD sets this flag
+- unusedMemoryPositions: [7]   -- Position 7 never accessed
+- deadRegisterPositions: []    -- No dead operations (all registers used)
+
+-- Program: [8, 5, 3, 4, 0]
+-- PRINT 5, INC R0, INC R1, HALT  
+
+Expected Results:
+- accessedLocations: {0, 1, 2, 3, 4}  -- All instructions executed
+- r0WasConsumed: False    -- R0 never consumed
+- r1WasConsumed: False    -- R1 never consumed  
+- r0ContainsCombination: False  -- No combination operations
+- unusedMemoryPositions: []     -- All positions accessed
+- deadRegisterPositions: [2, 3]  -- Both INC operations are dead
+
+-- Program: [8, 5, 3, 4, 1, 5, 0, X, X, ...]  
+-- PRINT 5, INC R0, INC R1, ADD, DEC R0, HALT
+
+Expected Results:
+- accessedLocations: {0, 1, 2, 3, 4, 5, 6}  -- Instructions 0-6 executed
+- r0WasConsumed: False    -- R0 never consumed by STORE/JZ/JNZ
+- r1WasConsumed: False    -- R1 never consumed directly or via combination  
+- r0ContainsCombination: True  -- ADD sets this flag (latch behavior)
+- unusedMemoryPositions: [7, 8, 9, ...]  -- Positions 7+ never accessed
+- deadRegisterPositions: [2, 3, 4, 5]     -- All register ops are dead
+```
+
+## WildcardPattern Design: Enhanced OptimizedInstruction Types
+
+### Core Pattern Types
+```haskell
+data OptimizedInstruction = 
+    Required Byte           -- Must be exactly this byte value
+  | Wildcard                -- Can be any value (0-15)
+  | AnyOf [Byte]           -- Can be any value from this specific list
+  deriving (Show, Eq)
+
+data OptimizedProgram = OptimizedProgram
+    { originalProgram :: [Byte]
+    , wildcardPattern :: [OptimizedInstruction]
+    , reductionFactor :: Double  -- How much search space was reduced
+    , equivalenceClass :: String -- Canonical representation for grouping
+    } deriving (Show)
+```
+
+### Pattern Classification Strategy
+```haskell
+-- | Create optimized pattern based on analysis results
+optimizeProgram :: ProgramAnalysis -> OptimizedProgram
+optimizeProgram analysis = 
+    let program = originalProgram analysis
+        unused = Set.fromList (unusedMemoryPositions analysis)  
+        dead = Set.fromList (deadRegisterPositions analysis)
+        
+        -- Create sophisticated pattern  
+        wildcardPattern = map (classifyPosition analysis) (zip [0..] program)
+            
+    in OptimizedProgram
+        { originalProgram = program
+        , wildcardPattern = wildcardPattern  
+        , reductionFactor = calculateReductionFactor wildcardPattern
+        , equivalenceClass = generateEquivalenceClass wildcardPattern
+        }
+
+-- | Classify each program position based on analysis
+classifyPosition :: ProgramAnalysis -> (Int, Byte) -> OptimizedInstruction
+classifyPosition analysis (pos, originalByte) 
+    | pos `elem` unusedMemoryPositions analysis = Wildcard
+    | pos `elem` deadRegisterPositions analysis = classifyDeadRegisterPosition originalByte
+    | otherwise = Required originalByte
+
+-- | Handle dead register positions with instruction grouping
+classifyDeadRegisterPosition :: Byte -> OptimizedInstruction
+classifyDeadRegisterPosition originalByte = case originalByte of
+    -- If it's a register-manipulating instruction, allow any register-manipulating instruction
+    1 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
+    2 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation  
+    3 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
+    4 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
+    5 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
+    6 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation  
+    9 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10]  -- Any register operation
+    10 -> AnyOf [1, 2, 3, 4, 5, 6, 9, 10] -- Any register operation
+    -- For other instructions, keep them as required (shouldn't happen in dead register analysis)
+    _ -> Required originalByte
+```
+
+### Advanced Pattern Applications
+
+#### 1. Register Operation Equivalence
+```haskell
+-- Define instruction categories for AnyOf patterns
+registerManipulating :: [Byte]
+registerManipulating = [1, 2, 3, 4, 5, 6, 9, 10]  -- All register-manipulating instructions
+
+registerConsuming :: [Byte] 
+registerConsuming = [11, 12, 14, 15]  -- All register-consuming instructions
+
+r0Operations :: [Byte]
+r0Operations = [1, 2, 3, 5, 9, 11, 14, 15]  -- All R0-related instructions
+
+r1Operations :: [Byte]  
+r1Operations = [1, 2, 4, 6, 10, 12]  -- All R1-related instructions
+
+-- | Create more sophisticated patterns based on register usage
+createAdvancedPattern :: ProgramAnalysis -> [OptimizedInstruction]
+createAdvancedPattern analysis = 
+    map (classifyAdvancedPosition analysis) (zip [0..] (originalProgram analysis))
+
+classifyAdvancedPosition :: ProgramAnalysis -> (Int, Byte) -> OptimizedInstruction  
+classifyAdvancedPosition analysis (pos, byte)
+    | pos `elem` unusedMemoryPositions analysis = Wildcard
+    | pos `elem` deadRegisterPositions analysis && byte `elem` registerManipulating = 
+        AnyOf registerManipulating  -- Any register manipulation is equivalent
+    | otherwise = Required byte
+```
+
+#### 2. Search Space Reduction Calculation
+```haskell
+-- | Calculate search space reduction factor
+calculateReductionFactor :: [OptimizedInstruction] -> Double
+calculateReductionFactor pattern = 
+    let totalOriginalSpace = 16 ^ length pattern  -- 16^n for original program
+        reducedSpace = product (map instructionSpaceSize pattern)
+        reductionFactor = fromIntegral totalOriginalSpace / fromIntegral reducedSpace
+    in reductionFactor
+
+instructionSpaceSize :: OptimizedInstruction -> Int
+instructionSpaceSize instruction = case instruction of
+    Required _ -> 1      -- Only one valid value
+    Wildcard -> 16       -- All 16 values valid  
+    AnyOf options -> length options  -- Number of valid options
+
+-- Example calculations:
+-- Original: [8, 5, 3, 4, 0] = 16^5 = 1,048,576 possibilities
+-- Optimized: [Required 8, Required 5, AnyOf [1,2,3,4,5,6,9,10], AnyOf [1,2,3,4,5,6,9,10], Required 0]
+-- Reduced: 1 × 1 × 8 × 8 × 1 = 64 possibilities  
+-- Reduction Factor: 1,048,576 / 64 = 16,384× reduction!
+```
+
+### Practical Pattern Examples
+
+#### Example 1: Memory and Register Optimization
+```haskell
+-- Original: [8, 5, 3, 4, 0, X, X, X] (length 5, positions 5+ unused)
+-- Analysis: positions 2,3 are dead register ops, positions 5+ unused
+-- Pattern: [Required 8, Required 5, AnyOf [1,2,3,4,5,6,9,10], AnyOf [1,2,3,4,5,6,9,10], Required 0, Wildcard, Wildcard, Wildcard]
+-- Reduction: 16^8 → 1×1×8×8×1×16×16×16 = 262,144 vs original 4,294,967,296 = 16,384× reduction
+```
+
+#### Example 2: Complex Register Dependencies  
+```haskell
+-- Original: [3, 4, 1, 11, 0] -- INC R0, INC R1, ADD, STORE R0, HALT
+-- Analysis: All register operations meaningful due to consumption
+-- Pattern: [Required 3, Required 4, Required 1, Required 11, Required 0]
+-- Reduction: 16^5 → 1×1×1×1×1 = No reduction (optimal program)
+```
+
+#### Example 3: Selective Register Equivalence
+```haskell
+-- If we know R0 is never consumed, R0 operations become equivalent:
+-- AnyOf [3, 5, 9] for any R0-manipulating position  
+-- AnyOf [4, 6, 10] for any R1-manipulating position
+-- This allows grouping programs with different but equivalent register operations
+```
+```
 
 ### Testing Strategy
 - **Exhaustive Verification**: Test on small program lengths (3-4) where full enumeration is feasible
