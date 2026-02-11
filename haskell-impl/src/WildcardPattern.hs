@@ -201,18 +201,9 @@ findR1OpsAfterCombination program =
 optimizeProgram :: ProgramAnalysis -> OptimizedProgram
 optimizeProgram analysis = 
     let program = programOriginal analysis
-        unused = Set.fromList (unusedMemoryPositions analysis)  
-        dead = Set.fromList (deadRegisterPositions analysis)
         
-        -- For practical optimization, create pattern only up to last meaningful position
-        -- This includes the program length but can be extended if there are accessed positions beyond
-        programLength = length program
-        maxAccessedPos = if null (Set.toList (getAccessedLocations (trackedDevice analysis)))
-                        then programLength - 1
-                        else maximum (Set.toList (getAccessedLocations (trackedDevice analysis)))
-        patternLength = max programLength (maxAccessedPos + 1)
-        
-        wildcardPattern = map (classifyMemoryPosition analysis) [0..patternLength-1]
+        -- Always create pattern for full 16-byte memory space
+        wildcardPattern = map (classifyMemoryPosition analysis) [0..15]
             
     in OptimizedProgram
         { originalProgram = program

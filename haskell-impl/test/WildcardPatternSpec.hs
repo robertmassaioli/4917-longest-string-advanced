@@ -14,33 +14,33 @@ runTestProgram program = case createTrackedDevice program of
 
 -- Helper function to analyze a program
 analyzeTestProgram :: [Byte] -> ProgramAnalysis
-analyzeTestProgram program = 
+analyzeTestProgram program =
     let device = runTestProgram program
     in analyzeProgram program device
 
 
 spec :: Spec
 spec = describe "WildcardPattern" $ do
-  
+
   context "Instruction Category Constants" $ do
     it "registerManipulating contains correct instructions" $ do
       registerManipulating `shouldBe` [1, 2, 3, 4, 5, 6, 9, 10]
-      
+
     it "registerConsuming contains correct instructions" $ do
       registerConsuming `shouldBe` [11, 12, 14, 15]
-      
+
     it "nonRegisterInstructions contains correct instructions" $ do
       nonRegisterInstructions `shouldBe` [0, 7, 8, 13]
-      
+
     it "r0ManipulatingOnly contains correct instructions" $ do
       r0ManipulatingOnly `shouldBe` [3, 5, 9]
-      
+
     it "r1ManipulatingOnly contains correct instructions" $ do
       r1ManipulatingOnly `shouldBe` [4, 6, 10]
-      
+
     it "bothRegisterOperations contains correct instructions" $ do
       bothRegisterOperations `shouldBe` [1, 2]
-      
+
     it "deadCodeEquivalentInstructions equals registerManipulating" $ do
       deadCodeEquivalentInstructions `shouldBe` registerManipulating
 
@@ -69,7 +69,7 @@ spec = describe "WildcardPattern" $ do
   context "Dead Register Operation Analysis" $ do
     it "detects dead register operations when registers never consumed" $ do
       let analysis = analyzeTestProgram [8, 5, 3, 4, 0]  -- PRINT 5, INC R0, INC R1, HALT
-      -- Program: [8, 5, 3, 4, 0] positions 0, 1, 2, 3, 4  
+      -- Program: [8, 5, 3, 4, 0] positions 0, 1, 2, 3, 4
       -- Position 1 (5) is an operand for PRINT, but 5=DEC R0 which is also a dead register op
       -- Positions 2 (3=INC R0) and 3 (4=INC R1) are dead register operations
       deadRegisterPositions analysis `shouldBe` [1, 2, 3]  -- Include position 1 since 5=DEC R0
@@ -116,41 +116,48 @@ spec = describe "WildcardPattern" $ do
       let program = [8, 5, 3, 4, 0]  -- PRINT 5, INC R0, INC R1, HALT
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       -- Verify complete OptimizedProgram structure
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 1000)  -- Significant reduction
-      equivalenceClass optimized `shouldBe` "8[123456910][123456910][123456910]0"
-      
-      -- Verify pattern details
-      wildcardPattern optimized `shouldBe` 
+      equivalenceClass optimized `shouldBe` "8[123456910][123456910][123456910]0***********"
+
+      -- Verify pattern details - should be 16 bytes with wildcards for unused positions
+      length (wildcardPattern optimized) `shouldBe` 16
+      take 5 (wildcardPattern optimized) `shouldBe`
         [Required 8, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0]
+      drop 5 (wildcardPattern optimized) `shouldBe` replicate 11 Wildcard
 
     it "optimizes program with unused memory - practical case" $ do
       let program = [8, 12, 0, 7, 8, 15]  -- PRINT 12, HALT, unused data
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
-      -- Should have wildcards for unused positions and dead register ops
+
+      -- Should have wildcards for unused positions in full 16-byte pattern
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 100)  -- Good reduction
-      wildcardPattern optimized `shouldBe` [Required 8, Required 12, Required 0, Wildcard, Wildcard, Wildcard]
+      length (wildcardPattern optimized) `shouldBe` 16  -- Always 16 bytes
+      -- First 3 positions should be Required, rest should be Wildcard
+      take 3 (wildcardPattern optimized) `shouldBe` [Required 8, Required 12, Required 0]
+      drop 3 (wildcardPattern optimized) `shouldBe` replicate 13 Wildcard
 
     it "optimizes meaningful program - no optimization case" $ do
-      let program = [3, 4, 1, 11, 0, 0]  -- INC R0, INC R1, ADD, STORE R0, HALT  
+      let program = [3, 4, 1, 11, 0, 0]  -- INC R0, INC R1, ADD, STORE R0, HALT
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       -- Should have minimal optimization since all operations are meaningful
       originalProgram optimized `shouldBe` program
-      reductionFactor optimized `shouldBe` 16777216.0  -- 16^6 / 1^6 = no reduction in pattern space
-      wildcardPattern optimized `shouldBe` map Required program  -- All Required
+      length (wildcardPattern optimized) `shouldBe` 16  -- Always 16 bytes
+      -- First 6 positions should be Required (the program), rest should be Wildcard
+      take 6 (wildcardPattern optimized) `shouldBe` map Required program
+      drop 6 (wildcardPattern optimized) `shouldBe` replicate 10 Wildcard
 
     it "optimizes complex program - mixed optimization case" $ do
       let program = [8, 15, 3, 4, 1, 11, 2, 0, 7, 8, 12]  -- Complex program with dead and unused parts
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       -- Should optimize both unused memory and some dead operations
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 10)  -- Some reduction
@@ -158,9 +165,9 @@ spec = describe "WildcardPattern" $ do
 
     it "optimizes program with combination consumption" $ do
       let program = [3, 4, 1, 12, 1, 0]  -- INC R0, INC R1, ADD, STORE R1, HALT
-          analysis = analyzeTestProgram program  
+          analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       -- R0 operations should be dead since R0 never consumed directly
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 1000)  -- Good reduction from dead R0 ops
@@ -172,36 +179,40 @@ spec = describe "WildcardPattern" $ do
       (pattern !! 2) `shouldSatisfy` isAnyOf
       (pattern !! 4) `shouldSatisfy` isAnyOf
 
-  context "optimizeProgram Function - Edge Cases" $ do  
+  context "optimizeProgram Function - Edge Cases" $ do
     it "optimizes minimal program" $ do
       let program = [0]  -- Just HALT
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       originalProgram optimized `shouldBe` program
-      wildcardPattern optimized `shouldBe` [Required 0]
-      reductionFactor optimized `shouldBe` 16.0  -- 16^1 / 1^1
+      length (wildcardPattern optimized) `shouldBe` 16  -- Always 16 bytes
+      -- First position should be Required 0, rest should be Wildcard
+      head (wildcardPattern optimized) `shouldBe` Required 0
+      drop 1 (wildcardPattern optimized) `shouldBe` replicate 15 Wildcard
 
     it "optimizes program with all dead register operations" $ do
       let program = [3, 4, 5, 6, 1, 2, 0]  -- All register ops, no consumption, HALT
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       -- All register operations should become AnyOf patterns
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 1000)  -- Good reduction (not necessarily massive)
+      length (wildcardPattern optimized) `shouldBe` 16  -- Always 16 bytes
       let pattern = wildcardPattern optimized
           isAnyOf (AnyOf _) = True
           isAnyOf _ = False
-      length (filter isAnyOf pattern) `shouldBe` 4  -- Most register ops (some might be Required due to combination logic)
-      last pattern `shouldBe` Required 0  -- HALT stays Required
+      length (filter isAnyOf (take 7 pattern)) `shouldBe` 4  -- Most register ops in first 7 positions
+      (pattern !! 6) `shouldBe` Required 0  -- HALT at position 6
+      drop 7 (wildcardPattern optimized) `shouldBe` replicate 9 Wildcard  -- Positions 7-15 unused
 
     it "optimizes program with only unused memory" $ do
       let program = [8, 5, 0, 1, 2, 3, 4, 5, 6, 7]  -- PRINT 5, HALT, lots of unused data
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
-      originalProgram optimized `shouldBe` program  
+
+      originalProgram optimized `shouldBe` program
       -- Should have many Wildcard positions for unused memory
       let pattern = wildcardPattern optimized
       length (filter (== Wildcard) pattern) `shouldSatisfy` (>= 5)  -- Many wildcards
@@ -212,13 +223,13 @@ spec = describe "WildcardPattern" $ do
       let program = [8, 10, 3, 5, 4, 6, 0]  -- PRINT 10, dead register ops, HALT
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       -- Should demonstrate significant optimization potential
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 1000)
-      
-      -- Calculate actual search space reduction
-      let originalSpace = 16^7
+
+      -- Calculate actual search space reduction (now 16^16 vs optimized)
+      let originalSpace = 16^16
           optimizedSpace = product $ map instructionSpaceSize (wildcardPattern optimized)
           actualReduction = fromIntegral originalSpace / fromIntegral optimizedSpace
       actualReduction `shouldSatisfy` (> 1000.0)
@@ -227,12 +238,12 @@ spec = describe "WildcardPattern" $ do
       let program = [3, 1, 4, 2, 0]  -- INC R0, ADD, INC R1, SUB, HALT (all dead)
           analysis = analyzeTestProgram program
           optimized = optimizeProgram analysis
-      
+
       -- All register operations are equivalent when dead (but position 2 might not be dead due to combination)
       originalProgram optimized `shouldBe` program
       -- Position 2 (INC R1) might be Required if it's not considered dead
       equivalenceClass optimized `shouldContain` "[123456910]"
-      
+
       -- Verify good search space reduction
       reductionFactor optimized `shouldSatisfy` (> 100)
 
@@ -240,17 +251,20 @@ spec = describe "WildcardPattern" $ do
     it "creates correct wildcard patterns" $ do
       let analysis = analyzeTestProgram [8, 5, 3, 4, 0]  -- PRINT 5, INC R0, INC R1, HALT
           optimized = optimizeProgram analysis
-      -- Position 1 (5=DEC R0) is also dead, so it gets AnyOf pattern too
-      wildcardPattern optimized `shouldBe` 
+      -- Should be 16 bytes with specific pattern for first 5 positions, wildcards for rest
+      length (wildcardPattern optimized) `shouldBe` 16
+      take 5 (wildcardPattern optimized) `shouldBe`
         [Required 8, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, AnyOf deadCodeEquivalentInstructions, Required 0]
+      drop 5 (wildcardPattern optimized) `shouldBe` replicate 11 Wildcard
 
     it "creates wildcards for unused memory" $ do
       let analysis = analyzeTestProgram [8, 5, 0, 7, 8]  -- PRINT 5, HALT, unused
           optimized = optimizeProgram analysis
-      -- Position 1 (5=DEC R0) is a dead register operation, so it gets AnyOf
-      -- Positions 3,4 (after HALT) get Wildcard, but we need to check the first few positions  
+      -- Should be 16 bytes with specific pattern for first 3 positions, wildcards for rest
+      length (wildcardPattern optimized) `shouldBe` 16
       let pattern = wildcardPattern optimized
-      pattern `shouldStartWith` [Required 8, AnyOf deadCodeEquivalentInstructions, Required 0, Wildcard, Wildcard]
+      take 3 pattern `shouldBe` [Required 8, AnyOf deadCodeEquivalentInstructions, Required 0]
+      drop 3 pattern `shouldBe` replicate 13 Wildcard
 
     it "calculates reduction factors correctly" $ do
       let pattern = [Required 8, Wildcard, AnyOf [1,2,3], Required 0]
@@ -297,7 +311,7 @@ spec = describe "WildcardPattern" $ do
       let deadPositions = deadRegisterPositions analysis
       length deadPositions `shouldBe` 4
       -- Check each position is in the dead list
-      0 `elem` deadPositions `shouldBe` True  
+      0 `elem` deadPositions `shouldBe` True
       1 `elem` deadPositions `shouldBe` True
       2 `elem` deadPositions `shouldBe` True
       3 `elem` deadPositions `shouldBe` True
@@ -326,7 +340,7 @@ spec = describe "WildcardPattern" $ do
       positions `shouldBe` [1, 2, 3]
 
     it "finds R0 manipulating positions" $ do
-      let program = [3, 4, 1, 5, 0]  -- INC R0, INC R1, ADD, DEC R0, HALT  
+      let program = [3, 4, 1, 5, 0]  -- INC R0, INC R1, ADD, DEC R0, HALT
           positions = findR0ManipulatingPositions program
       positions `shouldBe` [0, 2, 3]  -- INC R0, ADD, DEC R0
 
