@@ -24,7 +24,7 @@ library
                      , PatternAnalyzer
                      , AdvancedPatternCache
                      , InstructionAnalysis
-                     , WildcardPatterns
+                     , LegacyWildcardPatterns
                      , WildcardPattern
                      , CLI
                      , Commands.Demo
@@ -71,7 +71,7 @@ test-suite spec
                      , PatternAnalyzerSpec
                      , ProcessorSpec
                      , TrackedProcessorSpec
-                     , WildcardPatternsSpec
+                     , LegacyWildcardPatternsSpec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base >=4.7 && <5
                      , hspec >=2.7 && <2.12

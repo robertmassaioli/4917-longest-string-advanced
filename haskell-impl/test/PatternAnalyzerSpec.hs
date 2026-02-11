@@ -5,7 +5,7 @@ import Test.Hspec.QuickCheck
 import PatternAnalyzer
 import ExecutionTracing (ProgramResult(..), TerminationType(..), ExecutionTrace(..), ExecutionState(..), TracePoint(..))
 import Processor (Byte)
-import WildcardPatterns (WildcardPattern(..), matchWildcardPattern)
+import LegacyWildcardPatterns (WildcardPattern(..), matchWildcardPattern)
 import Data.Time (getCurrentTime)
 import Data.Maybe (isJust, isNothing)
 

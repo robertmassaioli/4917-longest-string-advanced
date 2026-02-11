@@ -1,8 +1,8 @@
-module WildcardPatternsSpec (spec) where
+module LegacyWildcardPatternsSpec (spec) where
 
 import Test.Hspec
 import Test.Hspec.QuickCheck
-import WildcardPatterns
+import LegacyWildcardPatterns
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Word (Word8)

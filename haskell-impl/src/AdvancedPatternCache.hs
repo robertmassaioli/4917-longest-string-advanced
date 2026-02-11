@@ -17,7 +17,7 @@ module AdvancedPatternCache
     ) where
 
 import PatternAnalyzer
-import qualified WildcardPatterns as WP
+import qualified LegacyWildcardPatterns as WP
 import ExecutionTracing (ProgramResult(..), TerminationType(..), ExecutionTrace(..), ExecutionState(..), extractExecutionSteps)
 import PatternCache (ProgramCache(..), CacheStatistics(..), incrementExecutionsSaved, incrementWildcardHits, incrementSimilarityHits, addTimeSaved, incrementTotalExecutions)
 import qualified PatternCache as Basic

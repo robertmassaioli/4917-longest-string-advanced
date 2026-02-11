@@ -2,7 +2,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 
-module WildcardPatterns
+module LegacyWildcardPatterns
     ( PatternElement(..)
     , WildcardPattern(..)
     , Constraint(..)

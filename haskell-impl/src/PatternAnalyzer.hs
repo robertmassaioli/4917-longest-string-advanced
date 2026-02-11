@@ -18,7 +18,7 @@ module PatternAnalyzer
 
 import ExecutionTracing (ProgramResult(..), TerminationType(..), ExecutionStep(..), extractExecutionSteps)
 import Processor (Byte)
-import WildcardPatterns (WildcardPattern, wildcardFromProgram, matchWildcardPattern)
+import LegacyWildcardPatterns (WildcardPattern, wildcardFromProgram, matchWildcardPattern)
 import Data.List (isPrefixOf, findIndex, nub)
 import Control.DeepSeq (NFData, rnf)
 import GHC.Generics (Generic)
