@@ -3,6 +3,7 @@ module Commands.Test
     ) where
 
 import ProcessorTests
+import WildcardPatternTests
 
 -- | Run the test command
 runTestCommand :: Maybe String -> Bool -> IO ()
@@ -12,27 +13,76 @@ runTestCommand maybePattern verbose = do
     putStrLn "=== 4917 Processor Test Suite ==="
     putStrLn ""
     
-    results <- case maybePattern of
+    (processorResults, wildcardResults) <- case maybePattern of
         Nothing -> do
             putStrLn "Running all tests..."
-            runAllTests
+            proc <- runAllTests
+            wild <- runWildcardPatternTests
+            return (proc, wild)
         Just pattern -> do
             putStrLn $ "Running tests matching pattern: " ++ pattern
-            runFilteredTests pattern
+            (proc, wild) <- runFilteredTests pattern
+            return (proc, wild)
+    
+    let allResults = processorResults ++ wildcardResults
+        failures = filter (not . testPassed) allResults
+        totalTests = length allResults
+        passedTests = totalTests - length failures
     
     putStrLn ""
-    let failures = filter (not . testPassed) results
+    putStrLn "=== Test Summary ==="
+    putStrLn $ "✅ Passed: " ++ show passedTests ++ "/" ++ show totalTests
+    
     if null failures
-        then putStrLn "✅ All tests passed!"
-        else putStrLn $ "❌ " ++ show (length failures) ++ " test(s) failed"
+        then putStrLn "🎉 All tests passed!"
+        else do
+            putStrLn $ "❌ Failed: " ++ show (length failures) ++ " test(s)"
+            putStrLn ""
+            putStrLn "Failed tests:"
+            mapM_ printFailedTest failures
+  where
+    printFailedTest test = putStrLn $ "  - " ++ testName test
 
 -- Helper to conditionally print
 when :: Bool -> IO () -> IO ()
 when True action = action
 when False _ = return ()
 
--- | Run filtered tests (placeholder for pattern matching)
-runFilteredTests :: String -> IO [TestResult]
-runFilteredTests _pattern = do
-    putStrLn "Note: Pattern filtering not yet implemented, running all tests..."
-    runAllTests
+-- | Run filtered tests with pattern matching
+runFilteredTests :: String -> IO ([TestResult], [TestResult])
+runFilteredTests pattern = do
+    putStrLn $ "Filtering tests by pattern: " ++ pattern
+    
+    allProcessorResults <- runAllTests
+    allWildcardResults <- runWildcardPatternTests
+    
+    let filteredProcessor = filter (matchesPattern pattern) allProcessorResults
+        filteredWildcard = filter (matchesPattern pattern) allWildcardResults
+        
+        totalFiltered = length filteredProcessor + length filteredWildcard
+        totalAll = length allProcessorResults + length allWildcardResults
+    
+    putStrLn $ "Matched " ++ show totalFiltered ++ " out of " ++ show totalAll ++ " tests"
+    
+    return (filteredProcessor, filteredWildcard)
+  where
+    -- Simple pattern matching - check if pattern is substring of test name (case-insensitive)
+    matchesPattern :: String -> TestResult -> Bool
+    matchesPattern pat test = 
+        let lowerPat = map toLower pat
+            lowerName = map toLower (testName test)
+        in lowerPat `isInfixOf` lowerName
+    
+    toLower :: Char -> Char
+    toLower c | c >= 'A' && c <= 'Z' = toEnum (fromEnum c + 32)
+              | otherwise = c
+    
+    isInfixOf :: Eq a => [a] -> [a] -> Bool
+    isInfixOf [] _ = True
+    isInfixOf _ [] = False
+    isInfixOf needle haystack@(_:hs) = isPrefixOf needle haystack || isInfixOf needle hs
+    
+    isPrefixOf :: Eq a => [a] -> [a] -> Bool
+    isPrefixOf [] _ = True
+    isPrefixOf _ [] = False
+    isPrefixOf (x:xs) (y:ys) = x == y && isPrefixOf xs ys
