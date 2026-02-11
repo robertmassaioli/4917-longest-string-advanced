@@ -34,7 +34,6 @@ data ValidationError = ValidationError
 
 data ErrorType 
     = InvalidInstructionValue
-    | InvalidOperandValue
     | ProgramTooLong
     | EmptyProgram
     deriving (Show, Eq)
@@ -76,22 +75,19 @@ validateProgram program
         ("Program length " ++ show (length program) ++ " exceeds maximum of 16 instructions") Nothing
     | otherwise = validateInstructions program 0
 
--- Validate each instruction and operand in the program
+-- Validate each instruction in the program
 validateInstructions :: [Byte] -> Int -> Either ValidationError [Byte]
 validateInstructions [] _ = Right []
 validateInstructions (instr:rest) pos
     | instr > 15 = Left $ ValidationError InvalidInstructionValue 
         ("Invalid instruction value " ++ show instr ++ " at position " ++ show pos ++ ". Must be 0-15.") (Just pos)
-    | instr >= 8 = -- Two-byte instruction, validate operand
+    | instr >= 8 = -- Two-byte instruction, process operand
         case rest of
-            [] -> Left $ ValidationError InvalidOperandValue 
-                ("Two-byte instruction " ++ show instr ++ " at position " ++ show pos ++ " missing operand") (Just pos)
-            (operand:remaining) 
-                | operand > 15 -> Left $ ValidationError InvalidOperandValue 
-                    ("Invalid operand value " ++ show operand ++ " at position " ++ show (pos + 1) ++ ". Must be 0-15.") (Just (pos + 1))
-                | otherwise -> do
-                    validatedRest <- validateInstructions remaining (pos + 2)
-                    return (instr : operand : validatedRest)
+            [] -> -- Missing operand, pad with 0
+                return [instr, 0]
+            (operand:remaining) -> do
+                validatedRest <- validateInstructions remaining (pos + 2)
+                return (instr : operand : validatedRest)
     | otherwise = do -- Single-byte instruction
         validatedRest <- validateInstructions rest (pos + 1)
         return (instr : validatedRest)

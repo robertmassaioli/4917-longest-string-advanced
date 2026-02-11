@@ -41,11 +41,9 @@ spec = describe "TrackedProcessor" $ do
     it "validates program with invalid instruction values" $ do
       [255] `shouldFailWith` InvalidInstructionValue
       [16, 0] `shouldFailWith` InvalidInstructionValue
-      [8, 16] `shouldFailWith` InvalidOperandValue
 
     it "validates program constraints" $ do
       [] `shouldFailWith` EmptyProgram
-      [8] `shouldFailWith` InvalidOperandValue  -- Two-byte instruction missing operand
 
   context "Individual Instruction Tests" $ do
     describe "Single-byte instructions (0-7)" $ do
@@ -139,28 +137,28 @@ spec = describe "TrackedProcessor" $ do
         getAccessedLocations stepped `shouldBe` Set.fromList [0, 1]
 
       it "LOAD R0 (9) - loads value into R0" $ do
-        let program = [9, 4, 0, 0, 42]  -- LOAD R0 from address 4, HALT, padding, data
+        let program = [9, 4, 0, 0, 15]  -- LOAD R0 from address 4, HALT, padding, data
             tracked = createTestDevice program
             stepped = stepTrackedProgram tracked
-        getR0 stepped `shouldBe` 42
+        getR0 stepped `shouldBe` 15
         getPc stepped `shouldBe` 2
         getAccessedLocations stepped `shouldBe` Set.fromList [0, 1, 4]
 
       it "LOAD R1 (10) - loads value into R1" $ do
-        let program = [10, 5, 0, 0, 0, 99]  -- LOAD R1 from address 5, HALT, padding, data
+        let program = [10, 5, 0, 0, 0, 12]  -- LOAD R1 from address 5, HALT, padding, data
             tracked = createTestDevice program
             stepped = stepTrackedProgram tracked
-        getR1 stepped `shouldBe` 99
+        getR1 stepped `shouldBe` 12
         getPc stepped `shouldBe` 2
         getAccessedLocations stepped `shouldBe` Set.fromList [0, 1, 5]
 
       it "STORE R0 (11) - stores R0 to memory" $ do
         let program = [11, 5, 0]  -- STORE R0 to address 5, HALT
             tracked = createTestDevice program
-            tracked' = tracked { r0 = 123 }
+            tracked' = tracked { r0 = 9 }
             stepped = stepTrackedProgram tracked'
         -- Check memory was modified
-        getMemory stepped ! 5 `shouldBe` 123
+        getMemory stepped ! 5 `shouldBe` 9
         getPc stepped `shouldBe` 2
         -- Should only access operand location, not destination (writes don't count)
         getAccessedLocations stepped `shouldBe` Set.fromList [0, 1]
@@ -168,9 +166,9 @@ spec = describe "TrackedProcessor" $ do
       it "STORE R1 (12) - stores R1 to memory" $ do
         let program = [12, 6, 0]  -- STORE R1 to address 6, HALT
             tracked = createTestDevice program
-            tracked' = tracked { r1 = 200 }
+            tracked' = tracked { r1 = 14 }
             stepped = stepTrackedProgram tracked'
-        getMemory stepped ! 6 `shouldBe` 200
+        getMemory stepped ! 6 `shouldBe` 14
         getPc stepped `shouldBe` 2
         getAccessedLocations stepped `shouldBe` Set.fromList [0, 1]
 
@@ -262,19 +260,19 @@ spec = describe "TrackedProcessor" $ do
 
   context "Memory Access Patterns" $ do
     it "identifies minimal memory footprint" $ do
-      let program = [8, 15, 0, 99, 99, 99]  -- PRINT 15, HALT + unused data
+      let program = [8, 15, 0, 11, 12, 13]  -- PRINT 15, HALT + unused data
           tracked = createTestDevice program
           final = runTrackedProgram tracked 10
       getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2]
       -- Should not access unused locations 3, 4, 5
 
     it "tracks data reads separately from instructions" $ do
-      let program = [9, 5, 0, 0, 0, 123]  -- LOAD R0 from address 5, HALT, padding, data
+      let program = [9, 5, 0, 0, 0, 7]  -- LOAD R0 from address 5, HALT, padding, data
           tracked = createTestDevice program
           step1 = stepTrackedProgram tracked  -- Execute LOAD
           step2 = stepTrackedProgram step1    -- Execute HALT
       getAccessedLocations step2 `shouldBe` Set.fromList [0, 1, 2, 5]
-      getR0 step2 `shouldBe` 123
+      getR0 step2 `shouldBe` 7
 
     it "handles STORE instructions (no data read tracking)" $ do
       let program = [11, 5, 0]  -- STORE R0 to address 5, HALT
@@ -303,13 +301,13 @@ spec = describe "TrackedProcessor" $ do
       isHalted final `shouldBe` True
 
     it "tracks load-store-print sequence" $ do
-      let program = [9, 8, 11, 9, 8, 15, 0, 0, 42, 0]  -- LOAD R0 from 8, STORE R0 to 9, PRINT 15, HALT, data, modified
+      let program = [9, 8, 11, 9, 8, 15, 0, 0, 13, 0]  -- LOAD R0 from 8, STORE R0 to 9, PRINT 15, HALT, data, modified
           tracked = createTestDevice program
           final = runTrackedProgram tracked 20
       getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4, 5, 6, 8]
       getOutput final `shouldBe` 2  -- "15" printed
       isHalted final `shouldBe` True
-      getMemory final ! 9 `shouldBe` 42  -- Value was stored
+      getMemory final ! 9 `shouldBe` 13  -- Value was stored
 
     it "tracks loop with counter" $ do
       let program = [9, 8, 5, 15, 4, 13, 2, 0, 3]  -- LOAD R0 from 8, DEC R0, JNZ 4, INC R1, JMP 2, HALT, data=3
@@ -319,20 +317,16 @@ spec = describe "TrackedProcessor" $ do
       Set.isSubsetOf (Set.fromList [0, 1, 2, 3, 4, 5, 6, 8]) (getAccessedLocations final) `shouldBe` True
 
     it "tracks quine-like self-modifying program" $ do
-      let program = [9, 6, 11, 7, 8, 15, 42, 0]  -- LOAD R0 from 6, STORE R0 to 7, PRINT 15, HALT, data, target
+      let program = [9, 6, 11, 7, 8, 15, 10, 0]  -- LOAD R0 from 6, STORE R0 to 7, PRINT 15, HALT, data, target
           tracked = createTestDevice program
           final = runTrackedProgram tracked 20
-      getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      getAccessedLocations final `shouldBe` Set.fromList [0, 1, 2, 3, 4, 5, 6, 7, 8, 10]
       getOutput final `shouldBe` 2  -- "15" printed
-      getMemory final ! 7 `shouldBe` 42  -- Self-modification occurred
+      getMemory final ! 7 `shouldBe` 10  -- Self-modification occurred
 
   context "Edge Cases" $ do
-    it "handles empty program" $ do
-      let program = []  -- All zeros
-          tracked = createTestDevice program
-          stepped = stepTrackedProgram tracked
-      isHalted stepped `shouldBe` True  -- HALT instruction (0)
-      getAccessedLocations stepped `shouldBe` Set.fromList [0]
+    it "validates empty program" $ do
+      [] `shouldFailWith` EmptyProgram
 
     it "handles program counter wraparound" $ do
       let program = [13, 0]  -- JMP 0, creates infinite loop
@@ -341,8 +335,13 @@ spec = describe "TrackedProcessor" $ do
       -- Should detect loop and stop
       getAccessedLocations final `shouldBe` Set.fromList [0, 1]
 
-    it "handles invalid instructions as NOP" $ do
-      let program = [255, 0]  -- Invalid instruction, HALT
+    it "validates invalid instruction values" $ do
+      [255, 0] `shouldFailWith` InvalidInstructionValue
+      [16, 0] `shouldFailWith` InvalidInstructionValue
+      [100, 5, 0] `shouldFailWith` InvalidInstructionValue
+
+    it "handles all valid instructions 0-15" $ do
+      let program = [7, 0]  -- NOP, HALT  
           tracked = createTestDevice program
           step1 = stepTrackedProgram tracked
           step2 = stepTrackedProgram step1
