@@ -1,5 +1,7 @@
 module TrackedProcessor
     ( TrackedDevice(..)
+    , ValidationError(..)
+    , ErrorType(..)
     , Byte
     , createTrackedDevice
     , stepTrackedProgram
@@ -23,6 +25,20 @@ import Data.Word (Word8)
 
 type Byte = Word8
 
+-- Validation error types for program validation
+data ValidationError = ValidationError
+    { errorType :: ErrorType
+    , errorMessage :: String
+    , errorPosition :: Maybe Int  -- Position in program where error occurred
+    } deriving (Show, Eq)
+
+data ErrorType 
+    = InvalidInstructionValue
+    | InvalidOperandValue
+    | ProgramTooLong
+    | EmptyProgram
+    deriving (Show, Eq)
+
 -- TrackedDevice - independent processor implementation with access tracking
 data TrackedDevice = TrackedDevice
     { pc :: Byte                        -- Program Counter
@@ -35,12 +51,13 @@ data TrackedDevice = TrackedDevice
     , accessedLocations :: Set Int      -- Which memory locations were read
     } deriving (Show, Eq)
 
--- Create TrackedDevice from program
-createTrackedDevice :: [Byte] -> TrackedDevice
-createTrackedDevice program = 
-    let paddedProgram = take 16 (program ++ repeat 0)
+-- Create TrackedDevice from program with validation
+createTrackedDevice :: [Byte] -> Either ValidationError TrackedDevice
+createTrackedDevice program = do
+    validatedProgram <- validateProgram program
+    let paddedProgram = take 16 (validatedProgram ++ repeat 0)
         deviceMemory = Vector.fromList paddedProgram
-    in TrackedDevice
+    return TrackedDevice
         { pc = 0
         , r0 = 0
         , r1 = 0
@@ -50,6 +67,34 @@ createTrackedDevice program =
         , steps = 0
         , accessedLocations = Set.empty
         }
+
+-- Validate program for 4-bit processor constraints
+validateProgram :: [Byte] -> Either ValidationError [Byte]
+validateProgram [] = Left $ ValidationError EmptyProgram "Program cannot be empty" Nothing
+validateProgram program 
+    | length program > 16 = Left $ ValidationError ProgramTooLong 
+        ("Program length " ++ show (length program) ++ " exceeds maximum of 16 instructions") Nothing
+    | otherwise = validateInstructions program 0
+
+-- Validate each instruction and operand in the program
+validateInstructions :: [Byte] -> Int -> Either ValidationError [Byte]
+validateInstructions [] _ = Right []
+validateInstructions (instr:rest) pos
+    | instr > 15 = Left $ ValidationError InvalidInstructionValue 
+        ("Invalid instruction value " ++ show instr ++ " at position " ++ show pos ++ ". Must be 0-15.") (Just pos)
+    | instr >= 8 = -- Two-byte instruction, validate operand
+        case rest of
+            [] -> Left $ ValidationError InvalidOperandValue 
+                ("Two-byte instruction " ++ show instr ++ " at position " ++ show pos ++ " missing operand") (Just pos)
+            (operand:remaining) 
+                | operand > 15 -> Left $ ValidationError InvalidOperandValue 
+                    ("Invalid operand value " ++ show operand ++ " at position " ++ show (pos + 1) ++ ". Must be 0-15.") (Just (pos + 1))
+                | otherwise -> do
+                    validatedRest <- validateInstructions remaining (pos + 2)
+                    return (instr : operand : validatedRest)
+    | otherwise = do -- Single-byte instruction
+        validatedRest <- validateInstructions rest (pos + 1)
+        return (instr : validatedRest)
 
 -- Accessor functions
 isHalted :: TrackedDevice -> Bool
