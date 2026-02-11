@@ -25,6 +25,7 @@ library
                      , AdvancedPatternCache
                      , InstructionAnalysis
                      , WildcardPatterns
+                     , WildcardPattern
                      , CLI
                      , Commands.Demo
                      , Commands.Benchmark
