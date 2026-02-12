@@ -15,9 +15,94 @@ import qualified Data.Set as Set
 instance NFData TrackedDevice where
     rnf device = device `seq` ()
 
+-- =============================================================================
+-- PHASE 1: INDIVIDUAL INSTRUCTION BENCHMARKS
+-- =============================================================================
+
+-- | Test devices for each of the 16 instructions in stepTrackedProgram
+createTrackedInstructionTests :: [(Int, String, TrackedDevice)]
+createTrackedInstructionTests = map createTest instructionSpecs
+  where
+    instructionSpecs = 
+        [ (0,  "HALT",        [0])
+        , (1,  "ADD R0,R1",   [1])  -- Will set R0=5, R1=3 for meaningful test
+        , (2,  "SUB R0,R1",   [2])  -- Will set R0=8, R1=3 for meaningful test
+        , (3,  "INC R0",      [3])
+        , (4,  "INC R1",      [4])
+        , (5,  "DEC R0",      [5])  -- Will set R0=5 for meaningful test
+        , (6,  "DEC R1",      [6])  -- Will set R1=5 for meaningful test
+        , (7,  "NOP",         [7])
+        , (8,  "PRINT",       [8, 5])    -- PRINT 5 (single digit)
+        , (9,  "LOAD R0",     [9, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42])  -- LOAD R0, [15] where [15] = 42
+        , (10, "LOAD R1",     [10, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42]) -- LOAD R1, [15] where [15] = 42
+        , (11, "STORE R0",    [11, 15])  -- STORE R0, [15] (will set R0=7)
+        , (12, "STORE R1",    [12, 15])  -- STORE R1, [15] (will set R1=7)
+        , (13, "JMP",         [13, 0])   -- JMP [0] (jump to start)
+        , (14, "JZ",          [14, 0])   -- JZ [0] (will set R0=0 for jump)
+        , (15, "JNZ",         [15, 0])   -- JNZ [0] (will set R0=5 for jump)
+        ]
+    
+    createTest (code, name, program) =
+        let device = case createTrackedDevice program of
+                Left err -> error $ "Failed to create test device for " ++ name ++ ": " ++ show err
+                Right d -> setInitialRegisters code d
+        in (code, name, device)
+    
+    -- Set appropriate initial register values for meaningful instruction testing
+    setInitialRegisters code device = case code of
+        1  -> device { r0 = 5, r1 = 3 }    -- ADD: 5 + 3 = 8
+        2  -> device { r0 = 8, r1 = 3 }    -- SUB: 8 - 3 = 5
+        5  -> device { r0 = 5 }            -- DEC R0: 5 - 1 = 4
+        6  -> device { r1 = 5 }            -- DEC R1: 5 - 1 = 4
+        11 -> device { r0 = 7 }            -- STORE R0: store value 7
+        12 -> device { r1 = 7 }            -- STORE R1: store value 7
+        14 -> device { r0 = 0 }            -- JZ: R0=0 will take jump
+        15 -> device { r0 = 5 }            -- JNZ: R0=5 will take jump
+        _  -> device
+
+-- =============================================================================
+-- INSTRUCTION-SPECIFIC BENCHMARK FUNCTIONS
+-- =============================================================================
+
+-- | Benchmark a single instruction execution
+benchSingleInstruction :: TrackedDevice -> Benchmarkable
+benchSingleInstruction device = nf stepTrackedProgram device
+
+-- | Benchmark instruction with register state reset (for repeated testing)
+benchInstructionRepeated :: TrackedDevice -> Benchmarkable
+benchInstructionRepeated initialDevice = nf runRepeatedInstruction initialDevice
+  where
+    runRepeatedInstruction device = 
+        let steppedDevice = stepTrackedProgram device
+            -- Reset PC to repeat the instruction, but keep tracking data
+        in steppedDevice { pc = pc device }
+
+-- | Benchmark instruction tracking overhead
+benchInstructionTrackingOverhead :: TrackedDevice -> Benchmarkable
+benchInstructionTrackingOverhead device = nf measureTrackingOverhead device
+  where
+    measureTrackingOverhead d = 
+        let stepped = stepTrackedProgram d
+        in (getAccessedLocations stepped, getInstructionLocations stepped, getOperandLocations stepped)
+
+-- | Create individual instruction benchmarks
+createInstructionBenchmarks :: [(Int, String, TrackedDevice)] -> [Benchmark]
+createInstructionBenchmarks tests = map createInstrBench tests
+  where
+    createInstrBench (code, name, device) =
+        bgroup ("Instruction " ++ show code ++ " (" ++ name ++ ")")
+            [ bench "single-step" $ benchSingleInstruction device
+            , bench "repeated-execution" $ benchInstructionRepeated device
+            , bench "tracking-overhead" $ benchInstructionTrackingOverhead device
+            ]
+
+-- =============================================================================
+-- LEGACY BENCHMARK PROGRAMS (for compatibility during migration)
+-- =============================================================================
+
 -- Benchmark programs similar to the existing benchmark
-benchmarkPrograms :: [(String, [P.Byte])]
-benchmarkPrograms = 
+legacyBenchmarkPrograms :: [(String, [P.Byte])]
+legacyBenchmarkPrograms = 
     [ ("Simple HALT", [0])
     , ("Print and HALT", [8, 5, 0])
     , ("Increment and HALT", [3, 0])
@@ -27,6 +112,10 @@ benchmarkPrograms =
     , ("Conditional Branch", [3, 14, 4, 8, 5, 0])
     , ("Long Program", [8, 10, 3, 4, 1, 9, 8, 11, 7, 12, 8, 0, 0, 13, 2])
     ]
+
+-- =============================================================================
+-- LEGACY BENCHMARK FUNCTIONS (for compatibility)
+-- =============================================================================
 
 -- | Create a TrackedDevice for benchmarking
 createBenchDevice :: [P.Byte] -> TrackedDevice
@@ -84,9 +173,11 @@ comparisonBenchmarks =
         
         -- Original Processor benchmark
         benchOriginalProcessor = nf (\prog -> 
-            case P.createDevice prog of
-                Left _ -> 0
-                Right device -> P.outputLength $ fst $ P.runProgramLoopCheck device 1000) testProgram
+            let device = P.createDevice prog
+                result = P.runProgramLoopCheck device
+            in case result of
+                P.ProgramTerminated count -> count
+                P.InfiniteLoopDetected -> 0) testProgram
                 
         -- TrackedProcessor benchmark  
         benchTrackedProcessor = nf (\prog ->
@@ -153,9 +244,19 @@ main = do
     putStrLn "🚀 TrackedProcessor Performance Benchmark Suite"
     putStrLn "================================================"
     putStrLn ""
+    putStrLn "Phase 1: Individual Instruction Benchmarks (16 instructions)"
+    putStrLn "Phase 2: Program-Level Benchmarks (legacy compatibility)"
+    putStrLn "Phase 3: TrackedProcessor-Specific Features"
+    putStrLn "Phase 4: Performance Comparisons"
+    putStrLn ""
     
     defaultMain $ 
-        concat (map createProgramBenchmarks benchmarkPrograms) ++
+        -- Phase 1: Individual instruction benchmarks
+        [ bgroup "Phase 1: Individual Instructions" $ 
+            createInstructionBenchmarks createTrackedInstructionTests
+        ] ++
+        -- Legacy benchmarks (to be migrated to Phase 2)
+        concat (map createProgramBenchmarks legacyBenchmarkPrograms) ++
         comparisonBenchmarks ++
         instructionBenchmarks ++  
         memoryPatternBenchmarks ++
