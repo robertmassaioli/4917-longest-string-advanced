@@ -378,20 +378,349 @@ generateProgramSignatureOptimized program =
 
 ---
 
-## Detailed Performance Comparison
+## Option 4: Hierarchical Position-Based Index 🗂️
 
-| Data Structure | Lookup (Best) | Lookup (Worst) | Insert | Memory | Correctness | Implementation |
-|----------------|---------------|----------------|---------|---------|-------------|----------------|
-| **Trie** | O(L) | O(L) | O(L) | O(P×L) | ✅ **Guaranteed** | Complex |
-| **Vector Scan** | O(1) | O(P) | O(P log P) | O(P) | ✅ **Guaranteed** | Simple |
-| **Signature Hash** | O(1) | **O(P)*** | O(1) | O(P) | ❌ **Unreliable** | Medium |
+### **Core Idea**
+Pre-index patterns by **position constraints** in a hierarchical structure. Each level represents a memory position, dramatically reducing search space through progressive filtering.
+
+### **Data Structure**
+```haskell
+data PositionIndex = PositionIndex
+    { indexLevels :: Vector (PositionLevel)     -- One level per memory position (0-15)
+    , leafPatterns :: Vector OptimizedProgram   -- Final pattern storage
+    } deriving (Show)
+
+data PositionLevel = PositionLevel
+    { requiredMap :: Map Byte (Set PatternID)        -- Exact value -> matching patterns
+    , wildcardSet :: Set PatternID                   -- Patterns accepting any value
+    , anyOfMap :: Map (Set Byte) (Set PatternID)     -- Value sets -> matching patterns
+    } deriving (Show)
+
+type PatternID = Int  -- Index into leafPatterns vector
+```
+
+### **Algorithm**
+```haskell
+-- Ultra-fast lookup through progressive filtering
+lookupHierarchical :: [Byte] -> PositionIndex -> Maybe OptimizedProgram
+lookupHierarchical program posIndex = 
+    case progressiveFilter program 0 (Set.fromList [0..Vector.length (leafPatterns posIndex) - 1]) of
+        candidates | Set.null candidates -> Nothing
+        candidates -> Just $ (leafPatterns posIndex) Vector.! (Set.findMin candidates)
+  where
+    progressiveFilter :: [Byte] -> Int -> Set PatternID -> Set PatternID
+    progressiveFilter [] _ candidates = candidates
+    progressiveFilter (byte:rest) pos candidates
+        | Set.null candidates = Set.empty  -- Early termination
+        | pos >= Vector.length (indexLevels posIndex) = candidates
+        | otherwise = 
+            let level = (indexLevels posIndex) Vector.! pos
+                matching = getMatchingPatterns byte level
+                filtered = Set.intersection candidates matching
+            in progressiveFilter rest (pos + 1) filtered
+
+    getMatchingPatterns :: Byte -> PositionLevel -> Set PatternID
+    getMatchingPatterns byte level = 
+        Set.unions [ Map.findWithDefault Set.empty byte (requiredMap level)
+                   , wildcardSet level
+                   , Set.unions [patterns | (validSet, patterns) <- Map.toList (anyOfMap level)
+                                         , byte `Set.member` validSet]
+                   ]
+
+-- Insert pattern with automatic indexing
+insertHierarchical :: OptimizedProgram -> PositionIndex -> PositionIndex
+insertHierarchical optProg posIndex = 
+    let patternID = Vector.length (leafPatterns posIndex)
+        pattern = wildcardPattern optProg
+        updatedLevels = Vector.imap (updateLevel patternID pattern) (indexLevels posIndex)
+        updatedLeaves = Vector.snoc (leafPatterns posIndex) optProg
+    in posIndex { indexLevels = updatedLevels, leafPatterns = updatedLeaves }
+```
+
+### **Performance Characteristics**
+- **Lookup**: O(L × log F) where L = program length, F = average fanout per position - **NO EXECUTION**
+- **Early termination**: Candidates eliminated aggressively at each position
+- **Insertion**: O(L × log F) to update all position indices
+- **Memory**: O(P × L × F) but with excellent cache locality
+
+### **Advantages**
+- ✅ **Progressive filtering** - Candidate set shrinks dramatically at each position
+- ✅ **Early termination** - Zero candidates → instant rejection
+- ✅ **Cache-friendly** - Sequential position-by-position access
+- ✅ **Parallelizable** - Each position filter can be processed independently
+- ✅ **Excellent for sparse patterns** - Empty positions eliminate many candidates quickly
+
+### **Disadvantages**
+- ❌ **Complex indexing** - Multiple maps per position to maintain
+- ❌ **Memory overhead** - Redundant pattern ID storage across positions
+- ❌ **Update complexity** - Must update all relevant position indices
+
+---
+
+## Option 5: Succinct Bit Matrix with Rank/Select 🎯
+
+### **Core Idea**
+Encode all wildcard patterns as a **succinct bit matrix** where rows are patterns and columns are position/value combinations. Use rank/select operations for ultra-fast intersection queries.
+
+### **Data Structure**
+```haskell
+data BitMatrixIndex = BitMatrixIndex
+    { patternMatrix :: BitVector           -- Flattened pattern×position×value matrix
+    , patternCount :: Int                  -- Number of patterns (rows)
+    , positionCount :: Int                 -- Number of positions (16)
+    , valueCount :: Int                    -- Number of possible values (16)
+    , rankIndex :: RankSelectIndex         -- Precomputed rank/select structure
+    , patternStore :: Vector OptimizedProgram  -- Pattern storage
+    } deriving (Show)
+
+-- Bit matrix layout: [pattern₀pos₀val₀, pattern₀pos₀val₁, ..., pattern₀pos₁val₀, ...]
+-- Index calculation: patternID × 16 × 16 + position × 16 + value
+```
+
+### **Algorithm**
+```haskell
+-- Ultra-fast bit operations for pattern matching
+lookupBitMatrix :: [Byte] -> BitMatrixIndex -> Maybe OptimizedProgram
+lookupBitMatrix program bitIndex = 
+    case findMatchingPatterns program bitIndex of
+        [] -> Nothing
+        (patternID:_) -> Just $ (patternStore bitIndex) Vector.! patternID
+
+findMatchingPatterns :: [Byte] -> BitMatrixIndex -> [Int]
+findMatchingPatterns program bitIndex = 
+    foldl intersectCandidates allPatterns (zip [0..] program)
+  where
+    allPatterns = [0..patternCount bitIndex - 1]
+    
+    intersectCandidates :: [Int] -> (Int, Byte) -> [Int]
+    intersectCandidates candidates (pos, byte) = 
+        filter (acceptsValueAtPosition pos byte bitIndex) candidates
+
+-- Check if pattern accepts value at position using bit operations
+acceptsValueAtPosition :: Int -> Byte -> BitMatrixIndex -> Int -> Bool
+acceptsValueAtPosition pos val bitIndex patternID = 
+    let matrixIndex = patternID * 16 * 16 + pos * 16 + fromIntegral val
+    in testBit (patternMatrix bitIndex) matrixIndex
+
+-- Optimized version using SIMD-style operations
+findMatchingPatternsSIMD :: [Byte] -> BitMatrixIndex -> [Int]
+findMatchingPatternsSIMD program bitIndex = 
+    let candidateMask = foldl1 (.&.) [getPositionMask pos val bitIndex | (pos, val) <- zip [0..] program]
+        matchingPatterns = [i | i <- [0..patternCount bitIndex - 1], testBit candidateMask i]
+    in matchingPatterns
+```
+
+### **Performance Characteristics**
+- **Lookup**: O(L + P/w) where w = word size (64), often faster due to SIMD - **NO EXECUTION**
+- **Bit operations**: Extremely cache-friendly and vectorizable
+- **Insertion**: O(L) to set bits for new pattern
+- **Memory**: O(P × L × V) but with 8x compression via bits
+
+### **Advantages**
+- ✅ **SIMD optimizable** - Modern CPUs can process 64+ patterns simultaneously
+- ✅ **Extremely cache-friendly** - Dense bit packing maximizes cache efficiency
+- ✅ **Vectorizable** - Compilers can auto-vectorize bit operations
+- ✅ **Memory efficient** - 8x compression vs naive approaches
+- ✅ **Constant-time position checks** - Single bit test per position/value
+
+### **Disadvantages**
+- ❌ **Complex bit manipulation** - Requires careful index calculations
+- ❌ **Limited scalability** - Matrix size grows as P × L × V
+- ❌ **AnyOf encoding complexity** - Multiple bits per pattern/position
+
+---
+
+## Option 6: Compressed Pattern Language with Finite Automata 🤖
+
+### **Core Idea**
+Compile all wildcard patterns into a **deterministic finite automaton (DFA)** where each state represents a partial match progress and transitions are driven by input bytes.
+
+### **Data Structure**
+```haskell
+data PatternDFA = PatternDFA
+    { states :: Vector DFAState            -- State transition table
+    , startState :: StateID               -- Initial state
+    , patternResults :: Map StateID OptimizedProgram  -- Final states → patterns
+    } deriving (Show)
+
+data DFAState = DFAState
+    { transitions :: Map Byte StateID        -- Exact value transitions
+    , wildcardTransition :: Maybe StateID    -- Accept any value
+    , anyOfTransitions :: Map (Set Byte) StateID  -- Value set transitions
+    , isAccepting :: Bool                    -- Final state marker
+    } deriving (Show)
+
+type StateID = Int
+```
+
+### **Algorithm**
+```haskell
+-- Single pass through program with state transitions
+lookupDFA :: [Byte] -> PatternDFA -> Maybe OptimizedProgram
+lookupDFA program dfa = runDFA program (startState dfa) dfa
+
+runDFA :: [Byte] -> StateID -> PatternDFA -> Maybe OptimizedProgram
+runDFA [] currentState dfa = 
+    if isAccepting ((states dfa) Vector.! currentState)
+        then Map.lookup currentState (patternResults dfa)
+        else Nothing
+
+runDFA (byte:rest) currentState dfa = 
+    case getNextState byte currentState dfa of
+        Nothing -> Nothing  -- No valid transition
+        Just nextState -> runDFA rest nextState dfa
+
+getNextState :: Byte -> StateID -> PatternDFA -> Maybe StateID
+getNextState byte stateID dfa = 
+    let state = (states dfa) Vector.! stateID
+    in case Map.lookup byte (transitions state) of
+        Just nextState -> Just nextState
+        Nothing -> case wildcardTransition state of
+            Just wildcardState -> Just wildcardState
+            Nothing -> findAnyOfTransition byte (anyOfTransitions state)
+
+-- Compile multiple patterns into single DFA (complex but very efficient)
+compilePatternsToDFA :: [OptimizedProgram] -> PatternDFA
+compilePatternsToDFA optProgs = 
+    let patterns = map wildcardPattern optProgs
+        nfa = buildNFA patterns optProgs
+        dfa = determinize nfa
+        minimizedDFA = minimize dfa
+    in minimizedDFA
+```
+
+### **Performance Characteristics**
+- **Lookup**: O(L) with very small constant factor - **NO EXECUTION**
+- **Single pass**: Each byte processed exactly once
+- **Insertion**: O(S²) DFA reconstruction, but infrequent
+- **Memory**: O(S × V) where S = number of states, V = alphabet size
+
+### **Advantages**
+- ✅ **Optimal lookup time** - Linear with tiny constant factor
+- ✅ **Single pass processing** - Each byte examined exactly once
+- ✅ **Shared prefix optimization** - Common pattern prefixes merged automatically
+- ✅ **Deterministic performance** - No backtracking or branching
+- ✅ **Highly optimizable** - Compilers love simple state machines
+
+### **Disadvantages**
+- ❌ **Complex construction** - DFA compilation is non-trivial
+- ❌ **State explosion risk** - Worst case exponential state count
+- ❌ **Update complexity** - Adding patterns requires DFA reconstruction
+
+---
+
+## Enhanced Performance Comparison with Filesystem Considerations
+
+| Data Structure | Lookup (Best) | Lookup (Worst) | Insert | Memory | Correctness | Filesystem Storage |
+|----------------|---------------|----------------|---------|---------|-------------|-------------------|
+| **1. Trie** | O(L) | O(L) | O(L) | O(P×L) | ✅ **Perfect** | ⭐ **Excellent** |
+| **2. Vector Scan** | O(1) | O(P) | O(P log P) | O(P) | ✅ **Perfect** | ⭐ **Excellent** |
+| **3. Signature Hash** | O(1) | O(P)* | O(1) | O(P) | ❌ **Unreliable** | ⭐ **Excellent** |
+| **4. Position Index** | O(L×log F) | O(L×log F) | O(L×log F) | O(P×L×F) | ✅ **Perfect** | 🔶 **Good** |
+| **5. Bit Matrix** | O(L+P/w) | O(L+P/w) | O(L) | O(P×L×V) | ✅ **Perfect** | 🔶 **Good** |
+| **6. DFA** | **O(L)** | **O(L)** | O(S²) | O(S×V) | ✅ **Perfect** | ❌ **Challenging** |
 
 Where:
 - L = Program length (16) - **NO EXECUTION COST**
 - P = Number of unique patterns  
-- *Signature Hash worst case: Cache misses force unnecessary program executions
+- F = Average fanout per position level
+- w = CPU word size (64 bits)
+- S = DFA state count, V = alphabet size (16)
+- *Signature Hash: Cache misses force unnecessary program executions
 
-**Key Insight**: Correctness matters more than raw speed - false cache misses are extremely expensive!
+## Filesystem Storage Analysis
+
+### ⭐ **Excellent Filesystem Storage**
+
+**Trie (Option 1):**
+```haskell
+-- Natural tree structure maps well to directories
+/cache/
+  ├── trie-node-0-required-8/
+  │   ├── trie-node-1-anyof-0-9/
+  │   │   ├── pattern-leaf-001.json
+  │   │   └── pattern-leaf-002.json
+  │   └── metadata.json
+  └── cache-stats.json
+
+-- Incremental updates: Only affected branches need rewriting
+-- Concurrent access: Different branches can be locked independently
+-- Lazy loading: Load trie branches on demand
+```
+
+**Vector Scan (Option 2):**
+```haskell
+-- Simple append-only log structure
+/cache/
+  ├── patterns-000001.jsonl  -- First 10K patterns
+  ├── patterns-000002.jsonl  -- Next 10K patterns  
+  ├── patterns-index.json    -- Metadata and lookup indices
+  └── patterns-latest.jsonl  -- Currently active append file
+
+-- Excellent for incremental updates
+-- Easy backup and replication
+-- Simple concurrent writers (append-only)
+```
+
+### 🔶 **Good Filesystem Storage**
+
+**Position Index (Option 4):**
+```haskell
+-- Position-based sharding
+/cache/
+  ├── position-00/  -- Memory position 0 constraints
+  │   ├── required-values.idx
+  │   ├── wildcard-patterns.idx
+  │   └── anyof-sets.idx
+  ├── position-01/  -- Memory position 1 constraints
+  └── pattern-store/  -- Actual OptimizedProgram storage
+      ├── batch-001.json
+      └── batch-002.json
+
+-- Good sharding but complex cross-references
+-- Updates require multiple file modifications
+```
+
+**Bit Matrix (Option 5):**
+```haskell
+-- Dense binary storage with metadata
+/cache/
+  ├── pattern-matrix.bin      -- Raw bit matrix (efficient)
+  ├── pattern-metadata.json  -- Dimensions and offsets
+  ├── pattern-store.bin       -- OptimizedProgram storage
+  └── rank-select.idx         -- Precomputed rank/select indices
+
+-- Very compact storage but opaque binary format
+-- Requires specialized tools for inspection
+-- All-or-nothing updates (matrix rebuild)
+```
+
+### ❌ **Challenging Filesystem Storage**
+
+**DFA (Option 6):**
+```haskell
+-- Complex state machine serialization
+/cache/
+  ├── dfa-states.bin          -- State transition table
+  ├── dfa-metadata.json       -- State count, alphabet, etc.
+  ├── accepting-states.json   -- Final states → OptimizedProgram mapping
+  └── construction-log.json   -- For debugging DFA construction
+
+-- Complex interdependent data structures
+-- Difficult to inspect or debug
+-- Updates require complete DFA reconstruction
+-- Not human-readable without specialized tools
+```
+
+## Storage Efficiency Comparison
+
+| Approach | File Count | Human Readable | Incremental Updates | Concurrent Access | Backup/Restore |
+|----------|------------|----------------|-------------------|------------------|----------------|
+| **Trie** | Medium | ✅ JSON | ✅ Branch-only | ✅ Branch-level locks | ✅ Simple |
+| **Vector Scan** | Low | ✅ JSONL | ✅ Append-only | ✅ Lock-free appends | ✅ Trivial |
+| **Position Index** | High | ✅ JSON | 🔶 Multi-file | 🔶 Complex locking | 🔶 Multi-part |
+| **Bit Matrix** | Low | ❌ Binary | ❌ Full rebuild | ❌ Exclusive locks | 🔶 Binary blob |
+| **DFA** | Medium | ❌ Binary | ❌ Full rebuild | ❌ Exclusive locks | 🔶 Complex |
 
 ## Correctness Analysis
 
@@ -403,56 +732,95 @@ Where:
 
 *Depends heavily on signature quality - could be catastrophic
 
-## Recommended Implementation Strategy
+## Updated Implementation Strategy
 
-### **Phase 1: Start with Trie-Based Pattern Matcher (Option 1)**
-**Rationale**: Guaranteed correctness, predictable performance, no false cache misses
+### **Tier 1: High-Correctness, Easy-to-Store Options**
+
+**Phase 1A: Start with Vector Scan (Option 2)** ⭐ **RECOMMENDED FOR INITIAL IMPLEMENTATION**
+**Rationale**: Perfect correctness + trivial filesystem storage + simple implementation
 
 ```haskell
--- Recommended initial implementation
+-- Simplest correct implementation
 data WildcardPatternCache = WildcardPatternCache
-    { patternTrie :: WildcardTrie
-    , patternCount :: Int
-    , lookupStats :: LookupStats  -- Monitor performance
+    { patterns :: Vector OptimizedProgram
+    , lookupStats :: LookupStats
     } deriving (Show)
 
--- Core lookup function (no program execution, guaranteed correctness!)
+-- Dead simple pattern matching
 lookupCachedPattern :: [Byte] -> WildcardPatternCache -> Maybe OptimizedProgram
 lookupCachedPattern program cache = 
-    matchesWildcardPattern program (patternTrie cache)  -- O(L) guaranteed, no false misses
+    Vector.find (matchesWildcardPattern program) (patterns cache)
 
--- Insert new pattern into trie
-insertPattern :: OptimizedProgram -> WildcardPatternCache -> WildcardPatternCache
-insertPattern optProg cache = 
-    cache { patternTrie = insertWildcardPattern optProg (patternTrie cache)
-          , patternCount = patternCount cache + 1
-          }
+-- Trivial filesystem storage: append-only JSONL files
+saveToFile :: FilePath -> WildcardPatternCache -> IO ()
+loadFromFile :: FilePath -> IO (Maybe WildcardPatternCache)
 ```
 
-### **Phase 2: Add Performance Monitoring**
-**Optimization**: Track cache hit rates and performance
+**Phase 1B: Upgrade to Trie (Option 1)** ⭐ **RECOMMENDED FOR PERFORMANCE**
+**When**: Pattern count > 10,000 and lookup performance becomes bottleneck
 
+### **Tier 2: High-Performance Options** 
+
+**Phase 2A: DFA (Option 6)** 🚀 **ULTIMATE PERFORMANCE**
+**When**: Pattern count > 100,000 and need absolute maximum lookup speed
+**Trade-off**: Complex implementation + challenging storage for O(L) with tiny constant
+
+**Phase 2B: Bit Matrix (Option 5)** 🔥 **SIMD OPTIMIZATION**
+**When**: Have SIMD expertise and very large pattern sets (1M+ patterns)
+**Trade-off**: Binary storage complexity for SIMD vectorization benefits
+
+### **Tier 3: Research/Experimental Options**
+
+**Phase 3: Position Index (Option 4)** 🧪 **EXPERIMENTAL**
+**When**: Specific use case shows position-based filtering is extremely effective
+**Note**: Complex to implement and store, uncertain real-world performance
+
+**Never: Signature Hash (Option 3)** ❌ **AVOID**
+**Reason**: Correctness issues outweigh performance benefits
+
+## Practical Implementation Roadmap
+
+### **Start Here: Vector Scan**
 ```haskell
--- Enhanced monitoring
-data LookupStats = LookupStats
-    { cacheHits :: Int      -- Programs skipped via pattern matching
-    , cacheMisses :: Int    -- Programs that needed execution  
-    , avgLookupDepth :: Double  -- Average trie traversal depth
-    } deriving (Show)
+-- Week 1: Basic vector scan implementation  
+data SimpleCache = SimpleCache [OptimizedProgram]
 
--- Monitored lookup with statistics
-lookupWithStats :: [Byte] -> WildcardPatternCache -> (Maybe OptimizedProgram, LookupStats)
-lookupWithStats program cache = 
-    case matchesWildcardPattern program (patternTrie cache) of
-        Just result -> (Just result, incrementHits (lookupStats cache))
-        Nothing -> (Nothing, incrementMisses (lookupStats cache))
+lookup program cache = find (matches program) cache
+insert optProg cache = optProg : cache
+save cache = writeFile "cache.jsonl" (map toJSON cache)
+load = fmap (map fromJSON) (readFile "cache.jsonl")
 ```
 
-### **Phase 3: Consider Vector Scan Fallback (Option 2)**
-**For simplicity**: If trie implementation becomes too complex
+### **Upgrade Path: Trie**
+```haskell
+-- Week 2-4: Migrate to trie when vector scan becomes slow
+migrateToTrie :: SimpleCache -> TrieCache
+migrateToTrie (SimpleCache patterns) = 
+    foldl insertPattern emptyTrie patterns
+```
 
-### **Phase 4: Advanced Optimizations**
-**If needed**: Memory optimization, persistent storage, parallel lookup
+### **Future: DFA** 
+```haskell
+-- Month 2+: Consider DFA for ultimate performance
+compileToDFA :: TrieCache -> DFACache
+compileToDFA trie = buildMinimalDFA (extractPatterns trie)
+```
+
+## Storage Strategy by Phase
+
+| Implementation Phase | Storage Approach | Rationale |
+|---------------------|------------------|-----------|
+| **Vector Scan** | JSONL append-only | Human readable, trivial backup, perfect for development |
+| **Trie** | JSON tree structure | Good balance of readability and efficiency |
+| **DFA** | Binary + metadata | Maximum efficiency, accept complexity trade-off |
+
+## Expected Migration Timeline
+
+**Weeks 1-2**: Vector scan → Get basic cache working, measure skip rates
+**Weeks 3-6**: Trie migration → Scale to larger pattern sets  
+**Months 2+**: DFA consideration → Only if ultimate performance needed
+
+**Key insight**: Start simple and proven, upgrade only when performance demands it. The correctness and storage benefits of Vector Scan make it ideal for initial implementation and testing.
 
 ## Integration with Search Algorithm
 
