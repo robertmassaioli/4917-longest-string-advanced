@@ -5,7 +5,7 @@ module Commands.OptimizedSearch (runOptimizedSearchCommand, OptimizedSearchOptio
 import WildcardCache
 import WildcardCacheFactory (createCacheInstance)
 import WildcardPattern (analyzeProgram, optimizeProgram)
-import TrackedProcessor (runTrackedProgram, createTrackedDevice, getOutput, Byte)
+import TrackedProcessor (runTrackedProgramLoopCheck, createTrackedDevice, getOutput, Byte)
 import Control.Monad (forM_, when)
 import Data.IORef
 import Text.Printf (printf)
@@ -85,7 +85,7 @@ runOptimizedSearchCommand opts = do
                     Left err -> when (optSearchVerbose opts) $ 
                         putStrLn $ "  ERROR: " ++ show err
                     Right device -> do
-                        let finalDevice = runTrackedProgram device 1000
+                        let finalDevice = runTrackedProgramLoopCheck device
                             outputCount = getOutput finalDevice
                             analysis = analyzeProgram program finalDevice
                             optProg = optimizeProgram analysis
