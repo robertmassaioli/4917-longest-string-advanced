@@ -355,13 +355,13 @@ instructionSpaceSize instruction = case instruction of
     Wildcard -> 16       -- All 16 values valid
     AnyOf options -> length options  -- Number of valid options
 
--- | Generate canonical equivalence class representation
+-- | Generate canonical equivalence class representation (cleaned up with range formatting)
 generateEquivalenceClass :: [OptimizedInstruction] -> String
 generateEquivalenceClass pattern =
     let classifyInstr instr = case instr of
             Required b -> show b
             Wildcard -> "*"
-            AnyOf opts -> "[" ++ concatMap show opts ++ "]"
+            AnyOf opts -> formatByteRange opts  -- Use clean range formatting
     in concatMap classifyInstr pattern
 
 -- | Human-readable representation of an OptimizedInstruction with usage information
