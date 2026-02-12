@@ -3,45 +3,18 @@ module WildcardCache.Trie
     ( TriePatternCache
     , createTrieCache
     , emptyTrieCache
-    , CacheStats(..)
-    , CacheConfig(..)
-    , SaveError(..)
-    , LoadError(..)
-    , WildcardPatternCache(..)
-    , PersistentCache(..)
     ) where
 
-import WildcardPattern (OptimizedProgram, OptimizedInstruction(..), wildcardPattern, originalProgram)
+import WildcardCache.Types
+import WildcardPattern (OptimizedProgram, OptimizedInstruction(..), wildcardPattern)
 import TrackedProcessor (Byte)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:), Key)
+import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:))
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Key
-import Control.Monad (guard)
-import Data.Time (getCurrentTime, diffUTCTime, UTCTime)
+import Data.Time (UTCTime)
 import qualified Control.Exception
-
--- | Cache performance and usage statistics (replaces TrieCacheStats)
-data CacheStats = CacheStats
-    { totalPatterns :: Int          -- Number of cached patterns
-    , totalLookups :: Int           -- Number of lookup attempts
-    , cacheHits :: Int              -- Successful pattern matches
-    , cacheMisses :: Int            -- Programs that needed execution
-    , avgLookupTime :: Double       -- Average lookup time in microseconds
-    , memoryUsage :: Int            -- Approximate memory usage in bytes
-    } deriving (Show, Eq)
-
--- | Cache configuration (replaces TrieCacheConfig)
-data CacheConfig = CacheConfig
-    { maxPatterns :: Maybe Int      -- Maximum patterns to cache (Nothing = unlimited)
-    , enableStats :: Bool           -- Whether to track performance statistics
-    , persistenceFile :: Maybe FilePath  -- Optional file for persistence
-    } deriving (Show, Eq)
-
--- | Standardized error types
-data SaveError = SaveError String deriving (Show, Eq)
-data LoadError = LoadError String deriving (Show, Eq)
 
 
 -- | Trie node structure for wildcard pattern matching
@@ -81,17 +54,6 @@ emptyTrieCache cfg = TriePatternCache
 createTrieCache :: CacheConfig -> IO TriePatternCache
 createTrieCache cfg = return (emptyTrieCache cfg)
 
--- | Type class instances for the cache interface
-class WildcardPatternCache cache where
-    lookupPattern :: [Byte] -> cache -> Maybe OptimizedProgram
-    insertPattern :: OptimizedProgram -> cache -> cache
-    emptyCache :: cache
-    getCacheStats :: cache -> CacheStats
-
-class (WildcardPatternCache cache) => PersistentCache cache where
-    saveCache :: FilePath -> cache -> IO (Either SaveError ())
-    loadCache :: FilePath -> IO (Either LoadError cache)
-    appendToCache :: FilePath -> OptimizedProgram -> cache -> IO (Either SaveError cache)
 
 instance WildcardPatternCache TriePatternCache where
     -- | Check if raw program matches any cached wildcard pattern (NO EXECUTION!)
@@ -217,37 +179,6 @@ instance FromJSON TrieNode where
         let anyOfEdgesMap = Map.fromList [(Set.fromList s, n) | (s, n) <- anyOfList]
         return $ TrieNode (Map.fromList reqEdges) wildcardE anyOfEdgesMap leafPats
 
-instance ToJSON CacheStats where
-    toJSON stats = Aeson.object
-        [ Key.fromString "totalPatterns" .= totalPatterns stats
-        , Key.fromString "totalLookups" .= totalLookups stats  
-        , Key.fromString "cacheHits" .= cacheHits stats
-        , Key.fromString "cacheMisses" .= cacheMisses stats
-        , Key.fromString "avgLookupTime" .= avgLookupTime stats
-        , Key.fromString "memoryUsage" .= memoryUsage stats
-        ]
-
-instance FromJSON CacheStats where
-    parseJSON = Aeson.withObject "CacheStats" $ \o -> CacheStats
-        <$> o .: Key.fromString "totalPatterns"
-        <*> o .: Key.fromString "totalLookups"
-        <*> o .: Key.fromString "cacheHits"
-        <*> o .: Key.fromString "cacheMisses"
-        <*> o .: Key.fromString "avgLookupTime"
-        <*> o .: Key.fromString "memoryUsage"
-
-instance ToJSON CacheConfig where
-    toJSON config = Aeson.object
-        [ Key.fromString "maxPatterns" .= maxPatterns config
-        , Key.fromString "enableStats" .= enableStats config
-        , Key.fromString "persistenceFile" .= persistenceFile config
-        ]
-
-instance FromJSON CacheConfig where
-    parseJSON = Aeson.withObject "CacheConfig" $ \o -> CacheConfig
-        <$> o .: Key.fromString "maxPatterns"
-        <*> o .: Key.fromString "enableStats"
-        <*> o .: Key.fromString "persistenceFile"
 
 instance ToJSON TriePatternCache where
     toJSON cache = Aeson.object

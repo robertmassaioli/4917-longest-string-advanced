@@ -3,13 +3,8 @@
 
 -- | Standard interface and common types for wildcard pattern caching
 module WildcardCache
-    ( -- * Core Interface
-      WildcardPatternCache(..)
-    , PersistentCache(..)
-    , CacheStats(..)
-    , CacheConfig(..)
-    , SaveError(..)
-    , LoadError(..)
+    ( -- * Re-export shared types and interfaces
+      module WildcardCache.Types
     
     -- * Implementation Selection
     , CacheImplementation(..)
@@ -23,54 +18,9 @@ module WildcardCache
     , optimizedSearch
     ) where
 
+import WildcardCache.Types
 import WildcardPattern (OptimizedProgram)
 import TrackedProcessor (Byte)
-
--- | Cache performance and usage statistics
-data CacheStats = CacheStats
-    { totalPatterns :: Int          -- Number of cached patterns
-    , totalLookups :: Int           -- Number of lookup attempts
-    , cacheHits :: Int              -- Successful pattern matches
-    , cacheMisses :: Int            -- Programs that needed execution
-    , avgLookupTime :: Double       -- Average lookup time in microseconds
-    , memoryUsage :: Int            -- Approximate memory usage in bytes
-    } deriving (Show, Eq)
-
--- | Cache configuration for different implementations
-data CacheConfig = CacheConfig
-    { maxPatterns :: Maybe Int      -- Maximum patterns to cache (Nothing = unlimited)
-    , enableStats :: Bool           -- Whether to track performance statistics
-    , persistenceFile :: Maybe FilePath  -- Optional file for persistence
-    } deriving (Show, Eq)
-
--- | Standardized error types
-data SaveError = SaveError String deriving (Show, Eq)
-data LoadError = LoadError String deriving (Show, Eq)
-
--- | Generic pattern cache interface that all implementations must support
-class WildcardPatternCache cache where
-    -- | Check if a raw program matches any cached wildcard pattern (NO EXECUTION!)
-    lookupPattern :: [Byte] -> cache -> Maybe OptimizedProgram
-    
-    -- | Insert a new OptimizedProgram into the cache
-    insertPattern :: OptimizedProgram -> cache -> cache
-    
-    -- | Create an empty cache
-    emptyCache :: cache
-    
-    -- | Get cache statistics for monitoring
-    getCacheStats :: cache -> CacheStats
-
--- | Standardized persistence operations
-class (WildcardPatternCache cache) => PersistentCache cache where
-    -- | Save cache to filesystem
-    saveCache :: FilePath -> cache -> IO (Either SaveError ())
-    
-    -- | Load cache from filesystem  
-    loadCache :: FilePath -> IO (Either LoadError cache)
-    
-    -- | Incrementally update persistent storage (for append-friendly implementations)
-    appendToCache :: FilePath -> OptimizedProgram -> cache -> IO (Either SaveError cache)
 
 -- | Cache implementation selection
 data CacheImplementation 
