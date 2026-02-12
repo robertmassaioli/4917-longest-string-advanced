@@ -31,6 +31,7 @@ module WildcardPattern
     -- Human-readable printing
     , prettyPrintOptimizedProgram
     , formatInstruction
+    , formatByteRange
     ) where
 
 import TrackedProcessor
@@ -38,7 +39,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Maybe (mapMaybe)
 import qualified Data.Vector.Unboxed as Vector
-import Data.List (intercalate)
+import Data.List (intercalate, sort)
 import Text.Printf (printf)
 
 -- | Core pattern types for program optimization
@@ -390,7 +391,7 @@ formatInstruction pos instr = case instr of
                 [1,2] -> "Both-register operations"
                 [11,12,14,15] -> "Register-consuming operations"
                 _ -> "Custom set: " ++ show opts
-            optsList = "[" ++ intercalate "," (map show opts) ++ "]"
+            optsList = formatByteRange opts
         in printf "%2d: AnyOf       %s %s" pos description optsList
 
 -- | Human-readable display of an OptimizedProgram
@@ -433,3 +434,40 @@ formatLargeNumber n = reverse $ intercalate "," $ chunksOf 3 $ reverse $ show n
 chunksOf :: Int -> [a] -> [[a]]
 chunksOf _ [] = []
 chunksOf n xs = take n xs : chunksOf n (drop n xs)
+
+-- | Format a list of bytes with range notation for readability  
+formatByteRange :: [Byte] -> String
+formatByteRange [] = "[]"
+formatByteRange bytes = "[" ++ intercalate ", " (formatRanges (sort bytes)) ++ "]"
+
+-- | Format sorted list of bytes into ranges
+formatRanges :: [Byte] -> [String]
+formatRanges [] = []
+formatRanges (x:xs) = 
+    let consecutive = x : takeWhile (\y -> y == x + fromIntegral (length (takeWhile (< y) (x:consecutive)))) xs
+        simpleConsecutive = takeConsecutiveSequence [x] xs
+        rangeStr = formatSingleRange simpleConsecutive
+        remaining = drop (length simpleConsecutive - 1) xs
+    in rangeStr : formatRanges remaining
+
+-- | Take a consecutive sequence starting with the given list
+takeConsecutiveSequence :: [Byte] -> [Byte] -> [Byte]
+takeConsecutiveSequence acc [] = acc
+takeConsecutiveSequence acc (y:ys)
+    | y == last acc + 1 = takeConsecutiveSequence (acc ++ [y]) ys
+    | otherwise = acc
+
+-- | Format a single range of consecutive numbers
+formatSingleRange :: [Byte] -> String 
+formatSingleRange [] = ""
+formatSingleRange [x] = show x
+formatSingleRange [x, y] 
+    | y == x + 1 = show x ++ "-" ++ show y
+    | otherwise = show x ++ ", " ++ show y  
+formatSingleRange xs@(x:_)
+    | isConsecutive xs = show x ++ "-" ++ show (last xs)
+    | otherwise = intercalate ", " (map show xs)
+  where
+    isConsecutive [] = True
+    isConsecutive [_] = True
+    isConsecutive (a:b:rest) = (b == a + 1) && isConsecutive (b:rest)
