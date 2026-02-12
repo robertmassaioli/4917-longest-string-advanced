@@ -90,35 +90,66 @@ stack test --fast
 
 ### Running Benchmarks
 
-The project includes a comprehensive benchmark suite for performance testing:
+The project includes comprehensive benchmark suites for performance testing both processors:
+
+#### Original Processor Benchmarks
 
 ```bash
-# Show available benchmark phases
-stack bench --benchmark-arguments="--list"
+# Show available benchmark phases for original processor
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--list"
 
 # Run all benchmark phases
-stack bench
+stack bench cli4917:bench:processor-bench
 
 # Run specific benchmark phases
-stack bench --benchmark-arguments="--phase 1"               # Individual instructions only
-stack bench --benchmark-arguments="--phase 2"               # Comprehensive programs only
-stack bench --benchmark-arguments="--phase 1 --phase 2"     # Phases 1 and 2
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 1"      # Individual instructions
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 2"      # Comprehensive programs
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 3"      # Performance analysis
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 4"      # Scaling analysis
 
 # Run with options
-stack bench --benchmark-arguments="--phase 1 --verbose"     # Phase 1 with detailed output
-stack bench --benchmark-arguments="--time-limit 30"         # 30 second time limit per benchmark
-stack bench --benchmark-arguments="--phase 2 --time-limit 60 --verbose"
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 1 --verbose"
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--time-limit 30"
+
+# Save results
+stack bench cli4917:bench:processor-bench --benchmark-arguments="--output processor-results.html"
+```
+
+#### TrackedProcessor Benchmarks
+
+```bash
+# Show available benchmark phases for TrackedProcessor
+stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--list"
+
+# Run all benchmark phases
+stack bench cli4917:bench:trackedprocessor-bench
+
+# Run specific benchmark phases
+stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1"  # Individual instructions
+stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 2"  # Comprehensive programs
+stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1 --phase 2"
+
+# Run with options
+stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1 --verbose"
+stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--time-limit 30"
 
 # Use timeout for safety (prevents system unresponsiveness)
-gtimeout 120 stack bench --benchmark-arguments="--phase 1"  # macOS
-timeout 120 stack bench --benchmark-arguments="--phase 1"   # Linux
+gtimeout 120 stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1"  # macOS
+timeout 120 stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1"   # Linux
 
-# Save benchmark results
-stack bench --benchmark-arguments="--output results.html"
+# Save results
+stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--output tracked-results.html"
 ```
 
 #### Benchmark Phases
 
+**Original Processor (processor-bench):**
+- **Phase 1**: Individual Instructions (16 benchmarks) - All 16 instructions with 3 test scenarios each
+- **Phase 2**: Comprehensive Programs (4 benchmarks) - 4 complex programs with 3 test scenarios each
+- **Phase 3**: Performance Analysis (4 benchmarks) - Statistical analysis of instruction and program performance
+- **Phase 4**: Scaling Analysis (6 benchmarks) - Performance characteristics across different program lengths
+
+**TrackedProcessor (trackedprocessor-bench):**
 - **Phase 1**: Individual Instructions (48 benchmarks) - All 16 instructions with 3 test scenarios each
 - **Phase 2**: Comprehensive Programs (20 benchmarks) - 4 complex programs with 5 test scenarios each  
 - **Phase 3**: TrackedProcessor Features (TBD) - Enhanced tracking capability benchmarks
