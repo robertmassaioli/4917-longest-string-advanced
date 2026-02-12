@@ -13,15 +13,22 @@ runBenchmarkCommand allBenchmarks verbose = do
     putStrLn "=== 4917 Processor Performance Benchmark ==="
     putStrLn "Testing individual instruction performance and program execution speed."
     putStrLn ""
+    putStrLn "ℹ️  For comprehensive benchmarking with statistical analysis, use:"
+    putStrLn "   stack bench trackedprocessor-bench"
+    putStrLn ""
+    putStrLn "🔧 Quick Performance Overview:"
     
-    -- Run all benchmarks
+    -- Run legacy benchmarks for quick overview
     runAllBenchmarks
     
     when allBenchmarks $ do
         putStrLn ""
         putStrLn "🔍 Extended Benchmarks:"
         putStrLn "Running additional comprehensive benchmarks..."
-        -- Add extended benchmarks here if needed
+        putStrLn ""
+        putStrLn "💡 For detailed performance analysis with confidence intervals,"
+        putStrLn "   statistical significance testing, and enhanced tracking benchmarks:"
+        putStrLn "   stack bench trackedprocessor-bench"
 
 -- Helper to conditionally print
 when :: Bool -> IO () -> IO ()
