@@ -1,7 +1,9 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 -- | Optimized search command using wildcard pattern caching
-module Commands.OptimizedSearch (runOptimizedSearchCommand) where
+module Commands.OptimizedSearch (runOptimizedSearchCommand, OptimizedSearchOptions(..)) where
 
 import WildcardCache
+import WildcardCacheFactory (createCacheInstance)
 import WildcardPattern (analyzeProgram, optimizeProgram)
 import TrackedProcessor (runTrackedProgram, createTrackedDevice, getOutput, Byte)
 import Control.Monad (forM_, when)
@@ -9,6 +11,16 @@ import Data.IORef
 import Text.Printf (printf)
 import Data.List (maximumBy)
 import Data.Ord (comparing)
+
+-- | Options for optimized search command
+data OptimizedSearchOptions = OptimizedSearchOptions
+    { optSearchLength :: Int                    -- Program length to search
+    , optSearchCacheType :: String             -- Cache implementation ("trie", "vector", etc.)
+    , optSearchMaxPatterns :: Maybe Int         -- Maximum patterns to cache
+    , optSearchVerbose :: Bool                  -- Enable verbose output
+    , optSearchCacheFile :: Maybe FilePath     -- Cache persistence file
+    , optSearchFresh :: Bool                    -- Start with fresh cache
+    } deriving (Show, Eq)
 
 -- | Run the optimized search command
 runOptimizedSearchCommand :: OptimizedSearchOptions -> IO ()
@@ -33,7 +45,7 @@ runOptimizedSearchCommand opts = do
     
     -- Initialize cache (load from file if specified and not fresh)
     cache <- newIORef =<< if optSearchFresh opts
-        then createCache cacheImpl config
+        then createCacheInstance cacheImpl config
         else loadOrCreateCache cacheImpl config
     
     -- Initialize results tracking
@@ -47,11 +59,11 @@ runOptimizedSearchCommand opts = do
     putStrLn ""
     
     -- Track progress
-    checkedCount <- newIORef 0
-    skippedCount <- newIORef 0
+    checkedCount <- newIORef (0 :: Int)
+    skippedCount <- newIORef (0 :: Int)
     
     -- Process each program
-    forM_ (zip [1..] allPrograms) $ \(idx, program) -> do
+    forM_ (zip [1..] allPrograms) $ \(idx :: Int, program) -> do
         currentCache <- readIORef cache
         
         case lookupInCache program currentCache of
@@ -91,11 +103,11 @@ runOptimizedSearchCommand opts = do
         when (idx `mod` 1000 == 0) $ do
             checked <- readIORef checkedCount
             skipped <- readIORef skippedCount
-            let reductionPercent = if idx > 0 
+            let reductionPercent :: Double = if idx > 0 
                     then 100.0 * fromIntegral skipped / fromIntegral idx
                     else 0.0
             putStrLn $ printf "Progress: %d/%d (%.1f%%) - Checked: %d, Skipped: %d (%.1f%% reduction)"
-                       idx totalPrograms (100.0 * fromIntegral idx / fromIntegral totalPrograms)
+                       idx totalPrograms ((100.0 :: Double) * fromIntegral idx / fromIntegral totalPrograms)
                        checked skipped reductionPercent
     
     -- Final statistics
@@ -110,7 +122,7 @@ runOptimizedSearchCommand opts = do
     putStrLn $ "Total programs:     " ++ show totalPrograms
     putStrLn $ "Programs executed:  " ++ show finalChecked
     putStrLn $ "Programs skipped:   " ++ show finalSkipped
-    putStrLn $ printf "Reduction rate:     %.1f%%" (100.0 * fromIntegral finalSkipped / fromIntegral totalPrograms)
+    putStrLn $ printf "Reduction rate:     %.1f%%" ((100.0 :: Double) * fromIntegral finalSkipped / fromIntegral totalPrograms)
     putStrLn ""
     
     -- Display cache statistics
@@ -137,7 +149,7 @@ runOptimizedSearchCommand opts = do
                     map (\(l, p, o) -> (o, p, l)) $ 
                     map (\(l, p, o) -> (l, p, o)) finalResults
             putStrLn "🥇 Top 5 Results:"
-            forM_ (zip [1..] sortedResults) $ \(rank, (output, prog, len)) -> do
+            forM_ (zip [1..] sortedResults) $ \(rank :: Int, (output, prog, len)) -> do
                 putStrLn $ printf "  %d. %s → %d chars" rank (show prog) output
     
     -- Save cache if persistence file specified
@@ -151,12 +163,12 @@ runOptimizedSearchCommand opts = do
 loadOrCreateCache :: CacheImplementation -> CacheConfig -> IO SomeCacheImpl
 loadOrCreateCache impl config = 
     case persistenceFile config of
-        Nothing -> createCache impl config
+        Nothing -> createCacheInstance impl config
         Just filePath -> do
             putStrLn $ "📂 Attempting to load cache from: " ++ filePath
             -- For now, just create a new cache
             -- TODO: Implement actual loading logic
-            createCache impl config
+            createCacheInstance impl config
 
 -- | Generate all programs of a given length
 generateAllPrograms :: Int -> [[Byte]]

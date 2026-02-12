@@ -18,7 +18,7 @@ import Commands.Demo (runDemoCommand)
 import Commands.OptimizeDemo (runOptimizeDemoCommand)
 import Commands.CacheDemo (runCacheDemoCommand)
 import Commands.Search (runSearchCommand)
-import Commands.OptimizedSearch (runOptimizedSearchCommand)
+import Commands.OptimizedSearch (runOptimizedSearchCommand, OptimizedSearchOptions(..))
 import Commands.Solve (runSolveCommand)
 
 -- | Available commands
@@ -59,15 +59,6 @@ data SearchOptions = SearchOptions
     , searchVerbose :: Bool
     } deriving (Show, Eq)
 
--- | Options for optimized search command
-data OptimizedSearchOptions = OptimizedSearchOptions
-    { optSearchLength :: Int                    -- Program length to search
-    , optSearchCacheType :: String             -- Cache implementation ("trie", "vector", etc.)
-    , optSearchMaxPatterns :: Maybe Int         -- Maximum patterns to cache
-    , optSearchVerbose :: Bool                  -- Enable verbose output
-    , optSearchCacheFile :: Maybe FilePath     -- Cache persistence file
-    , optSearchFresh :: Bool                    -- Start with fresh cache
-    } deriving (Show, Eq)
 
 -- | Options for solve command
 data SolveOptions = SolveOptions

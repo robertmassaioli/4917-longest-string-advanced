@@ -14,7 +14,6 @@ module WildcardCache
     -- * Implementation Selection
     , CacheImplementation(..)
     , SomeCacheImpl(..)
-    , createCache
     , lookupInCache
     , insertIntoCache
     , extractCacheStats
@@ -28,15 +27,6 @@ import WildcardPattern (OptimizedProgram)
 import TrackedProcessor (Byte)
 import Control.Monad (forM_)
 import Data.IORef
-import qualified WildcardCache.Trie as Trie
-
--- | Convert WildcardCache.CacheConfig to WildcardCache.Trie.CacheConfig
-convertCacheConfig :: CacheConfig -> Trie.CacheConfig
-convertCacheConfig cfg = Trie.CacheConfig
-    { Trie.maxPatterns = maxPatterns cfg
-    , Trie.enableStats = enableStats cfg
-    , Trie.persistenceFile = persistenceFile cfg
-    }
 
 -- | Cache performance and usage statistics
 data CacheStats = CacheStats
@@ -98,13 +88,6 @@ data CacheImplementation
 data SomeCacheImpl = forall cache. (WildcardPatternCache cache, PersistentCache cache) => 
     SomeCache cache
 
--- | Create cache instance based on implementation choice
-createCache :: CacheImplementation -> CacheConfig -> IO SomeCacheImpl
-createCache impl config = case impl of
-    TrieCache -> do
-        trieCache <- Trie.createTrieCache (convertCacheConfig config)
-        return $ SomeCache trieCache
-    _ -> error $ "Implementation not yet available: " ++ show impl
 
 -- | Unified interface operations
 lookupInCache :: [Byte] -> SomeCacheImpl -> Maybe OptimizedProgram

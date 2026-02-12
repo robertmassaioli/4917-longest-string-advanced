@@ -42,6 +42,9 @@ import qualified Data.Vector.Unboxed as Vector
 import Data.List (intercalate, sort)
 import Text.Printf (printf)
 import qualified Data.Map as Map
+import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:), object)
+import qualified Data.Aeson as Aeson
+import qualified Data.Aeson.Key as Key
 
 -- Import the usage tracking data types from TrackedProcessor
 -- (No local definitions needed - use the ones from TrackedProcessor module)
@@ -522,3 +525,47 @@ formatSingleRange xs@(x:_)
     isConsecutive [] = True
     isConsecutive [_] = True
     isConsecutive (a:b:rest) = (b == a + 1) && isConsecutive (b:rest)
+
+-- JSON instances for serialization
+instance ToJSON OptimizedInstruction where
+    toJSON (Required byte) = object [Key.fromString "type" .= ("Required" :: String), Key.fromString "value" .= byte]
+    toJSON Wildcard = object [Key.fromString "type" .= ("Wildcard" :: String)]
+    toJSON (AnyOf bytes) = object [Key.fromString "type" .= ("AnyOf" :: String), Key.fromString "values" .= bytes]
+
+instance FromJSON OptimizedInstruction where
+    parseJSON = Aeson.withObject "OptimizedInstruction" $ \o -> do
+        instrType <- o .: Key.fromString "type"
+        case (instrType :: String) of
+            "Required" -> Required <$> o .: Key.fromString "value"
+            "Wildcard" -> return Wildcard
+            "AnyOf" -> AnyOf <$> o .: Key.fromString "values"
+            _ -> fail "Unknown OptimizedInstruction type"
+
+instance ToJSON OptimizedProgram where
+    toJSON prog = object
+        [ Key.fromString "originalProgram" .= originalProgram prog
+        , Key.fromString "wildcardPattern" .= wildcardPattern prog  
+        , Key.fromString "reductionFactor" .= reductionFactor prog
+        , Key.fromString "equivalenceClass" .= equivalenceClass prog
+        ]
+
+instance FromJSON OptimizedProgram where
+    parseJSON = Aeson.withObject "OptimizedProgram" $ \o -> do
+        orig <- o .: Key.fromString "originalProgram"
+        pattern_ <- o .: Key.fromString "wildcardPattern"
+        reduction <- o .: Key.fromString "reductionFactor"
+        equiv <- o .: Key.fromString "equivalenceClass"
+        -- Create a minimal analysis for deserialized programs
+        let emptyDevice = case createTrackedDevice orig of
+                Left _ -> TrackedDevice 0 0 0 (Vector.fromList []) 0 False 0 False False False Set.empty Set.empty Map.empty
+                Right device -> device
+        let emptyAnalysis = ProgramAnalysis
+                { programOriginal = orig
+                , unusedMemoryPositions = []
+                , deadRegisterPositions = []
+                , registerAnalysis = DeadOperationAnalysis [] [] [] []
+                , trackedDevice = emptyDevice
+                , memoryAnalysis = EnhancedMemoryAnalysis [] []
+                , detailedUsageMap = Map.empty
+                }
+        return $ OptimizedProgram orig pattern_ reduction equiv emptyAnalysis

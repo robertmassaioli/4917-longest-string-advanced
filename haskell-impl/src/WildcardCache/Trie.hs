@@ -3,6 +3,12 @@ module WildcardCache.Trie
     ( TriePatternCache
     , createTrieCache
     , emptyTrieCache
+    , CacheStats(..)
+    , CacheConfig(..)
+    , SaveError(..)
+    , LoadError(..)
+    , WildcardPatternCache(..)
+    , PersistentCache(..)
     ) where
 
 import WildcardPattern (OptimizedProgram, OptimizedInstruction(..), wildcardPattern, originalProgram)
@@ -12,29 +18,31 @@ import qualified Data.Set as Set
 import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:), Key)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Key
-import qualified Data.ByteString.Lazy as LBS
 import Control.Monad (guard)
 import Data.Time (getCurrentTime, diffUTCTime, UTCTime)
 import qualified Control.Exception
 
--- | Local type definitions (to avoid circular imports)
+-- | Cache performance and usage statistics (replaces TrieCacheStats)
 data CacheStats = CacheStats
-    { totalPatterns :: Int
-    , totalLookups :: Int
-    , cacheHits :: Int
-    , cacheMisses :: Int
-    , avgLookupTime :: Double
-    , memoryUsage :: Int
+    { totalPatterns :: Int          -- Number of cached patterns
+    , totalLookups :: Int           -- Number of lookup attempts
+    , cacheHits :: Int              -- Successful pattern matches
+    , cacheMisses :: Int            -- Programs that needed execution
+    , avgLookupTime :: Double       -- Average lookup time in microseconds
+    , memoryUsage :: Int            -- Approximate memory usage in bytes
     } deriving (Show, Eq)
 
+-- | Cache configuration (replaces TrieCacheConfig)
 data CacheConfig = CacheConfig
-    { maxPatterns :: Maybe Int
-    , enableStats :: Bool
-    , persistenceFile :: Maybe FilePath
+    { maxPatterns :: Maybe Int      -- Maximum patterns to cache (Nothing = unlimited)
+    , enableStats :: Bool           -- Whether to track performance statistics
+    , persistenceFile :: Maybe FilePath  -- Optional file for persistence
     } deriving (Show, Eq)
 
+-- | Standardized error types
 data SaveError = SaveError String deriving (Show, Eq)
 data LoadError = LoadError String deriving (Show, Eq)
+
 
 -- | Trie node structure for wildcard pattern matching
 data TrieNode = TrieNode
@@ -169,17 +177,16 @@ insertPatternIntoTrie (instr:rest) pos patternId node = case instr of
 instance PersistentCache TriePatternCache where
     -- | Save cache to filesystem in JSON format
     saveCache filePath cache = do
-        let jsonData = Aeson.encode cache
         (do
-            LBS.writeFile filePath jsonData
+            writeFile filePath (show $ Aeson.toJSON cache)
             return $ Right ()) `Control.Exception.catch` 
             (\e -> return $ Left $ SaveError $ show (e :: Control.Exception.SomeException))
         
     -- | Load cache from filesystem
     loadCache filePath = do
         (do
-            jsonData <- LBS.readFile filePath
-            case Aeson.decode jsonData of
+            jsonString <- readFile filePath
+            case Aeson.decode $ read jsonString of
                 Just cache -> return $ Right cache
                 Nothing -> return $ Left $ LoadError "Failed to parse JSON") `Control.Exception.catch`
             (\e -> return $ Left $ LoadError $ show (e :: Control.Exception.SomeException))
@@ -245,6 +252,7 @@ instance FromJSON CacheConfig where
 instance ToJSON TriePatternCache where
     toJSON cache = Aeson.object
         [ Key.fromString "trieRoot" .= trieRoot cache
+        , Key.fromString "patternStore" .= Map.toList (patternStore cache)
         , Key.fromString "nextPatternId" .= nextPatternId cache
         , Key.fromString "cacheStats" .= cacheStats cache
         , Key.fromString "config" .= config cache
@@ -253,7 +261,7 @@ instance ToJSON TriePatternCache where
 instance FromJSON TriePatternCache where
     parseJSON = Aeson.withObject "TriePatternCache" $ \o -> TriePatternCache
         <$> o .: Key.fromString "trieRoot"
-        <*> pure Map.empty  -- patternStore not serialized (will be empty on load)
+        <*> (Map.fromList <$> o .: Key.fromString "patternStore")
         <*> o .: Key.fromString "nextPatternId"
         <*> o .: Key.fromString "cacheStats"
         <*> o .: Key.fromString "config"
