@@ -25,8 +25,6 @@ module WildcardCache
 
 import WildcardPattern (OptimizedProgram)
 import TrackedProcessor (Byte)
-import Control.Monad (forM_)
-import Data.IORef
 
 -- | Cache performance and usage statistics
 data CacheStats = CacheStats
@@ -107,15 +105,9 @@ data SearchResults = SearchResults
     } deriving (Show)
 
 -- | Main search function that works with any cache implementation
--- Note: This is a placeholder - actual implementation would need to be provided
+-- Note: This is a placeholder - actual implementation would be provided by specific commands
 optimizedSearch :: CacheImplementation -> CacheConfig -> Int -> IO SearchResults
-optimizedSearch cacheImpl config maxLength = do
-    cache <- newIORef =<< createCache cacheImpl config
-    results <- newIORef []
-    
+optimizedSearch cacheImpl _config maxLength = do
     -- Placeholder implementation
     putStrLn $ "Running optimized search with " ++ show cacheImpl ++ " up to length " ++ show maxLength
-    
-    finalResults <- readIORef results
-    finalCache <- readIORef cache
-    return $ SearchResults finalResults (extractCacheStats finalCache)
+    return $ SearchResults [] (CacheStats 0 0 0 0 0.0 0)
