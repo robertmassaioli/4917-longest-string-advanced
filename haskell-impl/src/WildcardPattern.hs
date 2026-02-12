@@ -386,7 +386,7 @@ formatOptimizedInstruction pos instr = case instr of
 
 -- | Format usage information from MemoryUsage
 formatUsageInfo :: Maybe TrackedProcessor.MemoryUsage -> String
-formatUsageInfo Nothing = "[Used as: Unused]"
+formatUsageInfo Nothing = "Unused"
 formatUsageInfo (Just usage) =
     "[Used as: " ++ formatUsageTypes (TrackedProcessor.usageTypes usage) ++ "]"
 
