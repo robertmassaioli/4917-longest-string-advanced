@@ -120,7 +120,7 @@ spec = describe "WildcardPattern" $ do
       -- Verify complete OptimizedProgram structure
       originalProgram optimized `shouldBe` program
       reductionFactor optimized `shouldSatisfy` (> 1000)  -- Significant reduction
-      equivalenceClass optimized `shouldBe` "8[0123456789][123456910][123456910]0***********"
+      equivalenceClass optimized `shouldBe` "8[0-9][1-6, 9-10][1-6, 9-10]0***********"
 
       -- Verify pattern details - should be 16 bytes with wildcards for unused positions
       length (wildcardPattern optimized) `shouldBe` 16
@@ -242,7 +242,7 @@ spec = describe "WildcardPattern" $ do
       -- All register operations are equivalent when dead (but position 2 might not be dead due to combination)
       originalProgram optimized `shouldBe` program
       -- Position 2 (INC R1) might be Required if it's not considered dead
-      equivalenceClass optimized `shouldContain` "[123456910]"
+      equivalenceClass optimized `shouldContain` "[1-6, 9-10]"
 
       -- Verify good search space reduction
       reductionFactor optimized `shouldSatisfy` (> 100)
@@ -274,7 +274,7 @@ spec = describe "WildcardPattern" $ do
     it "generates correct equivalence class strings" $ do
       let pattern = [Required 8, Wildcard, AnyOf [1,2], Required 0]
           eqClass = generateEquivalenceClass pattern
-      eqClass `shouldBe` "8*[12]0"
+      eqClass `shouldBe` "8*[1-2]0"
 
   context "Complex Scenarios" $ do
     it "handles programs with loops correctly" $ do
@@ -348,3 +348,44 @@ spec = describe "WildcardPattern" $ do
       let program = [3, 4, 2, 6, 0]  -- INC R0, INC R1, SUB, DEC R1, HALT
           positions = findR1ManipulatingPositions program
       positions `shouldBe` [1, 2, 3]  -- INC R1, SUB, DEC R1
+
+  context "Pattern Equivalence - Basic PRINT Instructions" $ do
+    it "recognizes [8,1] and [8,2] as equivalent patterns" $ do
+      let analysis1 = analyzeTestProgram [8,1]  -- PRINT 1
+          analysis2 = analyzeTestProgram [8,2]  -- PRINT 2
+          optimized1 = optimizeProgram analysis1
+          optimized2 = optimizeProgram analysis2
+      -- Both should generate the same wildcard pattern
+      wildcardPattern optimized1 `shouldBe` wildcardPattern optimized2
+
+    it "recognizes all single-digit PRINT instructions as equivalent" $ do
+      let patterns = map (\n -> wildcardPattern $ optimizeProgram $ analyzeTestProgram [8,n]) [0..9]
+      -- All patterns should be identical
+      all (== head patterns) (tail patterns) `shouldBe` True
+
+    it "recognizes PRINT with same output length have same pattern structure" $ do
+      let singleCharPrograms = [[8,0], [8,5], [8,9]]  -- All single-char outputs
+          doubleCharPrograms = [[8,10], [8,12], [8,15]] -- All double-char outputs
+          singleAnalyses = map analyzeTestProgram singleCharPrograms
+          doubleAnalyses = map analyzeTestProgram doubleCharPrograms
+          singleOptimized = map optimizeProgram singleAnalyses
+          doubleOptimized = map optimizeProgram doubleAnalyses
+          singlePatterns = map wildcardPattern singleOptimized
+          doublePatterns = map wildcardPattern doubleOptimized
+      -- All single-char programs should have same pattern
+      let firstSinglePattern = head singlePatterns
+      all (== firstSinglePattern) (tail singlePatterns) `shouldBe` True
+      -- All double-char programs should have same pattern  
+      let firstDoublePattern = head doublePatterns
+      all (== firstDoublePattern) (tail doublePatterns) `shouldBe` True
+      -- But single-char and double-char patterns should be different
+      firstSinglePattern `shouldNotBe` firstDoublePattern
+
+    it "verifies pattern-to-string conversion works correctly" $ do
+      let analysis = analyzeTestProgram [8,5]  -- PRINT 5
+          optimized = optimizeProgram analysis
+          patternString = generateEquivalenceClass (wildcardPattern optimized)
+      -- Should contain wildcard for the PRINT operand
+      patternString `shouldContain` "*"
+      -- Should start with "8" for the PRINT instruction
+      take 1 patternString `shouldBe` "8"

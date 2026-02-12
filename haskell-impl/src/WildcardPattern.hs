@@ -318,17 +318,19 @@ classifyEnhancedMemoryPosition analysis pos
         let usageType = (memoryUsageTypes (memoryAnalysis analysis)) !! pos
             program = programOriginal analysis
             operandOptimizations = operandOutputOptimizations (memoryAnalysis analysis)
+            -- Safe memory access: positions beyond program length are 0
+            safeMemoryAccess p = if p < length program then program !! p else 0
         in case usageType of
             Unused -> Wildcard
-            MixedUsage -> Required (program !! pos)  -- Must be exact due to dual usage
+            MixedUsage -> Required (safeMemoryAccess pos)  -- Must be exact due to dual usage
             InstructionOnly ->
                 if pos `elem` deadRegisterPositions analysis
-                then classifyDeadRegisterPosition (program !! pos)
-                else Required (program !! pos)
+                then classifyDeadRegisterPosition (safeMemoryAccess pos)
+                else Required (safeMemoryAccess pos)
             OperandOnly ->
                 case lookup pos operandOptimizations of
                     Just equivalentValues -> AnyOf equivalentValues  -- Optimize by output length
-                    Nothing -> Required (program !! pos)            -- Default to required
+                    Nothing -> Required (safeMemoryAccess pos)            -- Default to required
 
 
 -- | Classify each program position based on analysis
