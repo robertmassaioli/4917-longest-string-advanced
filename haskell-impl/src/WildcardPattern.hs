@@ -41,6 +41,10 @@ import Data.Maybe (mapMaybe)
 import qualified Data.Vector.Unboxed as Vector
 import Data.List (intercalate, sort)
 import Text.Printf (printf)
+import qualified Data.Map as Map
+
+-- Import the usage tracking data types from TrackedProcessor
+-- (No local definitions needed - use the ones from TrackedProcessor module)
 
 -- | Core pattern types for program optimization
 data OptimizedInstruction = 
@@ -55,6 +59,7 @@ data OptimizedProgram = OptimizedProgram
     , wildcardPattern :: [OptimizedInstruction]
     , reductionFactor :: Double  -- How much search space was reduced
     , equivalenceClass :: String -- Canonical representation for grouping
+    , programAnalysis :: ProgramAnalysis -- NEW: Include analysis for usage information
     } deriving (Show)
 
 -- | Memory usage classification for enhanced analysis
@@ -79,6 +84,7 @@ data ProgramAnalysis = ProgramAnalysis
     , registerAnalysis :: DeadOperationAnalysis
     , trackedDevice :: TrackedDevice
     , memoryAnalysis :: EnhancedMemoryAnalysis  -- NEW: Enhanced memory usage analysis
+    , detailedUsageMap :: Map.Map Int TrackedProcessor.MemoryUsage  -- NEW: detailed usage tracking
     } deriving (Show)
 
 -- | Detailed register usage breakdown
@@ -150,6 +156,9 @@ analyzeProgram program device =
         
     -- 3. Enhanced Memory Usage Analysis
         memoryUsageAnalysis = analyzeMemoryUsage device
+        
+    -- 4. Extract detailed usage information
+        detailedUsage = getDetailedUsage device
     
     in ProgramAnalysis
         { programOriginal = program
@@ -158,6 +167,7 @@ analyzeProgram program device =
         , registerAnalysis = regAnalysis
         , trackedDevice = device
         , memoryAnalysis = memoryUsageAnalysis
+        , detailedUsageMap = detailedUsage
         }
 
 -- | Identify unused memory locations that can be wildcarded
@@ -294,6 +304,7 @@ optimizeProgram analysis =
         , wildcardPattern = wildcardPattern  
         , reductionFactor = calculateReductionFactor wildcardPattern
         , equivalenceClass = generateEquivalenceClass wildcardPattern
+        , programAnalysis = analysis
         }
 
 -- | Enhanced memory position classification using memory usage analysis
@@ -353,7 +364,45 @@ generateEquivalenceClass pattern =
             AnyOf opts -> "[" ++ concatMap show opts ++ "]"
     in concatMap classifyInstr pattern
 
--- | Human-readable representation of an OptimizedInstruction
+-- | Human-readable representation of an OptimizedInstruction with usage information
+formatInstructionWithUsage :: Int -> OptimizedInstruction -> Map.Map Int TrackedProcessor.MemoryUsage -> String
+formatInstructionWithUsage pos instr usageMap = 
+    let usageStr = formatUsageInfo (Map.lookup pos usageMap)
+        instrStr = formatOptimizedInstruction pos instr
+    in printf "%-50s %s" instrStr usageStr
+
+-- | Format optimized instruction without usage info
+formatOptimizedInstruction :: Int -> OptimizedInstruction -> String
+formatOptimizedInstruction pos instr = case instr of
+    Required b -> printf "%2d: Required    %d" pos b
+    Wildcard -> printf "%2d: Wildcard    *" pos
+    AnyOf opts -> 
+        let description = case opts of
+                [0,1,2,3,4,5,6,7,8,9] -> "[0-9]"
+                [10,11,12,13,14,15] -> "[10-15]"
+                [1,2,3,4,5,6,9,10] -> "[reg-ops]"
+                _ -> show opts
+        in printf "%2d: AnyOf       %s" pos description
+
+-- | Format usage information from MemoryUsage
+formatUsageInfo :: Maybe TrackedProcessor.MemoryUsage -> String
+formatUsageInfo Nothing = "[Used as: Unknown]"
+formatUsageInfo (Just usage) = 
+    "[Used as: " ++ formatUsageTypes (TrackedProcessor.usageTypes usage) ++ "]"
+
+-- | Format list of usage types
+formatUsageTypes :: [TrackedProcessor.UsageType] -> String
+formatUsageTypes [] = "Never accessed"
+formatUsageTypes [TrackedProcessor.UsedAsInstruction name] = "Instruction (" ++ name ++ ")"
+formatUsageTypes [TrackedProcessor.UsedAsOperand instrName _] = "Operand for " ++ instrName
+formatUsageTypes [TrackedProcessor.NeverAccessed] = "Never accessed"
+formatUsageTypes multiple = intercalate " + " (map formatSingleUsage multiple)
+  where
+    formatSingleUsage (TrackedProcessor.UsedAsInstruction name) = "Instruction (" ++ name ++ ")"
+    formatSingleUsage (TrackedProcessor.UsedAsOperand instrName _) = "Operand for " ++ instrName
+    formatSingleUsage TrackedProcessor.NeverAccessed = "Never accessed"
+
+-- | Human-readable representation of an OptimizedInstruction (legacy function)
 formatInstruction :: Int -> OptimizedInstruction -> String
 formatInstruction pos instr = case instr of
     Required b -> 
@@ -396,31 +445,33 @@ formatInstruction pos instr = case instr of
 
 -- | Human-readable display of an OptimizedProgram
 prettyPrintOptimizedProgram :: OptimizedProgram -> String
-prettyPrintOptimizedProgram opt = unlines $
-    [ "╔══════════════════════════════════════════════════════════════════════════════════════╗"
-    , "║                                 OPTIMIZED PROGRAM                                     ║" 
-    , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
-    , printf "║ Original Program: %-66s ║" (show $ originalProgram opt)
-    , printf "║ Equivalence Class: %-65s ║" (equivalenceClass opt)
-    , printf "║ Reduction Factor: %.2fx%-58s ║" (reductionFactor opt) ""
-    , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
-    , "║                              WILDCARD PATTERN (16-byte)                              ║"
-    , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
-    ] ++ 
-    [ printf "║ %s ║" (padRight 84 (formatInstruction i instr)) 
-      | (i, instr) <- zip [0..] (wildcardPattern opt)
-    ] ++
-    [ "╚══════════════════════════════════════════════════════════════════════════════════════╝"
-    , ""
-    , "OPTIMIZATION SUMMARY:"
-    , "• Required:  Must be exact value (critical for program correctness)"
-    , "• Wildcard:  Any value 0-15 (unused memory locations)"
-    , "• AnyOf:     Any value from specified set (equivalent instructions/operands)"
-    , ""
-    , printf "Search space reduction: %s → %s programs" 
-        (formatLargeNumber $ round $ 16 ** fromIntegral (length $ wildcardPattern opt))
-        (formatLargeNumber $ fromIntegral $ product $ map instructionSpaceSize $ wildcardPattern opt)
-    ]
+prettyPrintOptimizedProgram opt = 
+    let usageMap = detailedUsageMap (programAnalysis opt)
+    in unlines $
+        [ "╔══════════════════════════════════════════════════════════════════════════════════════╗"
+        , "║                                 OPTIMIZED PROGRAM                                     ║" 
+        , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
+        , printf "║ Original Program: %-66s ║" (show $ originalProgram opt)
+        , printf "║ Equivalence Class: %-65s ║" (equivalenceClass opt)
+        , printf "║ Reduction Factor: %.2fx%-58s ║" (reductionFactor opt) ""
+        , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
+        , "║                              WILDCARD PATTERN (16-byte)                              ║"
+        , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
+        ] ++ 
+        [ printf "║ %s ║" (padRight 84 (formatInstructionWithUsage i instr usageMap)) 
+          | (i, instr) <- zip [0..] (wildcardPattern opt)
+        ] ++
+        [ "╚══════════════════════════════════════════════════════════════════════════════════════╝"
+        , ""
+        , "OPTIMIZATION SUMMARY:"
+        , "• Required:  Must be exact value (critical for program correctness)"
+        , "• Wildcard:  Any value 0-15 (unused memory locations)"
+        , "• AnyOf:     Any value from specified set (equivalent instructions/operands)"
+        , ""
+        , printf "Search space reduction: %s → %s programs" 
+            (formatLargeNumber $ round $ 16 ** fromIntegral (length $ wildcardPattern opt))
+            (formatLargeNumber $ fromIntegral $ product $ map instructionSpaceSize $ wildcardPattern opt)
+        ]
 
 -- | Helper function to pad string to specified width
 padRight :: Int -> String -> String

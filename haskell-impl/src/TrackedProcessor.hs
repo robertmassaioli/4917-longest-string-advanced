@@ -3,6 +3,12 @@ module TrackedProcessor
     , ValidationError(..)
     , ErrorType(..)
     , Byte
+    -- Usage tracking data types
+    , MemoryUsage(..)
+    , UsageType(..)
+    , UsageContext(..)
+    , AccessType(..)
+    -- Main functions
     , createTrackedDevice
     , stepTrackedProgram
     , runTrackedProgram
@@ -23,6 +29,7 @@ module TrackedProcessor
     , getR0WasConsumed
     , getR1WasConsumed
     , getR0ContainsCombination
+    , getDetailedUsage
     , classifyRegisterConsumption
     ) where
 
@@ -31,8 +38,39 @@ import qualified Data.Vector.Unboxed as Vector
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Word (Word8)
+import qualified Data.Map as Map
 
 type Byte = Word8
+
+-- Forward declarations for usage tracking data structures
+-- (Detailed definitions are in WildcardPattern.hs to avoid circular imports)
+
+-- | Detailed information about how a memory position was used during execution
+data MemoryUsage = MemoryUsage
+    { position :: Int
+    , usageTypes :: [UsageType]
+    , contextInfo :: [UsageContext]
+    } deriving (Show, Eq)
+
+-- | Different ways a memory position can be used
+data UsageType 
+    = UsedAsInstruction String      -- instruction name
+    | UsedAsOperand String Int      -- instruction name + operand index
+    | NeverAccessed
+    deriving (Show, Eq)
+
+-- | Context information for when a memory position was accessed
+data UsageContext = UsageContext
+    { accessPC :: Int           -- Program counter when accessed
+    , accessStep :: Int         -- Execution step number
+    , accessType :: AccessType
+    } deriving (Show, Eq)
+
+-- | Type of memory access
+data AccessType 
+    = InstructionFetch
+    | OperandRead Int           -- operand index (0 for single operand)
+    deriving (Show, Eq)
 
 -- Validation error types for program validation
 data ValidationError = ValidationError
@@ -61,6 +99,7 @@ data TrackedDevice = TrackedDevice
     , r0ContainsCombination :: Bool     -- True if R0 contains result of ADD/SUB using both registers
     , instructionLocations :: Set Int   -- Positions accessed as instructions (PC reads)
     , operandLocations :: Set Int       -- Positions accessed as operands (instruction parameter reads)
+    , detailedUsage :: Map.Map Int MemoryUsage  -- NEW: detailed usage tracking
     } deriving (Show, Eq)
 
 -- Create TrackedDevice from program with validation
@@ -82,6 +121,7 @@ createTrackedDevice program = do
         , r0ContainsCombination = False
         , instructionLocations = Set.empty
         , operandLocations = Set.empty
+        , detailedUsage = Map.empty
         }
 
 -- Validate program for 4-bit processor constraints
@@ -165,6 +205,10 @@ getR1WasConsumed = r1WasConsumed
 getR0ContainsCombination :: TrackedDevice -> Bool
 getR0ContainsCombination = r0ContainsCombination
 
+-- New accessor for detailed usage tracking
+getDetailedUsage :: TrackedDevice -> Map.Map Int MemoryUsage
+getDetailedUsage = detailedUsage
+
 -- | Determine which registers an instruction consumes, accounting for combination tracking
 classifyRegisterConsumption :: Byte -> TrackedDevice -> (Bool, Bool)  -- (consumesR0, consumesR1)
 classifyRegisterConsumption instruction device = case instruction of
@@ -174,24 +218,85 @@ classifyRegisterConsumption instruction device = case instruction of
     15 -> (True, r0ContainsCombination device)  -- JNZ: uses R0, and R1 if R0 contains combination
     _  -> (False, False)                        -- All other instructions don't consume register values
 
+-- | Helper functions for detailed usage tracking
+
+-- | Get instruction name for a given opcode
+getInstructionName :: Byte -> String
+getInstructionName instruction = case instruction of
+    0 -> "HALT"
+    1 -> "ADD"
+    2 -> "SUB"
+    3 -> "INC R0"
+    4 -> "INC R1"
+    5 -> "DEC R0"
+    6 -> "DEC R1"
+    7 -> "NOP"
+    8 -> "PRINT"
+    9 -> "LOAD R0"
+    10 -> "LOAD R1"
+    11 -> "STORE R0"
+    12 -> "STORE R1"
+    13 -> "JMP"
+    14 -> "JZ"
+    15 -> "JNZ"
+    _ -> "UNKNOWN"
+
+-- | Record instruction usage for a memory position
+recordInstructionUsage :: Int -> String -> Int -> Int -> TrackedDevice -> TrackedDevice
+recordInstructionUsage pos instrName pc step device =
+    let usage = case Map.lookup pos (detailedUsage device) of
+            Nothing -> MemoryUsage pos [UsedAsInstruction instrName] 
+                          [UsageContext pc step InstructionFetch]
+            Just existing -> existing 
+                { usageTypes = UsedAsInstruction instrName : usageTypes existing
+                , contextInfo = UsageContext pc step InstructionFetch : contextInfo existing
+                }
+    in device { detailedUsage = Map.insert pos usage (detailedUsage device) }
+
+-- | Record operand usage for a memory position
+recordOperandUsage :: Int -> String -> Int -> Int -> Int -> TrackedDevice -> TrackedDevice
+recordOperandUsage pos instrName operandIndex pc step device =
+    let usage = case Map.lookup pos (detailedUsage device) of
+            Nothing -> MemoryUsage pos [UsedAsOperand instrName operandIndex]
+                          [UsageContext pc step (OperandRead operandIndex)]
+            Just existing -> existing
+                { usageTypes = UsedAsOperand instrName operandIndex : usageTypes existing
+                , contextInfo = UsageContext pc step (OperandRead operandIndex) : contextInfo existing
+                }
+    in device { detailedUsage = Map.insert pos usage (detailedUsage device) }
+
 -- Complete independent step function with integrated access tracking
 stepTrackedProgram :: TrackedDevice -> TrackedDevice
 stepTrackedProgram device
     | halted device = device
     | otherwise = 
-        let currentPc = pc device
-            instruction = memory device ! fromIntegral currentPc
+        let currentPc = fromIntegral (pc device)
+            instruction = memory device ! currentPc
+            instrName = getInstructionName instruction
+            currentStep = steps device
             
-            -- Track that current PC was accessed as an instruction
-            deviceWithInstrTracking = device { instructionLocations = Set.insert (fromIntegral currentPc) (instructionLocations device) }
+            -- Track that current PC was accessed as an instruction (both old and new tracking)
+            deviceWithInstrTracking = device 
+                { instructionLocations = Set.insert currentPc (instructionLocations device) }
+            
+            -- Record detailed instruction usage
+            deviceWithDetailedInstr = recordInstructionUsage currentPc instrName currentPc currentStep deviceWithInstrTracking
             
             -- Execute instruction and track operand accesses
-            (newDevice, operandAccesses) = executeInstructionWithTracking instruction deviceWithInstrTracking
+            (newDevice, operandAccesses) = executeInstructionWithTracking instruction deviceWithDetailedInstr
             
-            -- Update operand locations with any new accesses
-            finalDevice = newDevice { operandLocations = Set.union (operandLocations newDevice) operandAccesses }
+            -- Update operand locations with any new accesses (old tracking)
+            deviceWithOperandTracking = newDevice { operandLocations = Set.union (operandLocations newDevice) operandAccesses }
+            
+            -- Record detailed operand usage for each operand access
+            finalDevice = Set.foldl (recordDetailedOperandUsage instrName currentPc currentStep) deviceWithOperandTracking operandAccesses
             
         in finalDevice { steps = steps device + 1 }
+
+-- | Helper to record detailed operand usage
+recordDetailedOperandUsage :: String -> Int -> Int -> TrackedDevice -> Int -> TrackedDevice
+recordDetailedOperandUsage instrName pc step device operandPos =
+    recordOperandUsage operandPos instrName 0 pc step device
 
 -- Execute single instruction with memory access tracking
 executeInstructionWithTracking :: Byte -> TrackedDevice -> (TrackedDevice, Set Int)
