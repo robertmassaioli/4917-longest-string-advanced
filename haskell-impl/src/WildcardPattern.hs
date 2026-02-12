@@ -6,6 +6,7 @@ module WildcardPattern
     , analyzeProgram
     , optimizeProgram
     , calculateReductionFactor
+    , matchesPattern
     -- Instruction category constants
     , registerManipulating
     , registerConsuming
@@ -345,6 +346,26 @@ classifyDeadRegisterPosition :: Byte -> OptimizedInstruction
 classifyDeadRegisterPosition originalByte
     | originalByte `elem` registerManipulating = AnyOf deadCodeEquivalentInstructions
     | otherwise = Required originalByte  -- Non-register instructions must stay as-is
+
+-- | Check if a raw program matches an optimized pattern
+-- Pads program to 16 bytes with zeros if shorter than 16 bytes
+matchesPattern :: [Byte] -> OptimizedProgram -> Bool
+matchesPattern rawProgram optProgram =
+    let -- Pad program to 16 bytes with zeros (4917 processor has 16 memory locations)
+        paddedProgram = take 16 (rawProgram ++ repeat 0)
+        pattern = wildcardPattern optProgram
+        
+        -- Pattern should always be 16 elements, but verify for safety
+        paddedPattern = take 16 (pattern ++ repeat Wildcard)
+        
+    in and $ zipWith matchesByte paddedProgram paddedPattern
+
+-- | Check if a single byte matches an OptimizedInstruction
+matchesByte :: Byte -> OptimizedInstruction -> Bool
+matchesByte byte instruction = case instruction of
+    Required requiredByte -> byte == requiredByte
+    Wildcard -> True  -- Any byte matches wildcard
+    AnyOf validBytes -> byte `elem` validBytes
 
 -- | Calculate search space reduction factor
 calculateReductionFactor :: [OptimizedInstruction] -> Double

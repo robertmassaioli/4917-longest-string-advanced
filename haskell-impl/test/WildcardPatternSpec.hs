@@ -389,3 +389,43 @@ spec = describe "WildcardPattern" $ do
       patternString `shouldContain` "*"
       -- Should start with "8" for the PRINT instruction
       take 1 patternString `shouldBe` "8"
+
+  context "Pattern Matching Function" $ do
+    it "matches exact programs against their own patterns" $ do
+      let program = [8, 1, 0]  -- PRINT 1, HALT
+          analysis = analyzeTestProgram program
+          optimized = optimizeProgram analysis
+      matchesPattern program optimized `shouldBe` True
+
+    it "recognizes equivalent programs match the same pattern" $ do
+      let program1 = [8, 1, 0]  -- PRINT 1, HALT
+          program2 = [8, 2, 0]  -- PRINT 2, HALT (should match same pattern)
+          analysis1 = analyzeTestProgram program1
+          optimized1 = optimizeProgram analysis1
+      -- program2 should match program1's pattern (both single-char PRINT)
+      matchesPattern program2 optimized1 `shouldBe` True
+
+    it "rejects non-matching programs correctly" $ do
+      let program1 = [8, 1, 0]   -- PRINT 1, HALT (single-char output)
+          program2 = [8, 10, 0]  -- PRINT 10, HALT (double-char output)
+          analysis1 = analyzeTestProgram program1
+          optimized1 = optimizeProgram analysis1
+      -- Different output lengths should not match
+      matchesPattern program2 optimized1 `shouldBe` False
+
+    it "handles padding for short programs correctly" $ do
+      let shortProgram = [8, 1]  -- Just PRINT 1 (no explicit HALT)
+          longProgram = [8, 1] ++ replicate 14 0  -- Same but padded to 16 bytes
+          analysis = analyzeTestProgram shortProgram
+          optimized = optimizeProgram analysis
+      -- Both should match the same pattern
+      matchesPattern shortProgram optimized `shouldBe` True
+      matchesPattern longProgram optimized `shouldBe` True
+
+    it "handles wildcard positions correctly" $ do
+      let program = [8, 1, 0, 4, 0]  -- PRINT 1, HALT, INC R1, HALT (with unused memory)
+          analysis = analyzeTestProgram program
+          optimized = optimizeProgram analysis
+          -- Any program that matches the pattern structure should work
+          altProgram = [8, 2, 0, 6, 0]  -- PRINT 2, HALT, DEC R1, HALT
+      matchesPattern altProgram optimized `shouldBe` True

@@ -6,7 +6,7 @@ module WildcardCache.Trie
     ) where
 
 import WildcardCache.Types
-import WildcardPattern (OptimizedProgram, OptimizedInstruction(..), wildcardPattern)
+import WildcardPattern (OptimizedProgram, OptimizedInstruction(..), wildcardPattern, matchesPattern)
 import TrackedProcessor (Byte)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -58,21 +58,22 @@ createTrieCache cfg = return (emptyTrieCache cfg)
 instance WildcardPatternCache TriePatternCache where
     -- | Check if raw program matches any cached wildcard pattern (NO EXECUTION!)
     lookupPattern program cache = 
-        case matchesWildcardPattern program 0 (trieRoot cache) of
-            Nothing -> Nothing
-            Just patternId -> Map.lookup patternId (patternStore cache)
+        -- Use linear search with our working matchesPattern function
+        -- This replaces the broken trie traversal with proven working logic
+        let storedPrograms = Map.elems (patternStore cache)
+            matchingProgram = filter (matchesPattern program) storedPrograms
+        in case matchingProgram of
+            (match:_) -> Just match  -- Return first match
+            [] -> Nothing
     
     -- | Insert a new OptimizedProgram into the cache
     insertPattern optProg cache = 
-        let pattern = wildcardPattern optProg
-            patternId = nextPatternId cache
-            newRoot = insertPatternIntoTrie pattern 0 patternId (trieRoot cache)
+        let patternId = nextPatternId cache
             newStore = Map.insert patternId optProg (patternStore cache)
             updatedStats = (cacheStats cache) 
                 { totalPatterns = totalPatterns (cacheStats cache) + 1 }
         in cache 
-            { trieRoot = newRoot
-            , patternStore = newStore
+            { patternStore = newStore
             , nextPatternId = patternId + 1
             , cacheStats = updatedStats
             }
