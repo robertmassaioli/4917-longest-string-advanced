@@ -4,12 +4,12 @@ module WildcardCacheFactory
     ) where
 
 import WildcardCache
-import qualified WildcardCache.Integration as Integration
+import qualified WildcardCache.Trie as Trie
 
 -- | Create cache instance based on implementation choice
 createCacheInstance :: CacheImplementation -> CacheConfig -> IO SomeCacheImpl
 createCacheInstance impl config = case impl of
     TrieCache -> do
-        trieCache <- Integration.createTrieCache config
+        trieCache <- Trie.createTrieCache config
         return $ SomeCache trieCache
     _ -> error $ "Implementation not yet available: " ++ show impl
