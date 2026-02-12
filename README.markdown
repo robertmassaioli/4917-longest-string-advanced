@@ -11,15 +11,135 @@ Build and run the Haskell implementation:
 ```bash
 cd haskell-impl
 stack build
-stack run 4917-cli -- --help
+stack exec 4917-cli -- --help
 ```
 
-## Available Commands
+## Building and Running
 
-- `stack run 4917-cli -- search --length 3` - Find longest output for length-3 programs
-- `stack run 4917-cli -- cache-demo --fresh` - Demonstrate caching performance
-- `stack run 4917-cli -- benchmark` - Performance benchmarking across lengths
-- `stack run 4917-cli -- test` - Run test suite
+### Build Commands
+
+```bash
+# Build everything (library, executable, tests, benchmarks)
+stack build
+
+# Build with optimizations
+stack build --ghc-options -O2
+
+# Build only the library
+stack build cli4917:lib
+
+# Build only the executable
+stack build cli4917:exe
+
+# Build only tests
+stack build cli4917:test
+
+# Build only benchmarks
+stack build cli4917:bench
+```
+
+### Available CLI Commands
+
+The main CLI provides several commands for different use cases:
+
+```bash
+# Show all available commands
+stack exec 4917-cli -- --help
+
+# Search for optimal programs
+stack exec 4917-cli -- search --length 3                    # Length 3 programs
+stack exec 4917-cli -- search --length 6 --verbose          # Length 6 with detailed output
+stack exec 4917-cli -- search --length 4 --fresh            # Clear cache before search
+
+# Demonstrate caching performance
+stack exec 4917-cli -- cache-demo                           # Default length 3
+stack exec 4917-cli -- cache-demo --length 4 --verbose      # Length 4 with details
+stack exec 4917-cli -- cache-demo --fresh                   # Start with fresh cache
+
+# Run performance benchmarks (legacy CLI)
+stack exec 4917-cli -- benchmark                            # Quick benchmarks
+stack exec 4917-cli -- benchmark --all --verbose            # All benchmarks with details
+
+# Run demonstrations
+stack exec 4917-cli -- demo                                 # Demo lengths 1-6
+stack exec 4917-cli -- demo --length 4 --verbose            # Demo specific length
+
+# Solve specific tasks
+stack exec 4917-cli -- solve --task-file tasks.txt --verbose
+```
+
+### Running Tests
+
+```bash
+# Run the full test suite
+stack test
+
+# Run tests with verbose output
+stack test --test-arguments "--verbose"
+
+# Run specific test modules
+stack test --test-arguments "--match ProcessorSpec"
+stack test --test-arguments "--match TrackedProcessorSpec"
+
+# Run tests with coverage
+stack test --coverage
+
+# Run tests in fast mode (fewer examples)
+stack test --fast
+```
+
+### Running Benchmarks
+
+The project includes a comprehensive benchmark suite for performance testing:
+
+```bash
+# Show available benchmark phases
+stack bench --benchmark-arguments="--list"
+
+# Run all benchmark phases
+stack bench
+
+# Run specific benchmark phases
+stack bench --benchmark-arguments="--phase 1"               # Individual instructions only
+stack bench --benchmark-arguments="--phase 2"               # Comprehensive programs only
+stack bench --benchmark-arguments="--phase 1 --phase 2"     # Phases 1 and 2
+
+# Run with options
+stack bench --benchmark-arguments="--phase 1 --verbose"     # Phase 1 with detailed output
+stack bench --benchmark-arguments="--time-limit 30"         # 30 second time limit per benchmark
+stack bench --benchmark-arguments="--phase 2 --time-limit 60 --verbose"
+
+# Use timeout for safety (prevents system unresponsiveness)
+gtimeout 120 stack bench --benchmark-arguments="--phase 1"  # macOS
+timeout 120 stack bench --benchmark-arguments="--phase 1"   # Linux
+
+# Save benchmark results
+stack bench --benchmark-arguments="--output results.html"
+```
+
+#### Benchmark Phases
+
+- **Phase 1**: Individual Instructions (48 benchmarks) - All 16 instructions with 3 test scenarios each
+- **Phase 2**: Comprehensive Programs (20 benchmarks) - 4 complex programs with 5 test scenarios each  
+- **Phase 3**: TrackedProcessor Features (TBD) - Enhanced tracking capability benchmarks
+- **Phase 4**: Performance Comparisons (TBD) - TrackedProcessor vs Original Processor
+- **Phase 5**: Legacy Compatibility (4 benchmarks) - Simple benchmark programs
+
+### Performance and Safety
+
+**Important for long-running operations**: Use timeouts to prevent system unresponsiveness:
+
+```bash
+# Install timeout tools if needed
+brew install coreutils  # macOS (provides gtimeout)
+
+# Use with search operations
+gtimeout 300 stack exec 4917-cli -- search --length 8       # 5 minute timeout
+gtimeout 120 stack bench --benchmark-arguments="--phase 1"  # 2 minute timeout
+
+# Use with benchmarks
+gtimeout 600 stack bench                                    # 10 minute timeout for full suite
+```
 
 ## Goal
 
