@@ -25,6 +25,12 @@ module WildcardPattern
     , findRegisterManipulatingPositions
     , findR0ManipulatingPositions
     , findR1ManipulatingPositions
+    -- Output length categories for testing
+    , singleCharOutput
+    , doubleCharOutput
+    -- Human-readable printing
+    , prettyPrintOptimizedProgram
+    , formatInstruction
     ) where
 
 import TrackedProcessor
@@ -32,6 +38,8 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Maybe (mapMaybe)
 import qualified Data.Vector.Unboxed as Vector
+import Data.List (intercalate)
+import Text.Printf (printf)
 
 -- | Core pattern types for program optimization
 data OptimizedInstruction = 
@@ -343,3 +351,85 @@ generateEquivalenceClass pattern =
             Wildcard -> "*"
             AnyOf opts -> "[" ++ concatMap show opts ++ "]"
     in concatMap classifyInstr pattern
+
+-- | Human-readable representation of an OptimizedInstruction
+formatInstruction :: Int -> OptimizedInstruction -> String
+formatInstruction pos instr = case instr of
+    Required b -> 
+        let instrName = case b of
+                0 -> "HALT"
+                1 -> "ADD" 
+                2 -> "SUB"
+                3 -> "INC_R0"
+                4 -> "INC_R1" 
+                5 -> "DEC_R0"
+                6 -> "DEC_R1"
+                7 -> "NOP"
+                8 -> "PRINT"
+                9 -> "LOAD_R0"
+                10 -> "LOAD_R1"
+                11 -> "STORE_R0"
+                12 -> "STORE_R1"
+                13 -> "JMP"
+                14 -> "JZ"
+                15 -> "JNZ"
+                _ -> "DATA"
+        in printf "%2d: Required    %s (%d)" pos instrName b
+        
+    Wildcard -> 
+        printf "%2d: Wildcard    Any value (0-15)" pos
+        
+    AnyOf opts ->
+        let description = case opts of
+                [0,1,2,3,4,5,6,7,8,9] -> "Single-char output (0-9)"
+                [10,11,12,13,14,15] -> "Double-char output (10-15)"
+                [1,2,3,4,5,6,9,10] -> "Register operations (dead code)"
+                [0,7,8,13] -> "Non-register operations"
+                [3,5,9] -> "R0 operations"
+                [4,6,10] -> "R1 operations" 
+                [1,2] -> "Both-register operations"
+                [11,12,14,15] -> "Register-consuming operations"
+                _ -> "Custom set: " ++ show opts
+            optsList = "[" ++ intercalate "," (map show opts) ++ "]"
+        in printf "%2d: AnyOf       %s %s" pos description optsList
+
+-- | Human-readable display of an OptimizedProgram
+prettyPrintOptimizedProgram :: OptimizedProgram -> String
+prettyPrintOptimizedProgram opt = unlines $
+    [ "╔══════════════════════════════════════════════════════════════════════════════════════╗"
+    , "║                                 OPTIMIZED PROGRAM                                     ║" 
+    , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
+    , printf "║ Original Program: %-66s ║" (show $ originalProgram opt)
+    , printf "║ Equivalence Class: %-65s ║" (equivalenceClass opt)
+    , printf "║ Reduction Factor: %.2fx%-58s ║" (reductionFactor opt) ""
+    , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
+    , "║                              WILDCARD PATTERN (16-byte)                              ║"
+    , "╠══════════════════════════════════════════════════════════════════════════════════════╣"
+    ] ++ 
+    [ printf "║ %s ║" (padRight 84 (formatInstruction i instr)) 
+      | (i, instr) <- zip [0..] (wildcardPattern opt)
+    ] ++
+    [ "╚══════════════════════════════════════════════════════════════════════════════════════╝"
+    , ""
+    , "OPTIMIZATION SUMMARY:"
+    , "• Required:  Must be exact value (critical for program correctness)"
+    , "• Wildcard:  Any value 0-15 (unused memory locations)"
+    , "• AnyOf:     Any value from specified set (equivalent instructions/operands)"
+    , ""
+    , printf "Search space reduction: %s → %s programs" 
+        (formatLargeNumber $ round $ 16 ** fromIntegral (length $ wildcardPattern opt))
+        (formatLargeNumber $ fromIntegral $ product $ map instructionSpaceSize $ wildcardPattern opt)
+    ]
+
+-- | Helper function to pad string to specified width
+padRight :: Int -> String -> String
+padRight width str = take width (str ++ repeat ' ')
+
+-- | Format large numbers with commas for readability
+formatLargeNumber :: Integer -> String
+formatLargeNumber n = reverse $ intercalate "," $ chunksOf 3 $ reverse $ show n
+
+-- | Split list into chunks of specified size
+chunksOf :: Int -> [a] -> [[a]]
+chunksOf _ [] = []
+chunksOf n xs = take n xs : chunksOf n (drop n xs)
