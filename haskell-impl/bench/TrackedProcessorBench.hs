@@ -16,7 +16,7 @@ import Options.Applicative
 import Data.Semigroup ((<>))
 import System.Environment (getArgs, withArgs)
 import Data.List (isPrefixOf)
-import Control.Monad (when)
+import Control.Monad (when, guard)
 
 -- | NFData instance for TrackedDevice to ensure proper benchmarking
 instance NFData TrackedDevice where
@@ -517,29 +517,20 @@ filterCriterionArgs (arg:args)
 -- | Create benchmarks for selected phases only
 createSelectedBenchmarks :: [Int] -> [Benchmark]
 createSelectedBenchmarks phases = 
-    putStrLn ("🚀 Running TrackedProcessor Benchmark Phases: " ++ show phases) `seq`
-    concat
-        [ if 1 `elem` phases 
-            then [bgroup "Phase 1: Individual Instructions" $ 
+    putStrLn ("🚀 Running TrackedProcessor Benchmark Phases: " ++ show phases) `seq` do
+        phase <- phases
+        case phase of
+            1 -> [bgroup "Phase 1: Individual Instructions" $ 
                     createInstructionBenchmarks createTrackedInstructionTests]
-            else []
-        , if 2 `elem` phases
-            then [bgroup "Phase 2: Comprehensive Programs" $
+            2 -> [bgroup "Phase 2: Comprehensive Programs" $
                     createTrackedProgramBenchmarks createTrackedProgramTests]
-            else []
-        , if 3 `elem` phases
-            then [bgroup "Phase 3: TrackedProcessor Features" $ 
+            3 -> [bgroup "Phase 3: TrackedProcessor Features" $ 
                     createPlaceholderBenchmarks "Phase 3 - Coming Soon"]
-            else []
-        , if 4 `elem` phases
-            then [bgroup "Phase 4: Performance Comparisons" $
+            4 -> [bgroup "Phase 4: Performance Comparisons" $
                     createPlaceholderBenchmarks "Phase 4 - Coming Soon"]
-            else []
-        , if 5 `elem` phases
-            then [bgroup "Phase 5: Legacy Compatibility" $
+            5 -> [bgroup "Phase 5: Legacy Compatibility" $
                     concat (map createProgramBenchmarks legacyBenchmarkPrograms)]
-            else []
-        ]
+            _ -> []
 
 -- | Create placeholder benchmarks for unimplemented phases
 createPlaceholderBenchmarks :: String -> [Benchmark]

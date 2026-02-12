@@ -13,7 +13,7 @@ import Options.Applicative
 import Data.Semigroup ((<>))
 import System.Environment (getArgs, withArgs)
 import Data.List (isPrefixOf)
-import Control.Monad (when)
+import Control.Monad (when, guard)
 import Text.Printf
 
 -- | NFData instance for Device to ensure proper benchmarking
@@ -449,20 +449,13 @@ filterProcessorCriterionArgs (arg:args)
 -- | Create benchmarks for selected phases only
 createSelectedProcessorBenchmarks :: [Int] -> [Benchmark]
 createSelectedProcessorBenchmarks phases = 
-    putStrLn ("🚀 Running Original Processor Benchmark Phases: " ++ show phases) `seq`
-    concat
-        [ if 1 `elem` phases 
-            then [bgroup "Phase 1: Individual Instructions" $ 
+    putStrLn ("🚀 Running Original Processor Benchmark Phases: " ++ show phases) `seq` do
+        phase <- phases
+        case phase of
+            1 -> [bgroup "Phase 1: Individual Instructions" $ 
                     createProcessorInstructionBenchmarks createProcessorInstructionTests]
-            else []
-        , if 2 `elem` phases
-            then [bgroup "Phase 2: Comprehensive Programs" $
+            2 -> [bgroup "Phase 2: Comprehensive Programs" $
                     createProcessorProgramBenchmarks createProcessorProgramTests]
-            else []
-        , if 3 `elem` phases
-            then createProcessorPerformanceAnalysis
-            else []
-        , if 4 `elem` phases
-            then createProcessorScalingAnalysis
-            else []
-        ]
+            3 -> createProcessorPerformanceAnalysis
+            4 -> createProcessorScalingAnalysis
+            _ -> []
