@@ -3,7 +3,6 @@
 module CLI
     ( Command(..)
     , DemoOptions(..)
-    , BenchmarkOptions(..)
     , CacheDemoOptions(..)
     , SearchOptions(..)
     , SolveOptions(..)
@@ -14,7 +13,6 @@ module CLI
 import Options.Applicative
 import Data.Semigroup ((<>))
 import Commands.Demo (runDemoCommand)
-import Commands.Benchmark (runBenchmarkCommand)
 import Commands.CacheDemo (runCacheDemoCommand)
 import Commands.Search (runSearchCommand)
 import Commands.Solve (runSolveCommand)
@@ -22,7 +20,6 @@ import Commands.Solve (runSolveCommand)
 -- | Available commands
 data Command 
     = Demo DemoOptions
-    | Benchmark BenchmarkOptions  
     | CacheDemo CacheDemoOptions
     | Search SearchOptions
     | Solve SolveOptions
@@ -34,11 +31,6 @@ data DemoOptions = DemoOptions
     , demoVerbose :: Bool
     } deriving (Show, Eq)
 
--- | Options for benchmark command
-data BenchmarkOptions = BenchmarkOptions
-    { benchmarkAll :: Bool
-    , benchmarkVerbose :: Bool
-    } deriving (Show, Eq)
 
 -- | Options for cache demo command
 data CacheDemoOptions = CacheDemoOptions
@@ -74,7 +66,6 @@ parseCommand = execParser $ info (commandParser <**> helper)
 commandParser :: Parser Command
 commandParser = hsubparser
     ( command "demo"       (info demoParser       (progDesc "Run processor demonstration"))
-   <> command "benchmark"  (info benchmarkParser  (progDesc "Run performance benchmarks"))
    <> command "cache-demo" (info cacheDemoParser  (progDesc "Demonstrate persistent memoization"))
    <> command "search"     (info searchParser     (progDesc "Search for optimal programs"))
    <> command "solve"      (info solveParser      (progDesc "Solve specific tasks"))
@@ -94,18 +85,6 @@ demoParser = do
        <> help "Enable verbose output" )
     pure $ Demo $ DemoOptions length_ verbose
 
--- | Parser for benchmark command
-benchmarkParser :: Parser Command
-benchmarkParser = do
-    all_ <- switch
-        ( long "all"
-       <> short 'a'
-       <> help "Run all benchmarks including slower ones" )
-    verbose <- switch
-        ( long "verbose"
-       <> short 'v'
-       <> help "Enable verbose output" )
-    pure $ Benchmark $ BenchmarkOptions all_ verbose
 
 -- | Parser for cache demo command
 cacheDemoParser :: Parser Command
@@ -176,7 +155,6 @@ solveParser = do
 -- | Execute a command
 runCommand :: Command -> IO ()
 runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
-runCommand (Benchmark opts) = runBenchmarkCommand (benchmarkAll opts) (benchmarkVerbose opts)
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)
