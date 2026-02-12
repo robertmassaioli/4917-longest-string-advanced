@@ -6,6 +6,7 @@ import WildcardCache
 import WildcardCacheFactory (createCacheInstance)
 import WildcardPattern (analyzeProgram, optimizeProgram)
 import TrackedProcessor (runTrackedProgramLoopCheck, createTrackedDevice, getOutput, Byte)
+import qualified CacheStatsTracker as CST (CacheStatsTracker, newCacheStatsTracker, getCacheStats)
 import Control.Monad (forM_, when)
 import Data.IORef
 import Text.Printf (printf)
@@ -48,6 +49,9 @@ runOptimizedSearchCommand opts = do
         then createCacheInstance cacheImpl config
         else loadOrCreateCache cacheImpl config
     
+    -- Initialize statistics tracker
+    statsTracker <- CST.newCacheStatsTracker
+    
     -- Initialize results tracking
     results <- newIORef []
     
@@ -66,7 +70,8 @@ runOptimizedSearchCommand opts = do
     forM_ (zip [1..] allPrograms) $ \(idx :: Int, program) -> do
         currentCache <- readIORef cache
         
-        case lookupInCache program currentCache of
+        lookupResult <- lookupInCache program currentCache statsTracker
+        case lookupResult of
             Just existingOptProg -> do
                 -- Skip this program - matches existing pattern
                 modifyIORef skippedCount (+1)
@@ -125,12 +130,12 @@ runOptimizedSearchCommand opts = do
     putStrLn $ printf "Reduction rate:     %.1f%%" ((100.0 :: Double) * fromIntegral finalSkipped / fromIntegral totalPrograms)
     putStrLn ""
     
-    -- Display cache statistics
-    let cacheStats = extractCacheStats finalCache
+    -- Display cache statistics  
+    trackedStats <- CST.getCacheStats statsTracker
     putStrLn "📊 Cache Performance:"
-    putStrLn $ "  Unique patterns:  " ++ show (totalPatterns cacheStats)
-    putStrLn $ "  Cache hits:       " ++ show (cacheHits cacheStats)
-    putStrLn $ "  Cache misses:     " ++ show (cacheMisses cacheStats)
+    putStrLn $ "  Unique patterns:  " ++ show (totalPatterns (extractCacheStats finalCache))
+    putStrLn $ "  Cache hits:       " ++ show (cacheHits trackedStats)
+    putStrLn $ "  Cache misses:     " ++ show (cacheMisses trackedStats)
     putStrLn ""
     
     -- Find and display best results

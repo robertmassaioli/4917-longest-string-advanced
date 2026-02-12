@@ -21,6 +21,7 @@ module WildcardCache
 import WildcardCache.Types
 import WildcardPattern (OptimizedProgram)
 import TrackedProcessor (Byte)
+import qualified CacheStatsTracker as CST (CacheStatsTracker, trackCacheHit, trackCacheMiss)
 
 -- | Cache implementation selection
 data CacheImplementation 
@@ -37,9 +38,14 @@ data SomeCacheImpl = forall cache. (WildcardPatternCache cache, PersistentCache 
     SomeCache cache
 
 
--- | Unified interface operations
-lookupInCache :: [Byte] -> SomeCacheImpl -> Maybe OptimizedProgram
-lookupInCache program (SomeCache cache) = lookupPattern program cache
+-- | Unified interface operations with statistics tracking
+lookupInCache :: [Byte] -> SomeCacheImpl -> CST.CacheStatsTracker -> IO (Maybe OptimizedProgram)
+lookupInCache program (SomeCache cache) statsTracker = do
+    let result = lookupPattern program cache
+    case result of
+        Just _ -> CST.trackCacheHit statsTracker
+        Nothing -> CST.trackCacheMiss statsTracker
+    return result
 
 insertIntoCache :: OptimizedProgram -> SomeCacheImpl -> SomeCacheImpl  
 insertIntoCache optProg (SomeCache cache) = SomeCache (insertPattern optProg cache)

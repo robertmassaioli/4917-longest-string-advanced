@@ -37,6 +37,7 @@ library
                      , WildcardCache.Types
                      , WildcardCache.Trie
                      , WildcardCacheFactory
+                     , CacheStatsTracker
   build-depends:       base >=4.7 && <5
                      , vector >=0.12 && <0.14
                      , time >=1.9 && <1.13
