@@ -41,12 +41,14 @@ data TrieNode = TrieNode
     { requiredEdges :: Map.Map Byte TrieNode     -- Exact value required -> continue
     , wildcardEdge :: Maybe TrieNode             -- Accept any value -> continue
     , anyOfEdges :: Map.Map (Set.Set Byte) TrieNode  -- Accept any from set -> continue  
-    , leafPatterns :: [OptimizedProgram]         -- Complete patterns ending here
+    , leafPatterns :: [Int]                      -- Pattern IDs ending here
     } deriving (Show)
 
 -- | Main trie cache structure
 data TriePatternCache = TriePatternCache
     { trieRoot :: TrieNode
+    , patternStore :: Map.Map Int OptimizedProgram  -- Pattern ID -> OptimizedProgram
+    , nextPatternId :: Int                          -- Next available pattern ID
     , cacheStats :: CacheStats
     , config :: CacheConfig
     , lastModified :: Maybe UTCTime
@@ -60,6 +62,8 @@ emptyTrieNode = TrieNode Map.empty Nothing Map.empty []
 emptyTrieCache :: CacheConfig -> TriePatternCache
 emptyTrieCache cfg = TriePatternCache
     { trieRoot = emptyTrieNode
+    , patternStore = Map.empty
+    , nextPatternId = 0
     , cacheStats = CacheStats 0 0 0 0 0.0 0
     , config = cfg
     , lastModified = Nothing
@@ -84,28 +88,22 @@ class (WildcardPatternCache cache) => PersistentCache cache where
 instance WildcardPatternCache TriePatternCache where
     -- | Check if raw program matches any cached wildcard pattern (NO EXECUTION!)
     lookupPattern program cache = 
-        let result = matchesWildcardPattern program 0 (trieRoot cache)
-            updatedStats = if enableStats (config cache)
-                then (cacheStats cache) 
-                    { totalLookups = totalLookups (cacheStats cache) + 1
-                    , cacheHits = case result of
-                        Just _ -> cacheHits (cacheStats cache) + 1
-                        Nothing -> cacheHits (cacheStats cache)
-                    , cacheMisses = case result of
-                        Nothing -> cacheMisses (cacheStats cache) + 1
-                        Just _ -> cacheMisses (cacheStats cache)
-                    }
-                else cacheStats cache
-        in result
+        case matchesWildcardPattern program 0 (trieRoot cache) of
+            Nothing -> Nothing
+            Just patternId -> Map.lookup patternId (patternStore cache)
     
     -- | Insert a new OptimizedProgram into the cache
     insertPattern optProg cache = 
         let pattern = wildcardPattern optProg
-            newRoot = insertPatternIntoTrie pattern 0 optProg (trieRoot cache)
+            patternId = nextPatternId cache
+            newRoot = insertPatternIntoTrie pattern 0 patternId (trieRoot cache)
+            newStore = Map.insert patternId optProg (patternStore cache)
             updatedStats = (cacheStats cache) 
                 { totalPatterns = totalPatterns (cacheStats cache) + 1 }
         in cache 
             { trieRoot = newRoot
+            , patternStore = newStore
+            , nextPatternId = patternId + 1
             , cacheStats = updatedStats
             }
     
@@ -116,11 +114,11 @@ instance WildcardPatternCache TriePatternCache where
     getCacheStats = cacheStats
 
 -- | Core pattern matching function - traverse trie with program
-matchesWildcardPattern :: [Byte] -> Int -> TrieNode -> Maybe OptimizedProgram
+matchesWildcardPattern :: [Byte] -> Int -> TrieNode -> Maybe Int
 matchesWildcardPattern [] _ node = 
-    -- End of program, return any complete pattern
+    -- End of program, return any complete pattern ID
     case leafPatterns node of
-        (optProg:_) -> Just optProg
+        (patternId:_) -> Just patternId
         [] -> Nothing
 
 matchesWildcardPattern (byte:rest) pos node = 
@@ -136,7 +134,7 @@ matchesWildcardPattern (byte:rest) pos node =
                     tryAnyOfEdges byte rest (pos + 1) (Map.toList $ anyOfEdges node)
 
 -- | Try matching against AnyOf edges
-tryAnyOfEdges :: Byte -> [Byte] -> Int -> [(Set.Set Byte, TrieNode)] -> Maybe OptimizedProgram
+tryAnyOfEdges :: Byte -> [Byte] -> Int -> [(Set.Set Byte, TrieNode)] -> Maybe Int
 tryAnyOfEdges _ _ _ [] = Nothing
 tryAnyOfEdges byte rest pos ((validSet, nextNode):remaining)
     | byte `Set.member` validSet = 
@@ -146,49 +144,45 @@ tryAnyOfEdges byte rest pos ((validSet, nextNode):remaining)
     | otherwise = tryAnyOfEdges byte rest pos remaining
 
 -- | Insert wildcard pattern into trie
-insertPatternIntoTrie :: [OptimizedInstruction] -> Int -> OptimizedProgram -> TrieNode -> TrieNode
-insertPatternIntoTrie [] _ optProg node = 
-    -- End of pattern, add to leaf patterns
-    node { leafPatterns = optProg : leafPatterns node }
+insertPatternIntoTrie :: [OptimizedInstruction] -> Int -> Int -> TrieNode -> TrieNode
+insertPatternIntoTrie [] _ patternId node = 
+    -- End of pattern, add pattern ID to leaf patterns
+    node { leafPatterns = patternId : leafPatterns node }
 
-insertPatternIntoTrie (instr:rest) pos optProg node = case instr of
+insertPatternIntoTrie (instr:rest) pos patternId node = case instr of
     Required byte -> 
         let nextNode = Map.findWithDefault emptyTrieNode byte (requiredEdges node)
-            updatedNext = insertPatternIntoTrie rest (pos + 1) optProg nextNode
+            updatedNext = insertPatternIntoTrie rest (pos + 1) patternId nextNode
         in node { requiredEdges = Map.insert byte updatedNext (requiredEdges node) }
     
     Wildcard ->
         let nextNode = maybe emptyTrieNode id (wildcardEdge node)
-            updatedNext = insertPatternIntoTrie rest (pos + 1) optProg nextNode
+            updatedNext = insertPatternIntoTrie rest (pos + 1) patternId nextNode
         in node { wildcardEdge = Just updatedNext }
         
     AnyOf validBytes ->
         let validSet = Set.fromList validBytes
             nextNode = Map.findWithDefault emptyTrieNode validSet (anyOfEdges node)
-            updatedNext = insertPatternIntoTrie rest (pos + 1) optProg nextNode
+            updatedNext = insertPatternIntoTrie rest (pos + 1) patternId nextNode
         in node { anyOfEdges = Map.insert validSet updatedNext (anyOfEdges node) }
 
 instance PersistentCache TriePatternCache where
     -- | Save cache to filesystem in JSON format
     saveCache filePath cache = do
         let jsonData = Aeson.encode cache
-        result <- do
+        (do
             LBS.writeFile filePath jsonData
-            return $ Right ()
-        return result `catch` \e -> return $ Left $ SaveError $ show e
-      where
-        catch = flip Control.Exception.catch
+            return $ Right ()) `Control.Exception.catch` 
+            (\e -> return $ Left $ SaveError $ show (e :: Control.Exception.SomeException))
         
     -- | Load cache from filesystem
     loadCache filePath = do
-        result <- do
+        (do
             jsonData <- LBS.readFile filePath
             case Aeson.decode jsonData of
                 Just cache -> return $ Right cache
-                Nothing -> return $ Left $ LoadError "Failed to parse JSON"
-        return result `catch` \e -> return $ Left $ LoadError $ show e
-      where
-        catch = flip Control.Exception.catch
+                Nothing -> return $ Left $ LoadError "Failed to parse JSON") `Control.Exception.catch`
+            (\e -> return $ Left $ LoadError $ show (e :: Control.Exception.SomeException))
         
     -- | Incrementally update persistent storage
     appendToCache filePath optProg cache = do
@@ -209,55 +203,58 @@ instance ToJSON TrieNode where
 
 instance FromJSON TrieNode where
     parseJSON = Aeson.withObject "TrieNode" $ \o -> do
-        reqEdges <- o .: "requiredEdges"
-        wildcardE <- o .: "wildcardEdge"
-        anyOfList <- o .: "anyOfEdges"
-        leafPats <- o .: "leafPatterns"
+        reqEdges <- o .: Key.fromString "requiredEdges"
+        wildcardE <- o .: Key.fromString "wildcardEdge"
+        anyOfList <- o .: Key.fromString "anyOfEdges"
+        leafPats <- o .: Key.fromString "leafPatterns"
         let anyOfEdgesMap = Map.fromList [(Set.fromList s, n) | (s, n) <- anyOfList]
         return $ TrieNode (Map.fromList reqEdges) wildcardE anyOfEdgesMap leafPats
 
 instance ToJSON CacheStats where
     toJSON stats = Aeson.object
-        [ "totalPatterns" .= totalPatterns stats
-        , "totalLookups" .= totalLookups stats  
-        , "cacheHits" .= cacheHits stats
-        , "cacheMisses" .= cacheMisses stats
-        , "avgLookupTime" .= avgLookupTime stats
-        , "memoryUsage" .= memoryUsage stats
+        [ Key.fromString "totalPatterns" .= totalPatterns stats
+        , Key.fromString "totalLookups" .= totalLookups stats  
+        , Key.fromString "cacheHits" .= cacheHits stats
+        , Key.fromString "cacheMisses" .= cacheMisses stats
+        , Key.fromString "avgLookupTime" .= avgLookupTime stats
+        , Key.fromString "memoryUsage" .= memoryUsage stats
         ]
 
 instance FromJSON CacheStats where
     parseJSON = Aeson.withObject "CacheStats" $ \o -> CacheStats
-        <$> o .: "totalPatterns"
-        <*> o .: "totalLookups"
-        <*> o .: "cacheHits"
-        <*> o .: "cacheMisses"
-        <*> o .: "avgLookupTime"
-        <*> o .: "memoryUsage"
+        <$> o .: Key.fromString "totalPatterns"
+        <*> o .: Key.fromString "totalLookups"
+        <*> o .: Key.fromString "cacheHits"
+        <*> o .: Key.fromString "cacheMisses"
+        <*> o .: Key.fromString "avgLookupTime"
+        <*> o .: Key.fromString "memoryUsage"
 
 instance ToJSON CacheConfig where
     toJSON config = Aeson.object
-        [ "maxPatterns" .= maxPatterns config
-        , "enableStats" .= enableStats config
-        , "persistenceFile" .= persistenceFile config
+        [ Key.fromString "maxPatterns" .= maxPatterns config
+        , Key.fromString "enableStats" .= enableStats config
+        , Key.fromString "persistenceFile" .= persistenceFile config
         ]
 
 instance FromJSON CacheConfig where
     parseJSON = Aeson.withObject "CacheConfig" $ \o -> CacheConfig
-        <$> o .: "maxPatterns"
-        <*> o .: "enableStats"
-        <*> o .: "persistenceFile"
+        <$> o .: Key.fromString "maxPatterns"
+        <*> o .: Key.fromString "enableStats"
+        <*> o .: Key.fromString "persistenceFile"
 
 instance ToJSON TriePatternCache where
     toJSON cache = Aeson.object
-        [ "trieRoot" .= trieRoot cache
-        , "cacheStats" .= cacheStats cache
-        , "config" .= config cache
+        [ Key.fromString "trieRoot" .= trieRoot cache
+        , Key.fromString "nextPatternId" .= nextPatternId cache
+        , Key.fromString "cacheStats" .= cacheStats cache
+        , Key.fromString "config" .= config cache
         ]
 
 instance FromJSON TriePatternCache where
     parseJSON = Aeson.withObject "TriePatternCache" $ \o -> TriePatternCache
-        <$> o .: "trieRoot"
-        <*> o .: "cacheStats"
-        <*> o .: "config"
+        <$> o .: Key.fromString "trieRoot"
+        <*> pure Map.empty  -- patternStore not serialized (will be empty on load)
+        <*> o .: Key.fromString "nextPatternId"
+        <*> o .: Key.fromString "cacheStats"
+        <*> o .: Key.fromString "config"
         <*> pure Nothing  -- lastModified not serialized

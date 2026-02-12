@@ -1,3 +1,6 @@
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE RankNTypes #-}
+
 -- | Standard interface and common types for wildcard pattern caching
 module WildcardCache
     ( -- * Core Interface
@@ -26,6 +29,14 @@ import TrackedProcessor (Byte)
 import Control.Monad (forM_)
 import Data.IORef
 import qualified WildcardCache.Trie as Trie
+
+-- | Convert WildcardCache.CacheConfig to WildcardCache.Trie.CacheConfig
+convertCacheConfig :: CacheConfig -> Trie.CacheConfig
+convertCacheConfig cfg = Trie.CacheConfig
+    { Trie.maxPatterns = maxPatterns cfg
+    , Trie.enableStats = enableStats cfg
+    , Trie.persistenceFile = persistenceFile cfg
+    }
 
 -- | Cache performance and usage statistics
 data CacheStats = CacheStats
@@ -71,7 +82,7 @@ class (WildcardPatternCache cache) => PersistentCache cache where
     loadCache :: FilePath -> IO (Either LoadError cache)
     
     -- | Incrementally update persistent storage (for append-friendly implementations)
-    appendToCache :: FilePath -> OptimizedProgram -> IO (Either SaveError ())
+    appendToCache :: FilePath -> OptimizedProgram -> cache -> IO (Either SaveError cache)
 
 -- | Cache implementation selection
 data CacheImplementation 
@@ -91,7 +102,7 @@ data SomeCacheImpl = forall cache. (WildcardPatternCache cache, PersistentCache 
 createCache :: CacheImplementation -> CacheConfig -> IO SomeCacheImpl
 createCache impl config = case impl of
     TrieCache -> do
-        trieCache <- Trie.createTrieCache config
+        trieCache <- Trie.createTrieCache (convertCacheConfig config)
         return $ SomeCache trieCache
     _ -> error $ "Implementation not yet available: " ++ show impl
 

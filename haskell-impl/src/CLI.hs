@@ -6,6 +6,7 @@ module CLI
     , OptimizeDemoOptions(..)
     , CacheDemoOptions(..)
     , SearchOptions(..)
+    , OptimizedSearchOptions(..)
     , SolveOptions(..)
     , parseCommand
     , runCommand
@@ -17,6 +18,7 @@ import Commands.Demo (runDemoCommand)
 import Commands.OptimizeDemo (runOptimizeDemoCommand)
 import Commands.CacheDemo (runCacheDemoCommand)
 import Commands.Search (runSearchCommand)
+import Commands.OptimizedSearch (runOptimizedSearchCommand)
 import Commands.Solve (runSolveCommand)
 
 -- | Available commands
@@ -25,6 +27,7 @@ data Command
     | OptimizeDemo OptimizeDemoOptions
     | CacheDemo CacheDemoOptions
     | Search SearchOptions
+    | OptimizedSearch OptimizedSearchOptions
     | Solve SolveOptions
     deriving (Show, Eq)
 
@@ -56,6 +59,16 @@ data SearchOptions = SearchOptions
     , searchVerbose :: Bool
     } deriving (Show, Eq)
 
+-- | Options for optimized search command
+data OptimizedSearchOptions = OptimizedSearchOptions
+    { optSearchLength :: Int                    -- Program length to search
+    , optSearchCacheType :: String             -- Cache implementation ("trie", "vector", etc.)
+    , optSearchMaxPatterns :: Maybe Int         -- Maximum patterns to cache
+    , optSearchVerbose :: Bool                  -- Enable verbose output
+    , optSearchCacheFile :: Maybe FilePath     -- Cache persistence file
+    , optSearchFresh :: Bool                    -- Start with fresh cache
+    } deriving (Show, Eq)
+
 -- | Options for solve command
 data SolveOptions = SolveOptions
     { solveTaskFile :: Maybe String
@@ -72,11 +85,12 @@ parseCommand = execParser $ info (commandParser <**> helper)
 -- | Main command parser
 commandParser :: Parser Command
 commandParser = hsubparser
-    ( command "demo"           (info demoParser           (progDesc "Run processor demonstration"))
-   <> command "optimize-demo"  (info optimizeDemoParser  (progDesc "Demonstrate program optimization"))
-   <> command "cache-demo"     (info cacheDemoParser     (progDesc "Demonstrate persistent memoization"))
-   <> command "search"         (info searchParser        (progDesc "Search for optimal programs"))
-   <> command "solve"          (info solveParser         (progDesc "Solve specific tasks"))
+    ( command "demo"             (info demoParser             (progDesc "Run processor demonstration"))
+   <> command "optimize-demo"    (info optimizeDemoParser    (progDesc "Demonstrate program optimization"))
+   <> command "cache-demo"       (info cacheDemoParser       (progDesc "Demonstrate persistent memoization"))
+   <> command "search"           (info searchParser          (progDesc "Search for optimal programs"))
+   <> command "optimized-search" (info optimizedSearchParser (progDesc "Optimized search with wildcard pattern caching"))
+   <> command "solve"            (info solveParser           (progDesc "Solve specific tasks"))
    )
 
 -- | Parser for demo command
@@ -155,6 +169,42 @@ searchParser = Search <$> (SearchOptions
        <> short 'v'
        <> help "Enable verbose output" ))
 
+-- | Parser for optimized search command
+optimizedSearchParser :: Parser Command
+optimizedSearchParser = OptimizedSearch <$> (OptimizedSearchOptions
+    <$> option auto
+        ( long "length"
+       <> short 'l'
+       <> metavar "N"
+       <> help "Program length to search"
+       <> showDefault
+       <> value 3 )
+    <*> strOption
+        ( long "cache-type"
+       <> short 't'
+       <> metavar "TYPE"
+       <> help "Cache implementation (trie, vector, dfa)"
+       <> showDefault
+       <> value "trie" )
+    <*> optional (option auto
+        ( long "max-patterns"
+       <> short 'm'
+       <> metavar "N"
+       <> help "Maximum patterns to cache" ))
+    <*> switch
+        ( long "verbose"
+       <> short 'v'
+       <> help "Enable verbose output" )
+    <*> optional (strOption
+        ( long "cache-file"
+       <> short 'c'
+       <> metavar "FILE"
+       <> help "Cache persistence file" ))
+    <*> switch
+        ( long "fresh"
+       <> short 'f'
+       <> help "Start with fresh cache (ignore existing cache file)" ))
+
 -- | Parser for solve command
 solveParser :: Parser Command
 solveParser = do
@@ -175,4 +225,5 @@ runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
 runCommand (OptimizeDemo opts) = runOptimizeDemoCommand (optimizeDemoVerbose opts)
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
+runCommand (OptimizedSearch opts) = runOptimizedSearchCommand opts
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)

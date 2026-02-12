@@ -10,16 +10,6 @@ import Text.Printf (printf)
 import Data.List (maximumBy)
 import Data.Ord (comparing)
 
--- | Options for the optimized search command
-data OptimizedSearchOptions = OptimizedSearchOptions
-    { optSearchLength :: Int                    -- Program length to search
-    , optSearchCacheType :: String             -- Cache implementation ("trie", "vector", etc.)
-    , optSearchMaxPatterns :: Maybe Int         -- Maximum patterns to cache
-    , optSearchVerbose :: Bool                  -- Enable verbose output
-    , optSearchCacheFile :: Maybe FilePath     -- Cache persistence file
-    , optSearchFresh :: Bool                    -- Start with fresh cache
-    } deriving (Show, Eq)
-
 -- | Run the optimized search command
 runOptimizedSearchCommand :: OptimizedSearchOptions -> IO ()
 runOptimizedSearchCommand opts = do
