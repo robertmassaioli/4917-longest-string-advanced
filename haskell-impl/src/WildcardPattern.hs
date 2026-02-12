@@ -378,10 +378,10 @@ formatOptimizedInstruction pos instr = case instr of
     Wildcard -> printf "%2d: Wildcard    *" pos
     AnyOf opts ->
         let description = case opts of
-                [0,1,2,3,4,5,6,7,8,9] -> "[0-9]"
-                [10,11,12,13,14,15] -> "[10-15]"
-                [1,2,3,4,5,6,9,10] -> "[reg-ops]"
-                _ -> show opts
+                [0,1,2,3,4,5,6,7,8,9] -> "[0-9]"           -- Single-char outputs (special case)
+                [10,11,12,13,14,15] -> "[10-15]"           -- Double-char outputs (special case)  
+                [1,2,3,4,5,6,9,10] -> "[reg-ops]"          -- Register operations (special case)
+                _ -> formatByteRange opts                   -- Use existing range formatting (fallback)
         in printf "%2d: AnyOf       %s" pos description
 
 -- | Format usage information from MemoryUsage
@@ -489,17 +489,17 @@ chunksOf n xs = take n xs : chunksOf n (drop n xs)
 -- | Format a list of bytes with range notation for readability
 formatByteRange :: [Byte] -> String
 formatByteRange [] = "[]"
-formatByteRange bytes = "[" ++ intercalate ", " (formatRanges (sort bytes)) ++ "]"
+formatByteRange bytes = "[" ++ intercalate ", " (formatByteRanges (sort bytes)) ++ "]"
 
--- | Format sorted list of bytes into ranges
-formatRanges :: [Byte] -> [String]
-formatRanges [] = []
-formatRanges (x:xs) =
+-- | Format sorted list of bytes into ranges (legacy function - replaced by generic formatRanges)
+formatByteRanges :: [Byte] -> [String]
+formatByteRanges [] = []
+formatByteRanges (x:xs) =
     let consecutive = x : takeWhile (\y -> y == x + fromIntegral (length (takeWhile (< y) (x:consecutive)))) xs
         simpleConsecutive = takeConsecutiveSequence [x] xs
         rangeStr = formatSingleRange simpleConsecutive
         remaining = drop (length simpleConsecutive - 1) xs
-    in rangeStr : formatRanges remaining
+    in rangeStr : formatByteRanges remaining
 
 -- | Take a consecutive sequence starting with the given list
 takeConsecutiveSequence :: [Byte] -> [Byte] -> [Byte]
