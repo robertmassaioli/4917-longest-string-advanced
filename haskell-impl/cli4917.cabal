@@ -28,6 +28,7 @@ library
                      , WildcardPattern
                      , CLI
                      , Commands.Demo
+                     , Commands.OptimizeDemo
                      , Commands.CacheDemo
                      , Commands.Search
                      , Commands.Solve
