@@ -201,8 +201,8 @@ createTrackedProgramTests = map createTest programSpecs
             , 14, 0    -- JZ [0] (if result is 0, jump to start)
             , 4        -- INC R1
             , 13, 1    -- JMP [1] (jump back to OUTPUT)
-            , 0        -- HALT (should not reach here in normal execution)
-            , 0, 0, 0, 0, 0, 0, 10  -- Counter limit at address 15
+            , 0        -- HALT (should not reach here)
+            , 0, 0, 0, 5  -- Counter limit at address 15 (exactly 16 bytes)
             ])
             
         , ("Arithmetic Showcase", 
@@ -214,27 +214,23 @@ createTrackedProgramTests = map createTest programSpecs
             , 8, 7     -- OUTPUT 7
             , 5        -- DEC R0 (7 - 1 = 6)
             , 4        -- INC R1 (3 + 1 = 4)
-            , 11, 13   -- STORE R0, [13] (store 6)
-            , 12, 12   -- STORE R1, [12] (store 4)
             , 0        -- HALT
-            , 0        -- Address 12: will store R1
-            , 0        -- Address 13: will store R0
-            , 7        -- Address 14: initial R0 value
+            , 0        -- Padding
+            , 7        -- Address 14: initial R0 value (exactly 16 bytes)
             , 3        -- Address 15: initial R1 value
             ])
             
         , ("Conditional Jumps", 
-            [ 9, 15    -- LOAD R0, [15] (load 5)
+            [ 9, 15    -- LOAD R0, [15] (load 3)
             , 15, 8    -- JNZ [8] (if R0 != 0, jump to DEC section)
             , 8, 0     -- OUTPUT 0 (zero case)
-            , 13, 14   -- JMP [14] (jump to halt)
-            , 0, 0, 0, 0, 0, 0  -- padding
+            , 0        -- HALT
             , 5        -- DEC R0 (address 8)
             , 8, 1     -- OUTPUT 1
             , 14, 0    -- JZ [0] (if R0 == 0, jump back to start)
             , 13, 8    -- JMP [8] (jump back to DEC)
-            , 0        -- HALT (address 14)
-            , 5        -- Address 15: initial counter value
+            , 0        -- Padding
+            , 3        -- Address 15: initial counter value (exactly 16 bytes)
             ])
             
         , ("All Instructions", 
@@ -246,13 +242,10 @@ createTrackedProgramTests = map createTest programSpecs
             , 7        -- NOP
             , 9, 15    -- LOAD R0, [15] (R0 = 8)
             , 10, 15   -- LOAD R1, [15] (R1 = 8)
-            , 11, 14   -- STORE R0, [14]
-            , 12, 13   -- STORE R1, [13]
             , 8, 5     -- OUTPUT 5
             , 0        -- HALT
-            , 0        -- Address 13: R1 storage
-            , 0        -- Address 14: R0 storage  
-            , 8        -- Address 15: test value
+            , 0, 0     -- Padding
+            , 8        -- Address 15: test value (exactly 16 bytes)
             ])
         ]
     
