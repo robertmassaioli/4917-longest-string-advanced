@@ -22,12 +22,135 @@ matchesPattern.paddedProgram:  4.2% time, 15.2% alloc
 matchesPattern.paddedPattern:  3.4% time, 15.3% alloc
 ```
 
+## Summary of Proposals
+
+This document presents **8 concrete optimization proposals** based on profiling analysis.
+
+**Key Finding**: Pattern matching (`matchesPattern` + `matchesByte`) accounts for **66.4% of total runtime** and is the primary bottleneck.
+
+### Recommended Implementation Order
+
+**🔴 Tier 1 - Top Priority (Must Do First)**
+1. **Bitmap-Based Pattern Matching** ⭐ - 30-40% improvement (User proposal, addresses 66.4% bottleneck)
+2. **Eliminate Pattern Padding** - 15-25% improvement (Quick win, complements #1)
+
+**🟡 Tier 2 - Medium Priority**
+3. **Optimize matchesByte Function** - 10-20% improvement (Alternative to #1 if bitmap fails)
+4. **Lazy Cache Lookup** - 5-10% improvement (Easy optimization)
+5. **Specialize matchesPattern** - 20-35% improvement (More complex, multi-tier approach)
+
+**🟢 Tier 3 - Advanced/Future**
+6. **Vector Representation** - 15-30% improvement (Pervasive change, high effort)
+7. **Compiled Decision Trees** - 30-50% improvement (Research-level complexity)
+8. **Parallelization** - 2-4x improvement (Orthogonal, requires multi-core)
+
+**Combined Potential**: Implementing #1 + #2 could yield **40-55% total improvement**.
+
 ---
 
-## Proposal 1: Eliminate Pattern Padding Allocations
+## Proposal #1: Bitmap-Based Pattern Matching ⭐ **USER PROPOSAL**
 
-**Target**: `matchesPattern.paddedProgram` and `matchesPattern.paddedPattern`  
-**Current Cost**: 7.6% time, 30.5% allocations  
+**Likelihood of Working**: 85-90%  
+**Expected Performance Gain**: 30-40%  
+**Implementation Effort**: Medium (4-5 hours)  
+**Risk Level**: Low  
+**Priority**: 🔴 **RANK #1 - STRONGLY RECOMMENDED**
+
+### Problem Statement
+
+Current pattern matching uses:
+- `Required Byte`: Simple equality check (fast)
+- `Wildcard`: Always true (fastest)
+- `AnyOf [Byte]`: List membership check with `elem` (slow!)
+
+The `matchesByte` function performs 16 pattern matches per program, accounting for **23.5% of total runtime**. The `AnyOf` case uses `elem` which is O(n) and causes branching overhead.
+
+**Profiling shows**: Pattern matching is **66.4% of total runtime** - our #1 bottleneck.
+
+### Solution
+
+Convert `OptimizedInstruction` patterns to bitmap representation:
+
+```haskell
+-- Each instruction becomes a 16-bit mask (one bit per possible byte value 0-15)
+type InstructionMask = Word16
+type BitmapPattern = Vector InstructionMask
+
+-- Examples:
+-- Required 5:     0000000000100000  (only bit 5 set)
+-- Wildcard:       1111111111111111  (all bits set)
+-- AnyOf [1,2,9]:  0000001000000110  (bits 1,2,9 set)
+
+-- Ultra-fast matching using bitwise AND
+matchesBitmapPattern :: [Byte] -> BitmapPattern -> Bool
+matchesBitmapPattern program pattern =
+    let programMasks = Vector.map (1 `shiftL` . fromIntegral) (Vector.take 16 $ Vector.fromList (program ++ repeat 0))
+    in Vector.all id $ Vector.zipWith (\p m -> (p .&. m) == p) programMasks pattern
+```
+
+### Why This Works
+
+1. **Eliminates List Operations**: `elem` on lists is O(n) - replace with O(1) bitwise AND
+2. **Eliminates Branching**: Single AND operation instead of case statement + list traversal
+3. **Better CPU Performance**: Bit operations are among the fastest CPU instructions
+4. **Compact Representation**: 16 Word16 values = 32 bytes (vs ~200+ bytes with constructors)
+5. **Cache Friendly**: Tight memory layout, better cache locality
+6. **Vectorizable**: Modern CPUs can parallelize bitwise operations
+
+### Implementation Steps
+
+**Phase 1: Core Implementation (1-2 hours)**
+- Add `InstructionMask` and `BitmapPattern` types
+- Implement `toBitmapPattern` conversion function
+- Implement `matchesBitmapPattern` with INLINE pragmas
+
+**Phase 2: Integration (1 hour)**
+- Add `bitmapPattern :: Maybe BitmapPattern` to `OptimizedProgram`
+- Lazy initialization on first use
+- Cache result for repeated matches
+
+**Phase 3: Optimization (30 mins)**
+- Add strictness annotations
+- Use unboxed Vector operations
+- Inline hot path functions
+
+**Phase 4: Testing & Validation (1 hour)**
+- Unit tests for conversion correctness
+- Edge case testing (empty programs, all wildcards, all required)
+- Profile on actual workload
+
+### Success Criteria
+
+✅ All existing tests pass  
+✅ Bitmap matching identical to original implementation  
+✅ **20% minimum improvement** (acceptable)  
+✅ **30-40% target improvement** (expected)  
+✅ **45%+ stretch goal** (optimistic)  
+✅ `matchesByte` drops from 23.5% to <10% of runtime  
+✅ No new bottlenecks introduced  
+
+### Risks & Mitigation
+
+| Risk | Probability | Mitigation |
+|------|-------------|-----------|
+| Conversion overhead dominates | 15-20% | Profile implementation, use lazy conversion |
+| CPU doesn't optimize bitops | 10-15% | Still faster than list operations |
+| Cache misses increase | 10% | Memory layout is actually more compact |
+
+**Overall Risk**: LOW
+
+### Why This Ranks #1
+
+1. ✅ **Directly addresses 66.4% of bottleneck** (pattern matching)
+2. ✅ **Straightforward implementation** - no complex algorithms
+3. ✅ **Easy to validate** - correctness is deterministic
+4. ✅ **Low risk** - can rollback if needed
+5. ✅ **Complementary** - works with other optimizations
+6. ✅ **User validated** - identified through profiling analysis
+
+---
+
+## Proposal #2: Eliminate Pattern Padding Allocations  
 **Expected Improvement**: 15-25% overall performance, 30% less memory
 
 ### Problem
@@ -75,7 +198,7 @@ matchesByteAt i program pattern =
 
 ---
 
-## Proposal 2: Optimize matchesByte with Unboxed Comparisons
+## Proposal #3: Optimize matchesByte with Unboxed Comparisons
 
 **Target**: `matchesByte` function  
 **Current Cost**: 23.5% time, 0% allocations  
@@ -135,7 +258,7 @@ Use bitmask representation + INLINE + strict evaluation.
 
 ---
 
-## Proposal 3: Use Vector Instead of Lists for Programs
+## Proposal #4: Use Vector Instead of Lists for Programs
 
 **Target**: All program representations  
 **Current Cost**: Indirect (list traversal overhead throughout)  
@@ -192,7 +315,7 @@ type Program = Vector Byte  -- Unboxed vector
 
 ---
 
-## Proposal 4: Implement Lazy/Memoized Pattern Cache Lookup
+## Proposal #5: Implement Lazy/Memoized Pattern Cache Lookup
 
 **Target**: `lookupPattern` in Trie cache  
 **Current Cost**: 12.6% time, 13.2% allocations  
@@ -251,7 +374,7 @@ data TrieNode = TrieNode
 
 ---
 
-## Proposal 5: Specialize matchesPattern for Common Cases
+## Proposal #6: Specialize matchesPattern for Common Cases
 
 **Target**: `matchesPattern` function  
 **Current Cost**: 42.9% time, 51.4% allocations  
@@ -319,7 +442,7 @@ analyzePatternComplexity pattern =
 
 ---
 
-## Proposal 6: Implement Parallel Pattern Matching
+## Proposal #7: Implement Parallel Pattern Matching
 
 **Target**: Overall search pipeline  
 **Current Cost**: Entire 0.12s runtime  
@@ -386,7 +509,7 @@ insertConcurrent :: ConcurrentCache -> Pattern -> OptimizedProgram -> STM ()
 
 ---
 
-## Proposal 7: Pre-compile Pattern Matching to Decision Trees
+## Proposal #8: Pre-compile Pattern Matching to Decision Trees
 
 **Target**: `matchesPattern` and `matchesByte`  
 **Current Cost**: 66.4% time combined  
