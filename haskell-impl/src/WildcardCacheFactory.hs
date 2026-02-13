@@ -5,6 +5,7 @@ module WildcardCacheFactory
 
 import WildcardCache
 import qualified WildcardCache.Trie as Trie
+import qualified WildcardCache.Vector as Vector
 
 -- | Create cache instance based on implementation choice
 createCacheInstance :: CacheImplementation -> CacheConfig -> IO SomeCacheImpl
@@ -12,4 +13,7 @@ createCacheInstance impl config = case impl of
     TrieCache -> do
         trieCache <- Trie.createTrieCache config
         return $ SomeCache trieCache
+    VectorScanCache -> do
+        vectorCache <- Vector.createVectorCache config
+        return $ SomeCache vectorCache
     _ -> error $ "Implementation not yet available: " ++ show impl
