@@ -7,6 +7,7 @@ module WildcardPattern
     , optimizeProgram
     , calculateReductionFactor
     , matchesPattern
+    , wildcardPattern  -- Accessor for pattern (converts from bitmap)
     -- Instruction category constants
     , registerManipulating
     , registerConsuming
@@ -40,12 +41,17 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Maybe (mapMaybe)
 import qualified Data.Vector.Unboxed as Vector
+import qualified Data.Vector as BVector
+import qualified Data.Vector.Mutable as MVector
 import Data.List (intercalate, sort)
 import Text.Printf (printf)
 import qualified Data.Map as Map
 import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:), object)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Key
+import Data.Word (Word16)
+import Data.Bits ((.&.), (.|.), shiftL, testBit, popCount, countTrailingZeros)
+import Control.Monad (forM_)
 
 -- Import the usage tracking data types from TrackedProcessor
 -- (No local definitions needed - use the ones from TrackedProcessor module)
@@ -57,13 +63,19 @@ data OptimizedInstruction =
   | AnyOf [Byte]           -- Can be any value from this specific list
   deriving (Show, Eq)
 
--- | Optimized program with wildcarding patterns
+-- | Bitmap representation for fast pattern matching
+-- Each Word16 represents which byte values (0-15) are valid at a position
+-- Bit i set means byte value i is allowed
+type InstructionMask = Word16
+type BitmapPattern = BVector.Vector InstructionMask  -- Always 16 elements
+
+-- | Optimized program with wildcarding patterns (bitmap-based)
 data OptimizedProgram = OptimizedProgram
     { originalProgram :: [Byte]
-    , wildcardPattern :: [OptimizedInstruction]
+    , wildcardPatternBitmask :: BitmapPattern  -- PRIMARY: bitmap for fast matching
     , reductionFactor :: Double  -- How much search space was reduced
     , equivalenceClass :: String -- Canonical representation for grouping
-    , programAnalysis :: ProgramAnalysis -- NEW: Include analysis for usage information
+    , programAnalysis :: ProgramAnalysis -- Analysis data for this program
     } deriving (Show)
 
 -- | Memory usage classification for enhanced analysis
@@ -148,6 +160,44 @@ r0DeadCodeEquivalent = r0ManipulatingOnly ++ bothRegisterOperations  -- [3, 5, 9
 r1DeadCodeEquivalent :: [Byte]
 r1DeadCodeEquivalent = r1ManipulatingOnly ++ bothRegisterOperations  -- [4, 6, 10, 1, 2]
 -- When R1 is never consumed, these operations are equivalent
+
+-- ============================================================================
+-- BITMAP PATTERN MATCHING - Fast matching using bitwise operations
+-- ============================================================================
+
+-- | Convert OptimizedInstruction to bitmap mask
+instructionToBitmask :: OptimizedInstruction -> InstructionMask
+instructionToBitmask (Required byte) = 1 `shiftL` fromIntegral byte  -- Single bit set
+instructionToBitmask Wildcard = 0xFFFF  -- All 16 bits set (0-15 all valid)
+instructionToBitmask (AnyOf bytes) = foldl (.|.) 0 [1 `shiftL` fromIntegral b | b <- bytes]
+{-# INLINE instructionToBitmask #-}
+
+-- | Convert list of OptimizedInstructions to bitmap pattern
+-- Always produces exactly 16 masks (pads with Wildcard if needed)
+toBitmapPattern :: [OptimizedInstruction] -> BitmapPattern
+toBitmapPattern instrs =
+    let paddedInstrs = take 16 (instrs ++ repeat Wildcard)
+        masks = map instructionToBitmask paddedInstrs
+    in BVector.fromList masks
+{-# INLINE toBitmapPattern #-}
+
+-- | Convert bitmap mask back to OptimizedInstruction (for human display)
+bitmaskToInstruction :: InstructionMask -> OptimizedInstruction
+bitmaskToInstruction mask
+    | mask == 0xFFFF = Wildcard  -- All bits set
+    | popCount mask == 1 = Required (fromIntegral $ countTrailingZeros mask)  -- Single bit
+    | otherwise = AnyOf [b | b <- [0..15], testBit mask (fromIntegral b)]  -- Multiple bits
+{-# INLINE bitmaskToInstruction #-}
+
+-- | Convert bitmap pattern to human-readable wildcardPattern (for display/debugging)
+bitmapToWildcardPattern :: BitmapPattern -> [OptimizedInstruction]
+bitmapToWildcardPattern bitmask = map bitmaskToInstruction (BVector.toList bitmask)
+
+-- | Accessor for wildcardPattern (converts from bitmap on demand)
+-- Use only for human-readable output, JSON serialization, debugging
+wildcardPattern :: OptimizedProgram -> [OptimizedInstruction]
+wildcardPattern = bitmapToWildcardPattern . wildcardPatternBitmask
+{-# INLINE wildcardPattern #-}
 
 -- | Complete pattern analysis using already-executed TrackedDevice
 analyzeProgram :: [Byte] -> TrackedDevice -> ProgramAnalysis
@@ -300,14 +350,17 @@ optimizeProgram :: ProgramAnalysis -> OptimizedProgram
 optimizeProgram analysis =
     let program = programOriginal analysis
 
-        -- Always create pattern for full 16-byte memory space using enhanced classification
-        wildcardPattern = map (classifyEnhancedMemoryPosition analysis) [0..15]
+        -- Create pattern for full 16-byte memory space using enhanced classification
+        wildcardInstructions = map (classifyEnhancedMemoryPosition analysis) [0..15]
+        
+        -- Convert to bitmap pattern (primary storage)
+        bitmask = toBitmapPattern wildcardInstructions
 
     in OptimizedProgram
         { originalProgram = program
-        , wildcardPattern = wildcardPattern
-        , reductionFactor = calculateReductionFactor wildcardPattern
-        , equivalenceClass = generateEquivalenceClass wildcardPattern
+        , wildcardPatternBitmask = bitmask
+        , reductionFactor = calculateReductionFactor wildcardInstructions
+        , equivalenceClass = generateEquivalenceClass wildcardInstructions
         , programAnalysis = analysis
         }
 
@@ -347,20 +400,30 @@ classifyDeadRegisterPosition originalByte
     | originalByte `elem` registerManipulating = AnyOf deadCodeEquivalentInstructions
     | otherwise = Required originalByte  -- Non-register instructions must stay as-is
 
+-- | Ultra-fast bitmap-based pattern matching
+-- No list allocations, uses bitwise AND for O(1) matching per position
+matchesBitmapPattern :: [Byte] -> BitmapPattern -> Bool
+matchesBitmapPattern rawProgram bitmask =
+    let len = min 16 (length rawProgram)
+        -- Create mutable vector, initialize ALL positions (0 for padding)
+        programMasks = BVector.create $ do
+            v <- MVector.replicate 16 0  -- Initialize all to 0 (bit 0 = byte value 0)
+            forM_ [0..len-1] $ \i ->
+                MVector.write v i (1 `shiftL` fromIntegral (rawProgram !! i))
+            return v
+        -- Match: (programMask .&. patternMask) == programMask means byte is allowed
+        matchPositions = BVector.zipWith (\p m -> (p .&. m) == p) programMasks bitmask
+    in BVector.all id matchPositions
+{-# INLINE matchesBitmapPattern #-}
+
 -- | Check if a raw program matches an optimized pattern
--- Pads program to 16 bytes with zeros if shorter than 16 bytes
+-- New version using bitmap matching (much faster!)
 matchesPattern :: [Byte] -> OptimizedProgram -> Bool
 matchesPattern rawProgram optProgram =
-    let -- Pad program to 16 bytes with zeros (4917 processor has 16 memory locations)
-        paddedProgram = take 16 (rawProgram ++ repeat 0)
-        pattern = wildcardPattern optProgram
-        
-        -- Pattern should always be 16 elements, but verify for safety
-        paddedPattern = take 16 (pattern ++ repeat Wildcard)
-        
-    in and $ zipWith matchesByte paddedProgram paddedPattern
+    matchesBitmapPattern rawProgram (wildcardPatternBitmask optProgram)
+{-# INLINE matchesPattern #-}
 
--- | Check if a single byte matches an OptimizedInstruction
+-- | Check if a single byte matches an OptimizedInstruction (kept for compatibility)
 matchesByte :: Byte -> OptimizedInstruction -> Bool
 matchesByte byte instruction = case instruction of
     Required requiredByte -> byte == requiredByte
@@ -567,7 +630,7 @@ instance FromJSON OptimizedInstruction where
 instance ToJSON OptimizedProgram where
     toJSON prog = object
         [ Key.fromString "originalProgram" .= originalProgram prog
-        , Key.fromString "wildcardPattern" .= wildcardPattern prog  
+        , Key.fromString "wildcardPattern" .= wildcardPattern prog  -- Converted from bitmap for human readability
         , Key.fromString "reductionFactor" .= reductionFactor prog
         , Key.fromString "equivalenceClass" .= equivalenceClass prog
         ]
@@ -578,6 +641,8 @@ instance FromJSON OptimizedProgram where
         pattern_ <- o .: Key.fromString "wildcardPattern"
         reduction <- o .: Key.fromString "reductionFactor"
         equiv <- o .: Key.fromString "equivalenceClass"
+        -- Convert deserialized pattern list to bitmap
+        let bitmask = toBitmapPattern pattern_
         -- Create a minimal analysis for deserialized programs
         let emptyDevice = case createTrackedDevice orig of
                 Left _ -> TrackedDevice 0 0 0 (Vector.fromList []) 0 False 0 False False False Set.empty Set.empty Map.empty
@@ -591,4 +656,4 @@ instance FromJSON OptimizedProgram where
                 , memoryAnalysis = EnhancedMemoryAnalysis [] []
                 , detailedUsageMap = Map.empty
                 }
-        return $ OptimizedProgram orig pattern_ reduction equiv emptyAnalysis
+        return $ OptimizedProgram orig bitmask reduction equiv emptyAnalysis
