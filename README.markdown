@@ -90,71 +90,124 @@ stack test --fast
 
 ### Running Benchmarks
 
-The project includes comprehensive benchmark suites for performance testing both processors:
+The project includes comprehensive benchmark suites for performance testing both processors using Criterion.
 
-#### Original Processor Benchmarks
+#### Quick Development Benchmarks
+
+For fast iteration and development testing:
 
 ```bash
-# Show available benchmark phases for original processor
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--list"
+# Quick benchmark script (30 seconds) - instructions only
+./bench-quick.sh
 
-# Run all benchmark phases
-stack bench cli4917:bench:processor-bench
+# Test specific instructions (10-15 seconds each)
+timeout 10 stack bench :trackedprocessor-bench --benchmark-arguments="--match pattern HALT"
+timeout 10 stack bench :processor-bench --benchmark-arguments="--match pattern 'ADD R0'"
+timeout 10 stack bench :trackedprocessor-bench --benchmark-arguments="--match pattern OUTPUT"
 
-# Run specific benchmark phases
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 1"      # Individual instructions
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 2"      # Comprehensive programs
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 3"      # Performance analysis
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 4"      # Scaling analysis
-
-# Run with options
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--phase 1 --verbose"
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--time-limit 30"
-
-# Save results
-stack bench cli4917:bench:processor-bench --benchmark-arguments="--output processor-results.html"
+# Test specific benchmark types across all instructions
+timeout 20 stack bench --benchmark-arguments="--match pattern 'execution-speed'"
 ```
 
-#### TrackedProcessor Benchmarks
+#### Benchmark Suite Options
 
+**Run specific benchmark suites:**
 ```bash
-# Show available benchmark phases for TrackedProcessor
-stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--list"
+# Run only TrackedProcessor benchmarks (enhanced features)
+timeout 60 stack bench :trackedprocessor-bench --benchmark-arguments="--quick"
 
-# Run all benchmark phases
-stack bench cli4917:bench:trackedprocessor-bench
+# Run only original Processor benchmarks
+timeout 60 stack bench :processor-bench --benchmark-arguments="--quick"
 
-# Run specific benchmark phases
-stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1"  # Individual instructions
-stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 2"  # Comprehensive programs
-stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1 --phase 2"
+# Run both benchmark suites
+timeout 120 stack bench --benchmark-arguments="--quick"
+```
 
-# Run with options
-stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1 --verbose"
-stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--time-limit 30"
+**Target specific phases:**
+```bash
+# Run only Phase 1 (Individual Instructions)
+timeout 30 stack bench :trackedprocessor-bench --benchmark-arguments="--match glob '*Phase 1*'"
 
-# Use timeout for safety (prevents system unresponsiveness)
-gtimeout 120 stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1"  # macOS
-timeout 120 stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--phase 1"   # Linux
+# Run only Phase 2 (Comprehensive Programs) 
+timeout 45 stack bench :processor-bench --benchmark-arguments="--match glob '*Phase 2*'"
 
-# Save results
-stack bench cli4917:bench:trackedprocessor-bench --benchmark-arguments="--output tracked-results.html"
+# Run enhanced tracking features (TrackedProcessor only)
+timeout 20 stack bench :trackedprocessor-bench --benchmark-arguments="--match pattern 'Enhanced Tracking'"
+
+# Run scaling analysis
+timeout 40 stack bench :trackedprocessor-bench --benchmark-arguments="--match glob '*Scaling Analysis*'"
+```
+
+**Advanced filtering and exploration:**
+```bash
+# List all available benchmarks
+stack bench :trackedprocessor-bench --benchmark-arguments="--list"
+stack bench :processor-bench --benchmark-arguments="--list"
+
+# Run memory-related benchmarks only
+timeout 25 stack bench :trackedprocessor-bench --benchmark-arguments="--match pattern memory"
+
+# Run all full-execution benchmarks
+timeout 35 stack bench --benchmark-arguments="--match pattern 'full-execution'"
+
+# Get help on Criterion options
+stack bench :trackedprocessor-bench --benchmark-arguments="--help"
+
+# Save results to HTML
+stack bench :trackedprocessor-bench --benchmark-arguments="--output tracked-results.html"
+```
+
+#### Benchmark Safety
+
+**Always use timeouts for long-running benchmarks:**
+```bash
+# Install timeout tools if needed
+brew install coreutils  # macOS (provides gtimeout)
+
+# Recommended timeout patterns
+timeout 10  # Single instruction tests (10 seconds)
+timeout 30  # Phase-specific tests (30 seconds)  
+timeout 60  # Quick mode full suites (1 minute)
+timeout 300 # Full benchmark suites (5 minutes)
+
+# Examples with safety timeouts
+gtimeout 300 stack bench :trackedprocessor-bench  # macOS
+timeout 300 stack bench :processor-bench          # Linux
 ```
 
 #### Benchmark Phases
 
-**Original Processor (processor-bench):**
-- **Phase 1**: Individual Instructions (16 benchmarks) - All 16 instructions with 3 test scenarios each
-- **Phase 2**: Comprehensive Programs (4 benchmarks) - 4 complex programs with 3 test scenarios each
-- **Phase 3**: Performance Analysis (4 benchmarks) - Statistical analysis of instruction and program performance
-- **Phase 4**: Scaling Analysis (6 benchmarks) - Performance characteristics across different program lengths
+**Original Processor (:processor-bench):**
+- **Phase 1**: Individual Instructions - All 16 instructions (HALT, ADD, SUB, etc.) with execution-speed, repeated-operations, and step-counting tests
+- **Phase 2**: Comprehensive Programs - Counter Loop, Arithmetic Showcase, Conditional Jumps, All Instructions with full-execution, step-performance, and output-generation tests  
+- **Phase 3**: Performance Analysis - Instruction distribution, program complexity, execution patterns, and performance metrics analysis
+- **Phase 4**: Scaling Analysis - Length scaling (small/medium), complexity impact (simple/complex), and execution efficiency (short/long) tests
 
-**TrackedProcessor (trackedprocessor-bench):**
-- **Phase 1**: Individual Instructions (48 benchmarks) - All 16 instructions with 3 test scenarios each
-- **Phase 2**: Comprehensive Programs (20 benchmarks) - 4 complex programs with 5 test scenarios each  
-- **Phase 3**: TrackedProcessor Features (TBD) - Enhanced tracking capability benchmarks
-- **Phase 4**: Performance Comparisons (TBD) - TrackedProcessor vs Original Processor
-- **Phase 5**: Legacy Compatibility (4 benchmarks) - Simple benchmark programs
+**TrackedProcessor (:trackedprocessor-bench):**
+- **Phase 1**: Individual Instructions - All 16 instructions with single-step, repeated-execution, and comprehensive tracking tests
+- **Phase 2**: Comprehensive Programs - Counter Loop, Arithmetic Showcase, Conditional Jumps, All Instructions with creation, execution, and tracking benchmarks
+- **Phase 3**: Instruction Types - Single-byte vs two-byte instructions, memory operations, conditional operations performance comparison
+- **Phase 4**: Memory Patterns - Instruction-only access, mixed instruction/operand, heavy operand usage, complex memory access patterns
+- **Phase 5**: Enhanced Tracking - Instruction/operand location tracking, mixed usage detection, register consumption analysis, combination tracking
+- **Phase 6**: Scaling Analysis - Performance across different program lengths (3, 5, 8, 12, 16 instructions)
+- **Phase 7**: Processor Comparison - TrackedProcessor vs Original Processor performance comparison
+
+#### Development Workflow Examples
+
+```bash
+# Daily development - test specific instruction performance (10-30 seconds)
+timeout 10 stack bench :trackedprocessor-bench --benchmark-arguments="--match pattern HALT"
+timeout 15 stack bench :processor-bench --benchmark-arguments="--match pattern 'execution-speed'"
+
+# Feature testing - test enhanced tracking features (1-2 minutes)
+timeout 120 stack bench :trackedprocessor-bench --benchmark-arguments="--match glob '*Enhanced Tracking*'"
+
+# Performance validation - quick benchmark suite (5-10 minutes)
+timeout 600 stack bench --benchmark-arguments="--quick"
+
+# Release testing - comprehensive benchmark analysis (15-30 minutes)
+stack bench  # Run without --quick for full statistical analysis
+```
 
 ### Performance and Safety
 
