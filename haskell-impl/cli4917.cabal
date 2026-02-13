@@ -36,6 +36,7 @@ library
                      , WildcardCache
                      , WildcardCache.Types
                      , WildcardCache.Trie
+                     , WildcardCache.Vector
                      , WildcardCacheFactory
                      , CacheStatsTracker
   build-depends:       base >=4.7 && <5
@@ -79,6 +80,7 @@ executable 4917-cli
                      , WildcardCache
                      , WildcardCache.Trie
                      , WildcardCache.Types
+                     , WildcardCache.Vector
                      , WildcardCacheFactory
                      , WildcardPattern
   build-depends:       base >=4.7 && <5
@@ -115,6 +117,7 @@ test-suite spec
                      , LegacyWildcardPatternsSpec
                      , WildcardCache.Trie
                      , WildcardCache.Types
+                     , WildcardCache.Vector
                      , WildcardPattern
                      , WildcardPatternSpec
                      , CacheInterfaceSpec
