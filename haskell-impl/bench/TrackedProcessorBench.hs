@@ -468,29 +468,21 @@ scalingBenchmarks =
         ]
     ]
 
--- | Main benchmark suite
+-- | Main benchmark suite with Criterion defaultMain for proper --match support
 main :: IO ()
-main = do
-    -- Parse command line arguments, extracting our custom options while preserving Criterion options
-    args <- getArgs
-    let (benchOptions, criterionArgs) = separateArgs args
-    
-    case benchOptions of
-        Just opts -> do
-            if listOnly opts
-                then showAvailablePhases
-                else do
-                    when (verbose opts) $ do
-                        putStrLn $ "Running phases: " ++ show (selectedPhases opts)
-                        case benchTimeLimit opts of
-                            Just t -> putStrLn $ "Time limit: " ++ show t ++ " seconds per benchmark"
-                            Nothing -> putStrLn "No time limit specified"
-                    
-                    -- Run benchmarks with filtered phases and pass remaining args to Criterion
-                    withArgs criterionArgs $ defaultMain (createSelectedBenchmarks (selectedPhases opts))
-        Nothing -> do
-            -- If parsing fails, show help and available phases
-            showAvailablePhases
+main = defaultMain allBenchmarks
+  where
+    allBenchmarks = 
+        [ bgroup "Phase 1: Individual Instructions" $ 
+            createInstructionBenchmarks createTrackedInstructionTests
+        , bgroup "Phase 2: Comprehensive Programs" $
+            createTrackedProgramBenchmarks createTrackedProgramTests  
+        , bgroup "Phase 3: Instruction Types" instructionBenchmarks
+        , bgroup "Phase 4: Memory Patterns" memoryPatternBenchmarks
+        , bgroup "Phase 5: Enhanced Tracking" enhancedTrackingBenchmarks
+        , bgroup "Phase 6: Scaling Analysis" scalingBenchmarks
+        , bgroup "Phase 7: Processor Comparison" comparisonBenchmarks
+        ]
 
 -- | Separate our benchmark options from Criterion arguments
 separateArgs :: [String] -> (Maybe BenchmarkPhaseOptions, [String])

@@ -400,29 +400,18 @@ benchExecutionEfficiency devices = nf analyzeExecutionEfficiency devices
 -- MAIN FUNCTION AND ARGUMENT PARSING
 -- =============================================================================
 
--- | Main benchmark suite
+-- | Main benchmark suite with Criterion defaultMain for proper --match support  
 main :: IO ()
-main = do
-    -- Parse command line arguments, extracting our custom options while preserving Criterion options
-    args <- getArgs
-    let (benchOptions, criterionArgs) = separateProcessorArgs args
-    
-    case benchOptions of
-        Just opts -> do
-            if listOnly opts
-                then showAvailableProcessorPhases
-                else do
-                    when (verbose opts) $ do
-                        putStrLn $ "Running phases: " ++ show (selectedPhases opts)
-                        case benchTimeLimit opts of
-                            Just t -> putStrLn $ "Time limit: " ++ show t ++ " seconds per benchmark"
-                            Nothing -> putStrLn "No time limit specified"
-                    
-                    -- Run benchmarks with filtered phases and pass remaining args to Criterion
-                    withArgs criterionArgs $ defaultMain (createSelectedProcessorBenchmarks (selectedPhases opts))
-        Nothing -> do
-            -- If parsing fails, show help and available phases
-            showAvailableProcessorPhases
+main = defaultMain allProcessorBenchmarks
+  where
+    allProcessorBenchmarks =
+        [ bgroup "Phase 1: Individual Instructions" $ 
+            createProcessorInstructionBenchmarks createProcessorInstructionTests
+        , bgroup "Phase 2: Comprehensive Programs" $
+            createProcessorProgramBenchmarks createProcessorProgramTests  
+        , bgroup "Phase 3: Performance Analysis" createProcessorPerformanceAnalysis
+        , bgroup "Phase 4: Scaling Analysis" createProcessorScalingAnalysis
+        ]
 
 -- | Separate our benchmark options from Criterion arguments
 separateProcessorArgs :: [String] -> (Maybe ProcessorBenchmarkOptions, [String])
