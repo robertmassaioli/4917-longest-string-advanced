@@ -13,13 +13,19 @@ import WildcardCache.Types
 import WildcardPattern 
     ( OptimizedProgram
     , matchesPattern
+    , wildcardPatternBitmask
     )
+import TrackedProcessor (Byte)
 import qualified Data.Vector as Vector
+import qualified Data.Vector as BVector
+import qualified Data.List
 import Data.Time (UTCTime)
 import qualified Control.Exception
 import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:))
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Key
+import Data.Bits (popCount)
+import Data.Word (Word16)
 
 
 -- | Vector-based pattern cache: stores patterns in contiguous vector
@@ -57,24 +63,73 @@ estimateMemoryUsage vec =
     in numPatterns * bytesPerProgram
 
 
-instance WildcardPatternCache VectorPatternCache where
-    -- | Linear scan lookup through pattern vector
-    -- Matches raw program against each cached pattern using bitmap matching
-    lookupPattern program cache = 
-        Vector.find (matchesPattern program) (cachedPrograms cache)
+-- | Calculate pattern specificity (number of constrained positions)
+-- Higher specificity = more Required positions, fewer Wildcards
+-- BitmapPattern is BVector.Vector Word16 (16 elements)
+calculateSpecificity :: BVector.Vector Word16 -> Int
+calculateSpecificity bitmask =
+    let countSpecific :: Word16 -> Int
+        countSpecific mask = if popCount mask == 1 then 1 else 0  -- Single bit = Required
+    in BVector.sum (BVector.map countSpecific bitmask)
 
-    -- | Insert new pattern, maintaining vector
+
+-- | Sort patterns by specificity (most specific first)
+-- More specific patterns are more likely to match, so check them first
+-- Uses simple list sort for now (can optimize with vector-algorithms later)
+sortPatternsBySpecificity :: Vector.Vector OptimizedProgram -> Vector.Vector OptimizedProgram
+sortPatternsBySpecificity vec =
+    let compareBySpecificity prog1 prog2 =
+            let spec1 = calculateSpecificity (wildcardPatternBitmask prog1)
+                spec2 = calculateSpecificity (wildcardPatternBitmask prog2)
+            in compare spec2 spec1  -- Descending order (most specific first)
+        sorted = Data.List.sortBy compareBySpecificity (Vector.toList vec)
+    in Vector.fromList sorted
+
+
+-- | Linear scan lookup (for small caches or fallback)
+linearScanLookup :: [Byte] -> Vector.Vector OptimizedProgram -> Maybe OptimizedProgram
+linearScanLookup program patterns =
+    Vector.find (matchesPattern program) patterns
+
+
+-- | Binary search-assisted lookup (for large caches)
+-- Uses specificity to narrow down the search range, then linear scan
+binarySearchLookup :: [Byte] -> Vector.Vector OptimizedProgram -> Maybe OptimizedProgram
+binarySearchLookup program patterns =
+    -- For now, just use linear scan - true binary search optimization can be added later
+    -- when we have more sophisticated range detection
+    linearScanLookup program patterns
+
+
+instance WildcardPatternCache VectorPatternCache where
+    -- | Lookup with adaptive strategy: linear for small caches, binary search for large
+    lookupPattern program cache =
+        let patterns = cachedPrograms cache
+            patternCnt = Vector.length patterns
+        in if patternCnt < 1000
+            then linearScanLookup program patterns
+            else binarySearchLookup program patterns
+
+    -- | Insert new pattern (sort only when approaching binary search threshold)
     insertPattern optProg cache = 
-        let newVector = Vector.snoc (cachedPrograms cache) optProg
+        let newCount = patternCount cache + 1
+            newVector = Vector.snoc (cachedPrograms cache) optProg
+            
+            -- Only sort when we reach 1000 patterns (binary search threshold)
+            -- This defers sorting until it's actually needed
+            needsSort = newCount == 1000
+            sortedVector = if needsSort
+                          then sortPatternsBySpecificity newVector
+                          else newVector
             
             -- Update statistics
             newStats = (cacheStats cache) 
-                { totalPatterns = patternCount cache + 1
-                , memoryUsage = estimateMemoryUsage newVector
+                { totalPatterns = newCount
+                , memoryUsage = estimateMemoryUsage sortedVector
                 }
         in cache 
-            { cachedPrograms = newVector
-            , patternCount = patternCount cache + 1
+            { cachedPrograms = sortedVector
+            , patternCount = newCount
             , cacheStats = newStats
             }
 
@@ -93,12 +148,16 @@ instance PersistentCache VectorPatternCache where
             return $ Right ()) `Control.Exception.catch` 
             (\e -> return $ Left $ SaveError $ show (e :: Control.Exception.SomeException))
     
-    -- | Load cache from file
+    -- | Load cache from file (sorts patterns on load)
     loadCache filePath = do
         (do
             jsonString <- readFile filePath
             case Aeson.decode $ read jsonString of
-                Just (cache :: VectorPatternCache) -> return $ Right cache
+                Just (cache :: VectorPatternCache) -> do
+                    -- Sort patterns by specificity after loading
+                    let sortedPrograms = sortPatternsBySpecificity (cachedPrograms cache)
+                        sortedCache = cache { cachedPrograms = sortedPrograms }
+                    return $ Right sortedCache
                 Nothing -> return $ Left $ LoadError "Failed to parse JSON") `Control.Exception.catch`
             (\e -> return $ Left $ LoadError $ show (e :: Control.Exception.SomeException))
     
