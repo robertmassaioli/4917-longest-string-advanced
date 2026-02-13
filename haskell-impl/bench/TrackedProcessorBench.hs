@@ -121,8 +121,8 @@ createTrackedInstructionTests = map createTest instructionSpecs
         , (6,  "DEC R1",      [6])  -- Will set R1=5 for meaningful test
         , (7,  "NOP",         [7])
         , (8,  "PRINT",       [8, 5])    -- PRINT 5 (single digit)
-        , (9,  "LOAD R0",     [9, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42])  -- LOAD R0, [15] where [15] = 42
-        , (10, "LOAD R1",     [10, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42]) -- LOAD R1, [15] where [15] = 42
+        , (9,  "LOAD R0",     [9, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15])  -- LOAD R0, [15] where [15] = 15
+        , (10, "LOAD R1",     [10, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15]) -- LOAD R1, [15] where [15] = 15
         , (11, "STORE R0",    [11, 15])  -- STORE R0, [15] (will set R0=7)
         , (12, "STORE R1",    [12, 15])  -- STORE R1, [15] (will set R1=7)
         , (13, "JMP",         [13, 0])   -- JMP [0] (jump to start)
@@ -427,7 +427,7 @@ instructionBenchmarks =
     [ bgroup "Instruction Types"
         [ bench "Single-byte instructions" $ benchFullExecution [3, 4, 5, 6, 1, 2, 7, 0]
         , bench "Two-byte instructions" $ benchFullExecution [8, 5, 9, 8, 11, 7, 13, 0]
-        , bench "Memory operations" $ benchFullExecution [9, 7, 10, 8, 11, 6, 12, 7, 0, 42, 13]
+        , bench "Memory operations" $ benchFullExecution [9, 7, 10, 8, 11, 6, 12, 7, 0, 15, 13]
         , bench "Conditional operations" $ benchFullExecution [3, 14, 4, 15, 2, 0]
         ]
     ]
@@ -446,7 +446,7 @@ memoryPatternBenchmarks =
 -- | Enhanced tracking feature benchmarks
 enhancedTrackingBenchmarks :: [Benchmark]
 enhancedTrackingBenchmarks = 
-    let complexDevice = runTrackedProgram (createBenchDevice [8, 5, 3, 4, 1, 9, 7, 11, 8, 12, 9, 0, 0, 42]) 1000
+    let complexDevice = runTrackedProgram (createBenchDevice [8, 5, 3, 4, 1, 9, 7, 11, 8, 12, 9, 0, 0, 15]) 1000
     in [ bgroup "Enhanced Tracking Features"
            [ bench "Instruction location tracking" $ nf getInstructionLocations complexDevice
            , bench "Operand location tracking" $ nf getOperandLocations complexDevice  
