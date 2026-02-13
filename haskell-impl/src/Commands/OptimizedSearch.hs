@@ -5,7 +5,7 @@ module Commands.OptimizedSearch (runOptimizedSearchCommand, OptimizedSearchOptio
 import WildcardCache
 import WildcardCacheFactory (createCacheInstance)
 import WildcardPattern (analyzeProgram, optimizeProgram)
-import TrackedProcessor (runTrackedProgramLoopCheck, createTrackedDevice, getOutput, Byte)
+import TrackedProcessor (runTrackedProgramLoopCheck, createTrackedDevice, getOutput, isHalted, Byte)
 import qualified CacheStatsTracker as CST (CacheStatsTracker, newCacheStatsTracker, getCacheStats)
 import Control.Monad (forM_, when)
 import Data.IORef
@@ -98,8 +98,8 @@ runOptimizedSearchCommand opts = do
                         -- Cache the optimization result
                         modifyIORef cache (insertIntoCache optProg)
                         
-                        -- Track results
-                        when (outputCount > 0) $ do
+                        -- Track results (only if program halted AND produced output)
+                        when (isHalted finalDevice && outputCount > 0) $ do
                             modifyIORef results ((optSearchLength opts, program, outputCount) :)
                             when (optSearchVerbose opts) $ do
                                 putStrLn $ "  OUTPUT: " ++ show outputCount ++ " characters"
