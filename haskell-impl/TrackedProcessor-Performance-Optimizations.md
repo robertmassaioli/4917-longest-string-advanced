@@ -16,27 +16,29 @@ The TrackedProcessor maintains extensive tracking state that causes performance 
 
 ## Performance Optimization Recommendations
 
-### 1. **Conditional Detailed Tracking Mode** 
-**Likelihood of Success: HIGH (90%)**
+### 1. **Optimize Detailed Usage Map Structure** 
+**Likelihood of Success: HIGH (85%)**
 
-**Problem**: The `detailedUsage` Map and string-based instruction tracking adds significant overhead even when not needed.
+**Problem**: The `detailedUsage` Map uses `Int` keys and complex `MemoryUsage` values, causing frequent Map lookups and expensive insertions on every memory access.
 
 **Solution**: 
-- Add a compile-time flag or runtime parameter to disable detailed tracking
-- Create a "lite" mode that only tracks essential data (register consumption, basic memory access)
-- Use phantom types or type-level configuration to eliminate overhead entirely
+- Replace `Map Int MemoryUsage` with a fixed-size array `Array 16 MemoryUsage`
+- Use `STArray` for in-place updates during execution, then freeze to immutable array
+- Pre-allocate `MemoryUsage` structures and update in-place rather than rebuilding
+- Use `IntMap` instead of `Map Int` for better performance with small integer keys
 
-**Expected Improvement**: 30-40% performance gain
+**Expected Improvement**: 25-35% performance gain
 ```haskell
-data TrackingMode = LiteMode | DetailedMode
+-- Instead of Map Int MemoryUsage
+detailedUsage :: Array 16 (IORef MemoryUsage)
 
-data TrackedDevice (mode :: TrackingMode) = TrackedDevice
-  { -- core fields always present
-    pc :: Byte
-  , r0 :: Byte
-  -- detailed fields only when mode ~ DetailedMode
-  , detailedUsage :: DetailedUsageField mode
-  }
+-- Or using IntMap for better integer key performance  
+detailedUsage :: IntMap MemoryUsage
+
+-- Update becomes O(1) array access instead of O(log n) Map operation
+updateUsage :: Int -> MemoryUsage -> TrackedDevice -> TrackedDevice
+updateUsage pos usage device = 
+  device { detailedUsage = detailedUsage device // [(pos, usage)] }
 ```
 
 ### 2. **Replace Sets with Bit Vectors**
@@ -132,7 +134,7 @@ data TrackedDevice = TrackedDevice
 3. Implement bit vector memory tracking
 
 ### Phase 2: Structural Changes (Medium effort)
-1. Add conditional tracking modes
+1. Optimize detailed usage Map structure (Array or IntMap)
 2. Implement lazy detailed usage recording
 
 ### Phase 3: Advanced Optimizations (Higher effort)
@@ -145,8 +147,8 @@ data TrackedDevice = TrackedDevice
 **Optimistic Estimate**: 70-85% performance improvement (bringing TrackedProcessor to ~170-200ns per step)
 
 The most impactful changes are likely:
-1. **Conditional detailed tracking** - eliminates the heaviest overhead
-2. **Bit vector memory tracking** - replaces expensive Set operations
+1. **Optimized detailed usage structure** - replaces expensive Map operations with array access
+2. **Bit vector memory tracking** - replaces expensive Set operations  
 3. **String elimination** - removes allocation overhead
 
-These three changes together could potentially reduce the performance gap from 2.57x to ~1.3-1.5x, making TrackedProcessor much more viable for performance-critical applications while maintaining its rich tracking capabilities.
+These three changes together could potentially reduce the performance gap from 2.57x to ~1.4-1.6x, making TrackedProcessor much more viable for performance-critical applications while maintaining its rich tracking capabilities.
