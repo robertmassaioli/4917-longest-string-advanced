@@ -22,7 +22,6 @@ module Processor
 
 import Data.Word (Word8)
 import Data.Bits ((.&.))
-import qualified Data.Vector.Unboxed as V
 import Data.Vector.Unboxed (Vector, (!), (//), fromList)
 
 -- | Type alias for byte values (0-15 for this 4-bit machine)
@@ -169,7 +168,7 @@ runProgramLoopCheck device = go slowDev fastDev 0
     fastDev = initProgram device
 
     go slow fast outputAcc =
-        let (newSlow, _, slowFinished) = stepProgram slow
+        let (newSlow, _, _) = stepProgram slow
             (fast1, outputInfo1, fast1Finished) = stepProgram fast
             (fast2, outputInfo2, fast2Finished) = if fast1Finished
                                               then (fast1, NoOutput, True)

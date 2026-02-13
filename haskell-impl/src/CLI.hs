@@ -13,7 +13,6 @@ module CLI
     ) where
 
 import Options.Applicative
-import Data.Semigroup ((<>))
 import Commands.Demo (runDemoCommand)
 import Commands.OptimizeDemo (runOptimizeDemoCommand)
 import Commands.CacheDemo (runCacheDemoCommand)

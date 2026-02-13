@@ -20,11 +20,10 @@ module PatternCache
     , addTimeSaved
     ) where
 
-import ExecutionTracing (ProgramResult(..), TerminationType(Halt, Timeout, InfiniteLoop, Error))
+import ExecutionTracing (ProgramResult(..), TerminationType(..))
 import Processor (Byte)
 import Data.Time (UTCTime, getCurrentTime)
 import Data.Aeson
-import Data.Aeson.Types (parseMaybe)
 import GHC.Generics (Generic)
 import Control.DeepSeq (NFData, rnf)
 import qualified Data.Map as Map
@@ -86,19 +85,6 @@ instance NFData PatternResult where
     rnf (PatternResult out steps term conf) = 
         rnf out `seq` rnf steps `seq` rnf term `seq` rnf conf
 
-instance ToJSON TerminationType where
-    toJSON Halt = "halt"
-    toJSON Timeout = "timeout"  
-    toJSON InfiniteLoop = "loop"
-    toJSON ExecutionTracing.Error = "error"
-
-instance FromJSON TerminationType where
-    parseJSON = withText "TerminationType" $ \case
-        "halt" -> pure Halt
-        "timeout" -> pure Timeout
-        "loop" -> pure InfiniteLoop
-        "error" -> pure ExecutionTracing.Error
-        _ -> fail "Unknown termination type"
 
 instance ToJSON PatternResult where
     toJSON (PatternResult out steps term conf) = object

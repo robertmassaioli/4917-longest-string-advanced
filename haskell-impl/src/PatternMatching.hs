@@ -8,12 +8,10 @@ module PatternMatching
     ) where
 
 import ExecutionTracing (ProgramResult(..), TerminationType(..))
-import PatternCache (PatternResult(..), PatternEntry(..))
+import PatternCache (PatternResult(..))
 import Processor (Byte)
-import Data.Time (getCurrentTime)
 import qualified Data.Map as Map
 import Data.Map (Map)
-import Data.List (isPrefixOf)
 
 -- | Pattern matching interface
 class PatternMatcher m where
@@ -138,11 +136,12 @@ findPrefixPatterns programs =
 -- | Find exact matches in a list of patterns
 findExactMatches :: (Eq a, Show a, Ord a) => [a] -> [a]
 findExactMatches patterns = 
-    let counted = Map.toList $ Map.fromListWith (+) [(pattern, 1) | pattern <- patterns]
+    let counted = Map.toList $ Map.fromListWith (+) [(pattern, 1 :: Int) | pattern <- patterns]
         frequent = [pattern | (pattern, count) <- counted, count >= 2]
     in frequent
 
 -- | Advanced pattern matching with wildcards (future extension)
+{-# DEPRECATED WildcardPattern "Development code - not currently used" #-}
 data WildcardPattern = WildcardPattern
     { patternTemplate :: [PatternElement]
     , patternConstraints :: Map String (Byte -> Bool)
@@ -156,6 +155,7 @@ data PatternElement
     deriving (Show, Eq)
 
 -- | Match program against wildcard pattern (future implementation)
+{-# DEPRECATED matchWildcardPattern "Development code - not currently used" #-}
 matchWildcardPattern :: WildcardPattern -> [Byte] -> Maybe (Map String Byte)
 matchWildcardPattern pattern program = 
     case zipMatch program (patternTemplate pattern) of
@@ -178,10 +178,11 @@ matchWildcardPattern pattern program =
         case zipMatch bs ps of
             Nothing -> Nothing  
             Just bindings -> Just (Map.insert name b bindings)
-    zipMatch (b:bs) (AnyValue:ps) = zipMatch bs ps
+    zipMatch (_:bs) (AnyValue:ps) = zipMatch bs ps
     zipMatch _ _ = Nothing  -- Length mismatch
 
 -- | Example patterns for common cases
+{-# DEPRECATED commonPatterns "Development code - not currently used" #-}
 commonPatterns :: [WildcardPattern]
 commonPatterns = 
     [ -- PRINT x, HALT pattern

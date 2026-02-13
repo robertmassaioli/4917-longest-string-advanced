@@ -1,4 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module ExecutionTracing
     ( ExecutionTrace(..)
@@ -16,6 +18,8 @@ import Processor (Device(..), Byte, createDevice, runStep, isHalted, getOutput)
 import Data.Vector.Unboxed ((!))
 import Control.DeepSeq (NFData, rnf)
 import Data.Time (UTCTime, getCurrentTime)
+import Data.Aeson (ToJSON(..), FromJSON(..), withText)
+import Data.Text (Text)
 
 -- | Types of program termination
 data TerminationType 
@@ -24,6 +28,20 @@ data TerminationType
     | InfiniteLoop  -- Detected infinite loop
     | Error         -- Runtime error occurred
     deriving (Show, Eq, Ord)
+
+instance ToJSON TerminationType where
+    toJSON Halt = toJSON ("halt" :: Text)
+    toJSON Timeout = toJSON ("timeout" :: Text)
+    toJSON InfiniteLoop = toJSON ("loop" :: Text)
+    toJSON Error = toJSON ("error" :: Text)
+
+instance FromJSON TerminationType where
+    parseJSON = withText "TerminationType" $ \t -> case t of
+        "halt" -> return Halt
+        "timeout" -> return Timeout
+        "loop" -> return InfiniteLoop
+        "error" -> return Error
+        _ -> fail "Unknown termination type"
 
 instance NFData TerminationType where
     rnf x = x `seq` ()

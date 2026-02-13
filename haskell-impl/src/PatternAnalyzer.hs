@@ -19,8 +19,7 @@ module PatternAnalyzer
 import ExecutionTracing (ProgramResult(..), TerminationType(..), ExecutionStep(..), extractExecutionSteps)
 import Processor (Byte)
 import LegacyWildcardPatterns (WildcardPattern, wildcardFromProgram, matchWildcardPattern)
-import Data.List (isPrefixOf, findIndex, nub)
-import Control.DeepSeq (NFData, rnf)
+import Control.DeepSeq (NFData)
 import GHC.Generics (Generic)
 import Data.Aeson (ToJSON, FromJSON)
 
@@ -145,6 +144,7 @@ analyzeLoopStructure trace
            else Nothing
 
 -- | Detect repeated cycles in execution trace
+{-# DEPRECATED detectCycles "Development code - not currently used" #-}
 detectCycles :: [ExecutionStep] -> [[ExecutionStep]]
 detectCycles trace = 
     let positions = map stepProgramCounter trace
@@ -187,29 +187,32 @@ detectLoopCondition trace =
         (instr:_) -> Just instr  -- First conditional instruction found
 
 -- | Count how many iterations of the cycle we observed
+{-# DEPRECATED countIterations "Development code - not currently used" #-}
 countIterations :: [ExecutionStep] -> [ExecutionStep] -> Int
-countIterations trace cycle = 
-    let cycleLength = length cycle
+countIterations trace cyclePattern = 
+    let cycleLength = length cyclePattern
         traceLength = length trace
     in if cycleLength > 0 
        then traceLength `div` cycleLength
        else 1
 
 -- | Analyze output pattern in the trace
+{-# DEPRECATED analyzeOutputPattern "Development code - not currently used" #-}
 analyzeOutputPattern :: [ExecutionStep] -> [Int]
 analyzeOutputPattern trace = 
     [stepOutput step | step <- trace, stepOutput step > 0]
 
 -- | Calculate output per loop iteration
+{-# DEPRECATED outputPerLoop "Development code - not currently used" #-}
 outputPerLoop :: [ExecutionStep] -> [Int] -> Int
-outputPerLoop cycle outputPattern = 
-    let cycleOutputs = [stepOutput step | step <- cycle, stepOutput step > 0]
+outputPerLoop loopCycle _ = 
+    let cycleOutputs = [stepOutput step | step <- loopCycle, stepOutput step > 0]
         totalCycleOutput = sum cycleOutputs
     in totalCycleOutput
 
 -- | Generate formula for computing output based on pattern
 generateOutputFormula :: ProgramResult -> PatternType -> Maybe LoopPattern -> String
-generateOutputFormula result patternType loopPattern = 
+generateOutputFormula result patternType _ = 
     case patternType of
         HaltPattern -> show (resultOutput result)
         LinearPattern -> show (resultOutput result)
@@ -218,7 +221,7 @@ generateOutputFormula result patternType loopPattern =
 
 -- | Generate formula for computing steps based on pattern
 generateStepsFormula :: ProgramResult -> PatternType -> Maybe LoopPattern -> String
-generateStepsFormula result patternType loopPattern = 
+generateStepsFormula result patternType _ = 
     case patternType of
         HaltPattern -> show (resultSteps result)
         LinearPattern -> show (resultSteps result)
