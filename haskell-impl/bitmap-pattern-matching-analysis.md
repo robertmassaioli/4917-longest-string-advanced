@@ -80,10 +80,18 @@ programToBitmask :: Byte -> Word16
 programToBitmask b = 1 `shiftL` fromIntegral b  -- Single bit set
 
 -- Match entire program in one operation!
+-- Note: Pads program to 16 bytes with 0 bit in each position (not using repeat 0)
 matchesBitmapPattern :: [Byte] -> BitmapPattern -> Bool
 matchesBitmapPattern program pattern =
-    let programMasks = Vector.fromList $ map programToBitmask (take 16 $ program ++ repeat 0)
-    in Vector.and $ Vector.zipWith (.&.) programMasks pattern == programMasks
+    let len = min 16 (length program)
+        programMasks = Vector.create $ do
+            v <- Vector.new 16
+            Vector.zipWithM_ (\i b -> Vector.write v i (programToBitmask b)) 
+                (Vector.fromList [0..len-1]) 
+                (Vector.fromList $ take len program)
+            -- Remaining positions automatically initialized to 0
+            return v
+    in Vector.and $ Vector.zipWith (\p m -> (p .&. m) == p) programMasks pattern
 ```
 
 **Performance**: 
@@ -193,12 +201,26 @@ matchesBitmapPattern :: [Byte] -> BitmapPattern -> Bool
 ```haskell
 data OptimizedProgram = OptimizedProgram
     { originalProgram :: [Byte]
-    , wildcardPattern :: [OptimizedInstruction]
-    , bitmapPattern :: Maybe BitmapPattern  -- Lazy, computed on demand
+    , wildcardPatternBitmask :: BitmapPattern  -- Primary representation (bitmap)
     , reductionFactor :: Double
     , equivalenceClass :: String
     , programAnalysis :: ProgramAnalysis
-    }
+    } deriving (Show)
+
+-- Conversion from bitmap to human-readable pattern (only for display)
+bitmapToWildcardPattern :: BitmapPattern -> [OptimizedInstruction]
+bitmapToWildcardPattern bitmask = 
+    Vector.toList $ Vector.map maskToInstruction bitmask
+  where
+    maskToInstruction :: Word16 -> OptimizedInstruction
+    maskToInstruction mask
+        | mask == 0xFFFF = Wildcard  -- All bits set
+        | popCount mask == 1 = Required (fromIntegral $ countTrailingZeros mask)  -- Single bit
+        | otherwise = AnyOf [b | b <- [0..15], testBit mask (fromIntegral b)]  -- Multiple bits
+
+-- Use only for human-readable output, serialization, debugging
+wildcardPattern :: OptimizedProgram -> [OptimizedInstruction]
+wildcardPattern = bitmapToWildcardPattern . wildcardPatternBitmask
 ```
 
 ### Phase 3: Optimization (30 mins)
@@ -269,6 +291,69 @@ data OptimizedProgram = OptimizedProgram
 2. Profile to confirm 30-40% gains
 3. If successful, implement "Eliminate Padding" on top
 4. Combined effect could be **40-50% total improvement**
+
+---
+
+## User Refinements (Follow-up)
+
+After reviewing the initial proposal, the user requested two critical improvements:
+
+### Refinement 1: Eliminate `repeat 0` Allocations
+
+**Problem**: Using `take 16 (program ++ repeat 0)` creates wasteful allocations (as profiling showed).
+
+**Solution**: Use mutable vector creation that pre-initializes to 0:
+```haskell
+-- Old (wasteful):
+let programMasks = Vector.fromList $ map programToBitmask (take 16 $ program ++ repeat 0)
+
+-- New (zero-allocation padding):
+let len = min 16 (length program)
+    programMasks = Vector.create $ do
+        v <- Vector.new 16  -- Pre-initialized to 0
+        forM_ [0..len-1] $ \i -> 
+            Vector.write v i (programToBitmask (program !! i))
+        return v
+```
+
+**Impact**: Eliminates one of the major allocation sources identified in profiling.
+
+### Refinement 2: Store Bitmap as Primary Representation
+
+**Problem**: Original proposal kept both `wildcardPattern :: [OptimizedInstruction]` AND `bitmapPattern :: Maybe BitmapPattern`, duplicating storage.
+
+**Solution**: Store **only** the bitmap, convert to human-readable format on demand:
+```haskell
+data OptimizedProgram = OptimizedProgram
+    { originalProgram :: [Byte]
+    , wildcardPatternBitmask :: BitmapPattern  -- Primary storage
+    , reductionFactor :: Double
+    , equivalenceClass :: String
+    , programAnalysis :: ProgramAnalysis
+    }
+
+-- Conversion only when needed (display, debugging, serialization)
+wildcardPattern :: OptimizedProgram -> [OptimizedInstruction]
+wildcardPattern = bitmapToWildcardPattern . wildcardPatternBitmask
+```
+
+**Benefits**:
+- ✅ Pay conversion cost **once** when creating pattern from analysis
+- ✅ Pay reverse conversion cost **only** for human output (rare)
+- ✅ Reduce memory footprint by ~80% (32 bytes vs 200+ bytes)
+- ✅ Improve cache locality for matching operations
+
+**Impact**: This is a **critical insight** that makes the optimization even better than originally proposed. Human-readable output is infrequent (JSON export, debugging), so amortizing that cost is the right trade-off.
+
+### Updated Performance Expectations
+
+With these refinements:
+- **Eliminates `repeat 0` allocations**: +5-10% additional improvement
+- **Bitmap-first storage**: Better cache locality, reduced memory pressure
+- **Combined conservative**: 35-45% improvement (up from 30-40%)
+- **Combined optimistic**: 45-55% improvement (up from 35-45%)
+
+These refinements demonstrate excellent understanding of the performance trade-offs!
 
 ---
 

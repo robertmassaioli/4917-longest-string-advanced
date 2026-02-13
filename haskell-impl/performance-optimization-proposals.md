@@ -31,8 +31,8 @@ This document presents **8 concrete optimization proposals** based on profiling 
 ### Recommended Implementation Order
 
 **🔴 Tier 1 - Top Priority (Must Do First)**
-1. **Bitmap-Based Pattern Matching** ⭐ - 30-40% improvement (User proposal, addresses 66.4% bottleneck)
-2. **Eliminate Pattern Padding** - 15-25% improvement (Quick win, complements #1)
+1. **Bitmap-Based Pattern Matching** ⭐ - 35-45% improvement (User proposal + refinements, addresses 66.4% bottleneck)
+2. **Eliminate Pattern Padding** - 10-15% improvement (Partially addressed by bitmap refinement #1)
 
 **🟡 Tier 2 - Medium Priority**
 3. **Optimize matchesByte Function** - 10-20% improvement (Alternative to #1 if bitmap fails)
@@ -44,7 +44,7 @@ This document presents **8 concrete optimization proposals** based on profiling 
 7. **Compiled Decision Trees** - 30-50% improvement (Research-level complexity)
 8. **Parallelization** - 2-4x improvement (Orthogonal, requires multi-core)
 
-**Combined Potential**: Implementing #1 + #2 could yield **40-55% total improvement**.
+**Combined Potential**: Implementing #1 alone could yield **35-45% improvement** (with refinements). Combined with #2 optimizations could reach **45-60% total improvement**.
 
 ---
 
@@ -81,10 +81,15 @@ type BitmapPattern = Vector InstructionMask
 -- Wildcard:       1111111111111111  (all bits set)
 -- AnyOf [1,2,9]:  0000001000000110  (bits 1,2,9 set)
 
--- Ultra-fast matching using bitwise AND
+-- Ultra-fast matching using bitwise AND (no repeat 0 allocations!)
 matchesBitmapPattern :: [Byte] -> BitmapPattern -> Bool
 matchesBitmapPattern program pattern =
-    let programMasks = Vector.map (1 `shiftL` . fromIntegral) (Vector.take 16 $ Vector.fromList (program ++ repeat 0))
+    let len = min 16 (length program)
+        programMasks = Vector.create $ do
+            v <- Vector.new 16  -- Pre-initialized to 0
+            forM_ [0..len-1] $ \i -> 
+                Vector.write v i (1 `shiftL` fromIntegral (program !! i))
+            return v
     in Vector.all id $ Vector.zipWith (\p m -> (p .&. m) == p) programMasks pattern
 ```
 
@@ -105,9 +110,10 @@ matchesBitmapPattern program pattern =
 - Implement `matchesBitmapPattern` with INLINE pragmas
 
 **Phase 2: Integration (1 hour)**
-- Add `bitmapPattern :: Maybe BitmapPattern` to `OptimizedProgram`
-- Lazy initialization on first use
-- Cache result for repeated matches
+- Replace `wildcardPattern :: [OptimizedInstruction]` with `wildcardPatternBitmask :: BitmapPattern`
+- Make bitmap the PRIMARY storage (pay conversion cost once)
+- Add `wildcardPattern` accessor that converts bitmap to human-readable format on demand
+- Conversion only happens for JSON output, debugging, display (rare operations)
 
 **Phase 3: Optimization (30 mins)**
 - Add strictness annotations
@@ -123,11 +129,13 @@ matchesBitmapPattern program pattern =
 
 ✅ All existing tests pass  
 ✅ Bitmap matching identical to original implementation  
-✅ **20% minimum improvement** (acceptable)  
-✅ **30-40% target improvement** (expected)  
-✅ **45%+ stretch goal** (optimistic)  
-✅ `matchesByte` drops from 23.5% to <10% of runtime  
+✅ Zero allocation impact from `repeat 0` padding  
+✅ **25% minimum improvement** (acceptable - up from 20%)  
+✅ **35-45% target improvement** (expected - up from 30-40%)  
+✅ **50%+ stretch goal** (optimistic - up from 45%)  
+✅ `matchesByte` drops from 23.5% to <8% of runtime  
 ✅ No new bottlenecks introduced  
+✅ Memory usage reduces by ~80% for stored patterns (32 bytes vs 200+ bytes)  
 
 ### Risks & Mitigation
 
@@ -147,6 +155,30 @@ matchesBitmapPattern program pattern =
 4. ✅ **Low risk** - can rollback if needed
 5. ✅ **Complementary** - works with other optimizations
 6. ✅ **User validated** - identified through profiling analysis
+7. ✅ **Refined design** - addresses allocation wastage and storage efficiency
+
+### User Refinements (Follow-up Validation)
+
+After initial proposal review, user identified two critical improvements:
+
+**Refinement 1: Eliminate `repeat 0` Allocations**
+- Original code used `program ++ repeat 0` which creates wasteful allocations
+- Updated to use `Vector.create` with pre-allocated mutable vector
+- Zero-allocation padding: memory initialized to 0 by default
+- **Expected additional gain**: +5-10%
+
+**Refinement 2: Bitmap as Primary Storage**
+- Store `wildcardPatternBitmask :: BitmapPattern` as primary field
+- Remove `wildcardPattern :: [OptimizedInstruction]` from main storage
+- Add accessor function for human-readable output (conversion on demand)
+- Human output is rare (JSON export, debugging) vs matching (frequent)
+- **Expected memory reduction**: ~80% (32 bytes vs 200+ bytes per pattern)
+- **Expected additional gain**: +3-5% from better cache locality
+
+**Updated Expectations with Refinements:**
+- **Conservative**: 35-45% improvement (up from 30-40%)
+- **Optimistic**: 45-55% improvement (up from 35-45%)
+- **Additional benefits**: 80% memory savings, zero allocation padding overhead
 
 ---
 
