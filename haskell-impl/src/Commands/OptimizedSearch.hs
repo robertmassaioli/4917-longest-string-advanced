@@ -10,7 +10,7 @@ import qualified CacheStatsTracker as CST (CacheStatsTracker, newCacheStatsTrack
 import Control.Monad (forM_, when)
 import Data.IORef
 import Text.Printf (printf)
-import Data.List (maximumBy)
+import Data.List (maximumBy, sortBy)
 import Data.Ord (comparing)
 
 -- | Options for optimized search command
@@ -124,18 +124,17 @@ runOptimizedSearchCommand opts = do
     putStrLn ""
     putStrLn "🎯 Search Complete!"
     putStrLn "=================="
-    putStrLn $ "Total programs:     " ++ show totalPrograms
-    putStrLn $ "Programs executed:  " ++ show finalChecked
-    putStrLn $ "Programs skipped:   " ++ show finalSkipped
-    putStrLn $ printf "Reduction rate:     %.1f%%" ((100.0 :: Double) * fromIntegral finalSkipped / fromIntegral totalPrograms)
-    putStrLn ""
     
-    -- Display cache statistics  
+    -- Display consolidated cache statistics  
     trackedStats <- CST.getCacheStats statsTracker
+    let reductionPercent = (100.0 :: Double) * fromIntegral finalSkipped / fromIntegral totalPrograms
+        executionPercent = (100.0 :: Double) * fromIntegral finalChecked / fromIntegral totalPrograms
+    
     putStrLn "📊 Cache Performance:"
+    putStrLn $ "  Total programs:   " ++ show totalPrograms
+    putStrLn $ printf "  Programs executed: %d (%.1f%%)" finalChecked executionPercent
+    putStrLn $ printf "  Cache hits:       %d (%.1f%% reduction)" finalSkipped reductionPercent
     putStrLn $ "  Unique patterns:  " ++ show (totalPatterns (extractCacheStats finalCache))
-    putStrLn $ "  Cache hits:       " ++ show (cacheHits trackedStats)
-    putStrLn $ "  Cache misses:     " ++ show (cacheMisses trackedStats)
     putStrLn ""
     
     -- Find and display best results
@@ -149,10 +148,9 @@ runOptimizedSearchCommand opts = do
             putStrLn $ "  Output:  " ++ show output ++ " characters"
             putStrLn ""
             
-            -- Show top 5 results
-            let sortedResults = take 5 $ reverse $ 
-                    map (\(l, p, o) -> (o, p, l)) $ 
-                    map (\(l, p, o) -> (l, p, o)) finalResults
+            -- Show top 5 results (sorted by output count descending)
+            let sortedResults = take 5 $ sortBy (comparing (negate . (\(o, _, _) -> o))) $
+                    map (\(l, p, o) -> (o, p, l)) finalResults
             putStrLn "🥇 Top 5 Results:"
             forM_ (zip [1..] sortedResults) $ \(rank :: Int, (output, prog, len)) -> do
                 putStrLn $ printf "  %d. %s → %d chars" rank (show prog) output
