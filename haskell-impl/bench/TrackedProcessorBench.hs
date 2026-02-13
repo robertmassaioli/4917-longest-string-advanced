@@ -202,8 +202,7 @@ createTrackedProgramTests = map createTest programSpecs
             , 4        -- INC R1
             , 13, 1    -- JMP [1] (jump back to OUTPUT)
             , 0        -- HALT (should not reach here in normal execution)
-            , 0, 0, 0, 0, 0, 0
-            , 10       -- Counter limit at address 15
+            , 0, 0, 0, 0, 0, 0, 10  -- Counter limit at address 15
             ])
             
         , ("Arithmetic Showcase", 
