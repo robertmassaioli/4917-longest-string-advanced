@@ -33,6 +33,10 @@ library
                      , Commands.Search
                      , Commands.Solve
                      , Commands.OptimizedSearch
+                     , Commands.GenSearch
+                     , GenerativeTrie
+                     , GenerativeSearch
+                     , GenerativeStats
                      , WildcardCache
                      , WildcardCache.Types
                      , WildcardCache.Trie
@@ -64,11 +68,15 @@ executable 4917-cli
                      , ClientResults
                      , Commands.CacheDemo
                      , Commands.Demo
+                     , Commands.GenSearch
                      , Commands.OptimizeDemo
                      , Commands.OptimizedSearch
                      , Commands.Search
                      , Commands.Solve
                      , ExecutionTracing
+                     , GenerativeSearch
+                     , GenerativeStats
+                     , GenerativeTrie
                      , InstructionAnalysis
                      , LegacyWildcardPatterns
                      , PackProcessor

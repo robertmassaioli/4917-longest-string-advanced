@@ -7,6 +7,7 @@ module CLI
     , CacheDemoOptions(..)
     , SearchOptions(..)
     , OptimizedSearchOptions(..)
+    , GenSearchOptions(..)
     , SolveOptions(..)
     , parseCommand
     , runCommand
@@ -18,6 +19,7 @@ import Commands.OptimizeDemo (runOptimizeDemoCommand)
 import Commands.CacheDemo (runCacheDemoCommand)
 import Commands.Search (runSearchCommand)
 import Commands.OptimizedSearch (runOptimizedSearchCommand, OptimizedSearchOptions(..))
+import Commands.GenSearch (runGenSearchCommand)
 import Commands.Solve (runSolveCommand)
 
 -- | Available commands
@@ -27,6 +29,7 @@ data Command
     | CacheDemo CacheDemoOptions
     | Search SearchOptions
     | OptimizedSearch OptimizedSearchOptions
+    | GenSearch GenSearchOptions
     | Solve SolveOptions
     deriving (Show, Eq)
 
@@ -59,6 +62,15 @@ data SearchOptions = SearchOptions
     } deriving (Show, Eq)
 
 
+-- | Options for generative search command
+data GenSearchOptions = GenSearchOptions
+    { genSearchLength :: Int
+    , genSearchUseHeuristics :: Bool
+    , genSearchTrieFile :: Maybe String
+    , genSearchPatternFiles :: [FilePath]
+    , genSearchVerbose :: Bool
+    } deriving (Show, Eq)
+
 -- | Options for solve command
 data SolveOptions = SolveOptions
     { solveTaskFile :: Maybe String
@@ -80,6 +92,7 @@ commandParser = hsubparser
    <> command "cache-demo"       (info cacheDemoParser       (progDesc "Demonstrate persistent memoization"))
    <> command "search"           (info searchParser          (progDesc "Search for optimal programs"))
    <> command "optimized-search" (info optimizedSearchParser (progDesc "Optimized search with wildcard pattern caching"))
+   <> command "gen-search"       (info genSearchParser       (progDesc "Generative search with inverted trie filtering"))
    <> command "solve"            (info solveParser           (progDesc "Solve specific tasks"))
    )
 
@@ -195,6 +208,35 @@ optimizedSearchParser = OptimizedSearch <$> (OptimizedSearchOptions
        <> short 'f'
        <> help "Start with fresh cache (ignore existing cache file)" ))
 
+-- | Parser for generative search command
+genSearchParser :: Parser Command
+genSearchParser = GenSearch <$> (GenSearchOptions
+    <$> option auto
+        ( long "length"
+       <> short 'l'
+       <> metavar "N"
+       <> help "Program length to search"
+       <> showDefault
+       <> value 3 )
+    <*> switch
+        ( long "heuristic"
+       <> short 'h'
+       <> help "Use heuristic-guided generation (favor jumps, loops)" )
+    <*> optional (strOption
+        ( long "trie-file"
+       <> short 't'
+       <> metavar "FILE"
+       <> help "Trie persistence file for resumable searches" ))
+    <*> many (strOption
+        ( long "pattern-file"
+       <> short 'p'
+       <> metavar "FILE"
+       <> help "Wildcard pattern file(s) to load into trie" ))
+    <*> switch
+        ( long "verbose"
+       <> short 'v'
+       <> help "Enable verbose output" ))
+
 -- | Parser for solve command
 solveParser :: Parser Command
 solveParser = do
@@ -216,4 +258,5 @@ runCommand (OptimizeDemo opts) = runOptimizeDemoCommand (optimizeDemoVerbose opt
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
 runCommand (OptimizedSearch opts) = runOptimizedSearchCommand opts
+runCommand (GenSearch opts) = runGenSearchCommand (genSearchLength opts) (genSearchUseHeuristics opts) (genSearchTrieFile opts) (genSearchPatternFiles opts) (genSearchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)
