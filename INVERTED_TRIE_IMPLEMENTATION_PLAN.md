@@ -902,19 +902,19 @@ benchmarks = bgroup "gen-search"
 Before implementation, we should decide:
 
 1. **Pattern Expansion Limit**: Should we limit `AnyOf` expansion to prevent trie explosion?
-   - Suggestion: Warn if expansion > 1000 paths
+   - **DECISION**: Don't limit anything if it prevents us from finding valid programs. Full expansion allowed.
 
 2. **Resume Strategy**: How to handle resume with partially-built trie?
-   - Suggestion: Save trie to disk alongside patterns
+   - **DECISION**: Save trie to disk alongside patterns for seamless resume capability.
 
 3. **Progress Reporting Frequency**: How often to print statistics?
-   - Suggestion: Every 10,000 candidates or every 10 seconds
+   - **DECISION**: Print statistics when whichever is longer: 10,000 iterations have passed OR 10 seconds since last message.
 
 4. **Heuristic Weights**: What initial weights for heuristic scoring?
-   - Suggestion: Start with simple "favor jumps" heuristic, tune later
+   - **DECISION**: Use the example heuristic system already generated. Start with those weights.
 
 5. **Memory Limits**: Should we enforce max trie size?
-   - Suggestion: Warn at 10MB, error at 100MB
+   - **DECISION**: No hard limits. Monitor memory usage through other means.
 
 ---
 
