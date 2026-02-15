@@ -28,8 +28,8 @@ import Control.DeepSeq (deepseq)
 
 import GenerativeTrie
 import qualified TrackedProcessor
-import TrackedProcessor (createTrackedDevice, runTrackedProgramLoopCheck)
-import WildcardPattern (OptimizedProgram)
+import TrackedProcessor (createTrackedDevice, runTrackedProgramLoopCheck, TrackedDevice)
+import WildcardPattern (OptimizedProgram, analyzeProgram, optimizeProgram)
 import qualified WildcardPattern as WP
 import Processor (Device, Byte, createDevice)
 
@@ -121,42 +121,62 @@ generateCandidatesWithHeuristic len trie =
 -- Search for Longest Output
 -- ============================================================================
 
--- | Search for the program with the longest output
+-- | Search for the program with the longest output with live pattern updates
 -- Takes a trie of forbidden patterns and progressively generates candidates
--- Returns the best program found along with its output
+-- When a new best program is found, adds it to the trie to exclude similar programs
+-- Returns the best program found, output, progress, and final trie
 searchForLongestOutput :: CandidateGenerationConfig 
                        -> GenerativeTrie 
-                       -> IO (Maybe [Word8], String, GenerationProgress)
-searchForLongestOutput config trie = do
+                       -> IO (Maybe [Word8], String, GenerationProgress, GenerativeTrie)
+searchForLongestOutput config initialTrie = do
     startTime <- getCurrentTime
-    let candidates = if useHeuristics config
-                     then generateCandidatesWithHeuristic (targetLength config) trie
-                     else generateCandidates (targetLength config) trie
-    
-    searchCandidates candidates Nothing "" 0 0 0 startTime
+    searchWithLiveUpdates initialTrie Nothing "" 0 0 0 0 startTime
   where
-    searchCandidates :: [[Word8]] 
-                     -> Maybe [Word8]   -- Best program so far
-                     -> String          -- Best output so far
-                     -> Integer         -- Candidates generated
-                     -> Integer         -- Candidates tested
-                     -> Integer         -- Candidates pruned
-                     -> UTCTime         -- Start time
-                     -> IO (Maybe [Word8], String, GenerationProgress)
-    searchCandidates [] bestProg bestOutput generated tested pruned startTime = do
+    -- Search with live pattern updates
+    searchWithLiveUpdates :: GenerativeTrie
+                         -> Maybe [Word8]   -- Best program so far
+                         -> String          -- Best output so far
+                         -> Integer         -- Candidates generated
+                         -> Integer         -- Candidates tested
+                         -> Integer         -- Patterns discovered
+                         -> Integer         -- Candidates pruned
+                         -> UTCTime         -- Start time
+                         -> IO (Maybe [Word8], String, GenerationProgress, GenerativeTrie)
+    searchWithLiveUpdates currentTrie bestProg bestOutput generated tested patternCount pruned startTime = do
+        -- Generate candidates with current trie state
+        let candidates = if useHeuristics config
+                         then generateCandidatesWithHeuristic (targetLength config) currentTrie
+                         else generateCandidates (targetLength config) currentTrie
+        
+        -- Search through candidates with live trie updates
+        searchCandidates candidates currentTrie bestProg bestOutput generated tested patternCount pruned startTime
+    
+    searchCandidates :: [[Word8]]
+                     -> GenerativeTrie          -- Current trie state
+                     -> Maybe [Word8]           -- Best program so far
+                     -> String                  -- Best output so far
+                     -> Integer                 -- Candidates generated
+                     -> Integer                 -- Candidates tested
+                     -> Integer                 -- Patterns discovered
+                     -> Integer                 -- Candidates pruned (unused - calculated as total - tested)
+                     -> UTCTime                 -- Start time
+                     -> IO (Maybe [Word8], String, GenerationProgress, GenerativeTrie)
+    searchCandidates [] finalTrie bestProg bestOutput generated tested patternCount pruned startTime = do
         endTime <- getCurrentTime
         let elapsed = realToFrac $ diffUTCTime endTime startTime
+            totalPossible = 16 ^ targetLength config
+            actuallyPruned = totalPossible - generated  -- How many we never even generated
         let finalProgress = GenerationProgress
                 { candidatesGenerated = generated
                 , candidatesTested = tested
-                , candidatesPruned = pruned
+                , candidatesPruned = actuallyPruned
                 , bestOutputLength = length bestOutput
                 , bestProgram = bestProg
                 , elapsedSeconds = elapsed
                 }
-        return (bestProg, bestOutput, finalProgress)
+        return (bestProg, bestOutput, finalProgress, finalTrie)
     
-    searchCandidates (prog:rest) bestProg bestOutput generated tested pruned startTime = do
+    searchCandidates (prog:rest) currentTrie bestProg bestOutput generated tested patternCount pruned startTime = do
         -- Check if we should report progress
         currentTime <- getCurrentTime
         let elapsed = realToFrac $ diffUTCTime currentTime startTime
@@ -166,10 +186,12 @@ searchForLongestOutput config trie = do
         when (shouldReportIters || shouldReportTime) $ do
             case progressCallback config of
                 Just callback -> do
+                    let totalPossible = 16 ^ targetLength config
+                        actuallyPruned = totalPossible - generated
                     let progress = GenerationProgress
                             { candidatesGenerated = generated
                             , candidatesTested = tested
-                            , candidatesPruned = pruned
+                            , candidatesPruned = actuallyPruned
                             , bestOutputLength = length bestOutput
                             , bestProgram = bestProg
                             , elapsedSeconds = elapsed
@@ -178,50 +200,76 @@ searchForLongestOutput config trie = do
                 Nothing -> return ()
         
         -- Test this candidate
-        let result = runProgram prog
+        result <- runProgramWithDevice prog
         case result of
             Left _ -> 
                 -- Program failed (infinite loop, etc), skip it
-                searchCandidates rest bestProg bestOutput (generated + 1) tested (pruned + 1) startTime
-            Right output ->
+                searchCandidates rest currentTrie bestProg bestOutput (generated + 1) tested patternCount pruned startTime
+            Right (output, device) ->
                 if length output > length bestOutput
-                then 
-                    -- Found a better program!
-                    searchCandidates rest (Just prog) output (generated + 1) (tested + 1) pruned startTime
+                then do
+                    -- Found a better program! Generate wildcard pattern and add to trie
+                    let analysis = analyzeProgram prog device
+                        optimized = optimizeProgram analysis
+                        updatedTrie = insertPattern optimized currentTrie
+                    
+                    -- Recursively search with updated trie to get fresh candidate stream
+                    endTime <- getCurrentTime
+                    let currentElapsed = realToFrac $ diffUTCTime endTime startTime
+                        totalPossible = 16 ^ targetLength config
+                        actuallyPruned = totalPossible - generated
+                    let currentProgress = GenerationProgress
+                            { candidatesGenerated = generated + 1
+                            , candidatesTested = tested + 1
+                            , candidatesPruned = actuallyPruned
+                            , bestOutputLength = length output
+                            , bestProgram = Just prog
+                            , elapsedSeconds = currentElapsed
+                            }
+                    
+                    -- Report the discovery
+                    case progressCallback config of
+                        Just callback -> callback currentProgress
+                        Nothing -> return ()
+                    
+                    -- Continue with updated trie
+                    searchWithLiveUpdates updatedTrie (Just prog) output (generated + 1) (tested + 1) (patternCount + 1) pruned startTime
                 else
                     -- Not better, continue
-                    searchCandidates rest bestProg bestOutput (generated + 1) (tested + 1) pruned startTime
+                    searchCandidates rest currentTrie bestProg bestOutput (generated + 1) (tested + 1) patternCount pruned startTime
     
     -- Check max candidates limit
-    searchCandidates allCandidates bestProg bestOutput generated tested pruned startTime =
+    searchCandidates allCandidates currentTrie bestProg bestOutput generated tested patternCount pruned startTime =
         case maxCandidates config of
             Just limit | generated >= limit -> do
                 endTime <- getCurrentTime
                 let elapsed = realToFrac $ diffUTCTime endTime startTime
+                    totalPossible = 16 ^ targetLength config
+                    actuallyPruned = totalPossible - generated
                 let finalProgress = GenerationProgress
                         { candidatesGenerated = generated
                         , candidatesTested = tested
-                        , candidatesPruned = pruned
+                        , candidatesPruned = actuallyPruned
                         , bestOutputLength = length bestOutput
                         , bestProgram = bestProg
                         , elapsedSeconds = elapsed
                         }
-                return (bestProg, bestOutput, finalProgress)
-            _ -> searchCandidates allCandidates bestProg bestOutput generated tested pruned startTime
+                return (bestProg, bestOutput, finalProgress, currentTrie)
+            _ -> searchCandidates allCandidates currentTrie bestProg bestOutput generated tested patternCount pruned startTime
 
 -- ============================================================================
 -- Helper Functions
 -- ============================================================================
 
--- | Run a program and return its output length as a string
-runProgram :: [Word8] -> Either String String
-runProgram program = 
+-- | Run a program and return its output length as a string and the device for analysis
+runProgramWithDevice :: [Word8] -> IO (Either String (String, TrackedProcessor.TrackedDevice))
+runProgramWithDevice program = 
     case createTrackedDevice program of
-        Left err -> Left (show err)
-        Right device -> 
+        Left err -> return $ Left (show err)
+        Right device -> do
             let finalDevice = runTrackedProgramLoopCheck device
                 outputLen = TrackedProcessor.getOutput finalDevice
-            in Right (replicate outputLen 'X')  -- Use dummy chars, length is what matters
+            return $ Right (replicate outputLen 'X', finalDevice)  -- Use dummy chars, length is what matters
 
 -- | Heuristic scoring function (imported from GenerativeTrie, re-exported for convenience)
 scoreByteForPosition :: Int -> Word8 -> Int

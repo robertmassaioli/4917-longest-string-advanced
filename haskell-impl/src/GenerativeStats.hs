@@ -129,15 +129,21 @@ printStatistics stats = do
         (formatLargeNumber $ trieProgramsBlockedEstimate $ trieStats stats)
     
     -- Generation statistics
+    let totalSearchSpace = 16 ^ searchLength stats
+        prunedPercent = if totalSearchSpace > 0
+                       then (100.0 :: Double) * fromIntegral (totalCandidatesPruned stats) / fromIntegral totalSearchSpace
+                       else 0.0
     putStrLn "╠══════════════════════════════════════════════════════════════════════════════════════╣"
     putStrLn "║                              GENERATION STATISTICS                                   ║"
     putStrLn "╠══════════════════════════════════════════════════════════════════════════════════════╣"
+    putStrLn $ printf "║ Total Search Space (16^%d): %-54s ║" 
+        (searchLength stats) (formatLargeNumber totalSearchSpace)
     putStrLn $ printf "║ Candidates Generated: %-58s ║" 
         (formatLargeNumber $ totalCandidatesGenerated stats)
     putStrLn $ printf "║ Candidates Tested: %-61s ║" 
         (formatLargeNumber $ totalCandidatesTested stats)
-    putStrLn $ printf "║ Candidates Pruned: %-61s ║" 
-        (formatLargeNumber $ totalCandidatesPruned stats)
+    putStrLn $ printf "║ Candidates Avoided (Pruned): %-46s (%.1f%%) ║" 
+        (formatLargeNumber $ totalCandidatesPruned stats) prunedPercent
     
     -- Performance metrics
     putStrLn "╠══════════════════════════════════════════════════════════════════════════════════════╣"
@@ -170,7 +176,6 @@ printStatistics stats = do
         Just prog -> do
             putStrLn $ printf "║ Best Program: %-70s ║" (show prog)
             putStrLn $ printf "║ Output Length: %-67d ║" (statsBestOutputLength stats)
-            putStrLn $ printf "║ Output: %-78s ║" (take 78 $ bestOutput stats)
         Nothing ->
             putStrLn $ printf "║ No valid program found yet %-55s ║" ("" :: String)
     

@@ -51,11 +51,16 @@ runGenSearchCommand searchLength useHeuristics maybeTrieFile patternFiles verbos
     when verbose $ putStrLn "\n🔍 Starting candidate generation and evaluation..."
     putStrLn ""
     
-    (bestProgram, bestOutput, finalProgress) <- searchForLongestOutput config trie
+    (bestProgram, bestOutput, finalProgress, finalTrie) <- searchForLongestOutput config trie
     
     endTime <- getCurrentTime
+    let finalTrieStats = getTrieStatistics finalTrie
+        -- Count patterns by looking at trie structure (nodes with forbidden values)
+        patternCount = trieTotalNodes finalTrieStats - 1  -- Subtract root node
     let finalStats = (updateStatistics initialStats finalProgress endTime)
             { searchEndTime = Just endTime
+            , trieStats = finalTrieStats
+            , patternsInTrie = patternCount
             }
     
     -- Print final results
