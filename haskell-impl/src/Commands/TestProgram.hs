@@ -2,7 +2,7 @@ module Commands.TestProgram (runTestProgramCommand) where
 
 import Processor
 import TrackedProcessor (runTrackedProgramLoopCheck, createTrackedDevice, getOutput, isHalted)
-import WildcardPattern (analyzeProgram, optimizeProgram)
+import WildcardPattern (analyzeProgram, optimizeProgram, prettyPrintOptimizedProgram)
 import Data.List (intercalate)
 
 -- | Test a specific program given as a list of bytes
@@ -29,7 +29,7 @@ runTestProgramCommand program = do
                         optProg = optimizeProgram analysis
                     putStrLn ""
                     putStrLn "Optimized representation:"
-                    putStrLn $ "  " ++ show optProg
+                    putStrLn $ prettyPrintOptimizedProgram optProg
                     
         InfiniteLoopDetected -> do
             putStrLn $ "Result: ✗ Infinite loop detected"
