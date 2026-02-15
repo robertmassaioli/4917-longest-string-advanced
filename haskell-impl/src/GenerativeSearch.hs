@@ -21,7 +21,7 @@ module GenerativeSearch
 import qualified Data.IntSet as IntSet
 import Data.Word (Word8)
 import Data.List (sortOn)
-import Control.Monad (guard)
+import Control.Monad (guard, when)
 import qualified Data.Map.Strict as Map
 import Data.Time.Clock (UTCTime, getCurrentTime, diffUTCTime)
 import Control.DeepSeq (deepseq)
@@ -296,7 +296,3 @@ scoreByteForPosition pos byte =
         positionBonus = max 0 (10 - pos)
     in baseScore + positionBonus
 
--- | Helper to conditionally execute IO action
-when :: Bool -> IO () -> IO ()
-when True action = action
-when False _ = return ()

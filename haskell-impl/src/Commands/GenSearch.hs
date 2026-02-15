@@ -9,6 +9,7 @@ import Data.Time.Clock (getCurrentTime)
 import Text.Printf (printf)
 import System.IO (hFlush, stdout)
 import System.Directory (doesFileExist)
+import Control.Monad (when)
 
 import GenerativeTrie
 import GenerativeSearch
@@ -164,7 +165,3 @@ genSearchProgressCallback progress = do
 -- Helper Functions
 -- ============================================================================
 
--- | Helper to conditionally execute IO action
-when :: Bool -> IO () -> IO ()
-when True action = action
-when False _ = return ()
