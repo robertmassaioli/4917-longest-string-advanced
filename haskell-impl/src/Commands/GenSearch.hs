@@ -4,20 +4,16 @@ module Commands.GenSearch
     ( runGenSearchCommand
     ) where
 
-import qualified Data.IntSet as IntSet
 import Data.Word (Word8)
 import Data.Time.Clock (getCurrentTime)
 import Text.Printf (printf)
 import System.IO (hFlush, stdout)
 import System.Directory (doesFileExist)
-import Control.Exception (catch, SomeException)
 
 import GenerativeTrie
 import GenerativeSearch
 import GenerativeStats
 import WildcardPattern (OptimizedProgram)
-import TrackedProcessor (getOutput, executeTracked, createTrackedDevice)
-import qualified ExecutionTracing as ET
 
 -- ============================================================================
 -- Main Command Handler
@@ -46,7 +42,7 @@ runGenSearchCommand searchLength useHeuristics maybeTrieFile patternFiles verbos
     -- Create generation configuration
     let config = (defaultGenerationConfig searchLength)
             { useHeuristics = useHeuristics
-            , progressCallback = Just progressCallback
+            , progressCallback = Just genSearchProgressCallback
             , progressIterations = 10000
             , progressSeconds = 10.0
             }
@@ -58,9 +54,9 @@ runGenSearchCommand searchLength useHeuristics maybeTrieFile patternFiles verbos
     (bestProgram, bestOutput, finalProgress) <- searchForLongestOutput config trie
     
     endTime <- getCurrentTime
-    let finalStats = updateStatistics initialStats finalProgress endTime
-        { searchEndTime = Just endTime
-        }
+    let finalStats = (updateStatistics initialStats finalProgress endTime)
+            { searchEndTime = Just endTime
+            }
     
     -- Print final results
     putStrLn ""
@@ -155,8 +151,8 @@ loadPatternFile _filePath = do
 -- ============================================================================
 
 -- | Progress callback for periodic reporting
-progressCallback :: GenerationProgress -> IO ()
-progressCallback progress = do
+genSearchProgressCallback :: GenerationProgress -> IO ()
+genSearchProgressCallback progress = do
     printProgressReport progress
     hFlush stdout
 

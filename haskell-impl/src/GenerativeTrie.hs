@@ -31,10 +31,10 @@ import Data.Maybe (fromMaybe, isJust)
 import qualified Data.Vector.Unboxed as Vector
 import WildcardPattern (OptimizedProgram, OptimizedInstruction(..))
 import qualified WildcardPattern as WP
-import qualified Data.ByteString.Lazy as BL
 import Data.Aeson (ToJSON(..), FromJSON(..), (.=), (.:), object, toJSON, fromJSON)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Key as Key
+import qualified Data.ByteString.Lazy as BL
 import Data.Word (Word8)
 import Control.Monad (forM_)
 import qualified Data.List as List

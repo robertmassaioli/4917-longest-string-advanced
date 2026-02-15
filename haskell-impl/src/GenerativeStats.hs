@@ -47,7 +47,7 @@ data SearchStatistics = SearchStatistics
       
       -- Best result
     , bestProgramFound :: Maybe [Word8]
-    , bestOutputLength :: Int
+    , statsBestOutputLength :: Int  -- Renamed to avoid conflict with GenerationProgress.bestOutputLength
     , bestOutput :: String
       
       -- Performance metrics
@@ -62,22 +62,23 @@ data SearchStatistics = SearchStatistics
 
 -- | Create empty statistics
 emptyStatistics :: Int -> UTCTime -> TrieStatistics -> Int -> SearchStatistics
-emptyStatistics len startTime trieInfo patternCount = SearchStatistics
-    { searchLength = len
-    , searchStartTime = startTime
-    , searchEndTime = Nothing
-    , trieStats = trieInfo
-    , patternsInTrie = patternCount
-    , totalCandidatesGenerated = 0
-    , totalCandidatesTested = 0
-    , totalCandidatesPruned = 0
-    , bestProgramFound = Nothing
-    , bestOutputLength = 0
-    , bestOutput = ""
-    , candidatesPerSecond = 0.0
-    , estimatedTimeRemaining = Nothing
-    , searchSpaceReduction = 0.0
-    }
+emptyStatistics len startTime trieInfo patternCount = 
+    SearchStatistics
+        { searchLength = len
+        , searchStartTime = startTime
+        , searchEndTime = Nothing
+        , trieStats = trieInfo
+        , patternsInTrie = patternCount
+        , totalCandidatesGenerated = 0
+        , totalCandidatesTested = 0
+        , totalCandidatesPruned = 0
+        , bestProgramFound = Nothing
+        , statsBestOutputLength = 0
+        , bestOutput = ""
+        , candidatesPerSecond = 0.0
+        , estimatedTimeRemaining = Nothing
+        , searchSpaceReduction = 0.0
+        }
 
 -- | Update statistics with new progress information
 updateStatistics :: SearchStatistics -> GenerationProgress -> UTCTime -> SearchStatistics
@@ -95,7 +96,7 @@ updateStatistics stats progress currentTime =
         , totalCandidatesTested = candidatesTested progress
         , totalCandidatesPruned = candidatesPruned progress
         , bestProgramFound = bestProgram progress
-        , bestOutputLength = bestOutputLength progress
+        , statsBestOutputLength = bestOutputLength progress
         , candidatesPerSecond = rate
         , estimatedTimeRemaining = eta
         , searchSpaceReduction = reduction
@@ -167,7 +168,7 @@ printStatistics stats = do
     case bestProgramFound stats of
         Just prog -> do
             putStrLn $ printf "║ Best Program: %-70s ║" (show prog)
-            putStrLn $ printf "║ Output Length: %-67d ║" (bestOutputLength stats)
+            putStrLn $ printf "║ Output Length: %-67d ║" (statsBestOutputLength stats)
             putStrLn $ printf "║ Output: %-78s ║" (take 78 $ bestOutput stats)
         Nothing ->
             putStrLn $ printf "║ No valid program found yet %-55s ║" ("" :: String)
