@@ -120,6 +120,7 @@ test-suite spec
                      , GenerativeSearch
                      , GenerativeSearchSpec
                      , GenerativeSearchPropSpec
+                     , GenerativeSearchLiveUpdateSpec
                      , GenerativeStats
                      , LegacyWildcardPatterns
                      , PatternAnalyzer
