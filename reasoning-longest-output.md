@@ -517,6 +517,19 @@ The loop executes INC R1 EVERY ITERATION, causing R1 to grow:
 - Multiple INC R1 reduce the output (30 chars vs 62)
 - This works because the loop re-executes INC R1 each iteration
 
+### Length 6 Results with ADD/SUB Pattern
+
+| Program | Output | Notes |
+|---------|--------|-------|
+| [7, 4, 1, 8, 15, 15] | 62 | NOP + INC R1 + ADD loop (best) |
+| [3, 4, 1, 8, 15, 15] | 58 | INC R0 + INC R1 + ADD loop |
+| [4, 4, 1, 8, 15, 15] | 30 | Double INC R1 (worse) |
+| [4, 4, 2, 8, 15, 15] | 30 | Double INC R1 + SUB (worse) |
+
+**Best for length 6: `[7, 4, 1, 8, 15, 15]` with 62 characters**
+
+The pattern holds: neutral setup bytes (like NOP) preserve the 31-iteration cycle, while interfering instructions reduce it.
+
 ## Final Formula Summary
 
 **For N ≥ 4:**
