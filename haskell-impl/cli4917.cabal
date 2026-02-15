@@ -34,6 +34,7 @@ library
                      , Commands.Solve
                      , Commands.OptimizedSearch
                      , Commands.GenSearch
+                     , Commands.TestProgram
                      , GenerativeTrie
                      , GenerativeSearch
                      , GenerativeStats
@@ -73,6 +74,7 @@ executable 4917-cli
                      , Commands.OptimizedSearch
                      , Commands.Search
                      , Commands.Solve
+                     , Commands.TestProgram
                      , ExecutionTracing
                      , GenerativeSearch
                      , GenerativeStats

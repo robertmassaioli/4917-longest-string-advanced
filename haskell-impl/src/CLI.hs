@@ -9,6 +9,7 @@ module CLI
     , OptimizedSearchOptions(..)
     , GenSearchOptions(..)
     , SolveOptions(..)
+    , TestProgramOptions(..)
     , parseCommand
     , runCommand
     ) where
@@ -21,6 +22,7 @@ import Commands.Search (runSearchCommand)
 import Commands.OptimizedSearch (runOptimizedSearchCommand, OptimizedSearchOptions(..))
 import Commands.GenSearch (runGenSearchCommand)
 import Commands.Solve (runSolveCommand)
+import Commands.TestProgram (runTestProgramCommand)
 
 -- | Available commands
 data Command 
@@ -31,6 +33,7 @@ data Command
     | OptimizedSearch OptimizedSearchOptions
     | GenSearch GenSearchOptions
     | Solve SolveOptions
+    | TestProgram TestProgramOptions
     deriving (Show, Eq)
 
 -- | Options for demo command
@@ -77,6 +80,11 @@ data SolveOptions = SolveOptions
     , solveVerbose :: Bool
     } deriving (Show, Eq)
 
+-- | Options for test-program command
+data TestProgramOptions = TestProgramOptions
+    { testProgramBytes :: [Int]
+    } deriving (Show, Eq)
+
 -- | Parse command line arguments
 parseCommand :: IO Command
 parseCommand = execParser $ info (commandParser <**> helper)
@@ -94,6 +102,7 @@ commandParser = hsubparser
    <> command "optimized-search" (info optimizedSearchParser (progDesc "Optimized search with wildcard pattern caching"))
    <> command "gen-search"       (info genSearchParser       (progDesc "Generative search with inverted trie filtering"))
    <> command "solve"            (info solveParser           (progDesc "Solve specific tasks"))
+   <> command "test-program"     (info testProgramParser     (progDesc "Test a specific program"))
    )
 
 -- | Parser for demo command
@@ -251,6 +260,14 @@ solveParser = do
        <> help "Enable verbose output" )
     pure $ Solve $ SolveOptions taskFile verbose
 
+-- | Parser for test-program command
+testProgramParser :: Parser Command
+testProgramParser = do
+    bytes <- some $ argument auto
+        ( metavar "BYTES..."
+       <> help "Program bytes to test (e.g., 8 15 8 for [8, 15, 8])" )
+    pure $ TestProgram $ TestProgramOptions bytes
+
 -- | Execute a command
 runCommand :: Command -> IO ()
 runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
@@ -260,3 +277,4 @@ runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opt
 runCommand (OptimizedSearch opts) = runOptimizedSearchCommand opts
 runCommand (GenSearch opts) = runGenSearchCommand (genSearchLength opts) (genSearchUseHeuristics opts) (genSearchTrieFile opts) (genSearchPatternFiles opts) (genSearchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)
+runCommand (TestProgram opts) = runTestProgramCommand (testProgramBytes opts)
