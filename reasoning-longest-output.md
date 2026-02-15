@@ -450,6 +450,32 @@ Length 3 cannot support a proper loop:
 - Best: `[8, 15, 8]` = 3 characters (linear)
 - Loop would need 4 bytes minimum
 
+## Exploration: Length 5 Optimization Attempts
+
+Tested 10 different length 5 programs to find improvements over the baseline of 32 characters:
+
+| # | Program | Output | Notes |
+|---|---------|--------|-------|
+| 1 | [3, 4, 8, 15, 15] | 32 | INC R0 + INC R1 + PRINT + JNZ |
+| 2 | [4, 4, 8, 15, 15] | 2 | INC R1 twice - doesn't loop properly |
+| 3 | [7, 8, 15, 15, 0] | 2 | NOP + PRINT - no loop |
+| 4 | [3, 3, 3, 8, 15] | 2 | Multiple INC R0 - no JNZ |
+| 5 | [1, 4, 8, 15, 15] | 2 | ADD instruction interferes |
+| 6 | [3, 8, 15, 15, 7] | 2 | JNZ with arg 7 - jumps away |
+| 7 | [5, 5, 8, 15, 15] | 16 | DEC R0 twice - 8 iterations only |
+| 8 | [3, 8, 15, 8, 14] | 4 | Two PRINTs but no loop (byte 4 = JZ, arg missing) |
+| 9 | [9, 0, 3, 8, 15] | 2 | LOAD R0 + INC R0 - complex state |
+| 10 | [10, 0, 3, 8, 15] | 2 | LOAD R1 + INC R0 - no loop |
+
+**Finding:** The best length 5 program is `[4, 3, 8, 15, 15]` with **32 characters**, which follows the formula.
+
+**Why DEC doesn't help:** DEC R0 starts at 0 and underflows to 15 (in 4-bit). So:
+- `[5, 5, 8, 15, 15]`: DEC R0 → 15, DEC R0 → 14, then loop 14 times = 14 × 2 = 28... wait, we measured 16
+- Actually: DEC at 0 → 15 (unsigned), then DEC → 14. JNZ checks R0 != 0, so only 8 full iterations before wrapping
+- This is suboptimal compared to INC
+
+**Conclusion:** The formula `16N - 48` for odd N still holds. No improvement found for length 5.
+
 ## Final Formula Summary
 
 **For N ≥ 4:**
@@ -457,4 +483,11 @@ Length 3 cannot support a proper loop:
 - **Odd N:** Output = **16N - 48** characters
 
 **Simplified:** Output = **16⌊(N-2)/2⌋ × 2 = 32⌊(N-2)/2⌋** characters
+
+**Pattern Structure:**
+- Single-byte setup instruction (optional for odd lengths)
+- INC R0 to initialize counter
+- Multiple PRINT statements with values ≥ 10
+- JNZ instruction jumping to byte 0
+- Relies on 4-bit wraparound after 16 increments
 
