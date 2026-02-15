@@ -75,7 +75,6 @@ runGenSearchCommand searchLength useHeuristics maybeTrieFile patternFiles verbos
             putStrLn "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             putStrLn $ "Program: " ++ show prog
             putStrLn $ "Output length: " ++ show (length bestOutput) ++ " characters"
-            putStrLn $ "Output: " ++ bestOutput
             putStrLn ""
         Nothing ->
             putStrLn "❌ No valid programs found with output."
