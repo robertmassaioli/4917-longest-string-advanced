@@ -90,7 +90,8 @@ updateStatistics stats progress currentTime =
         totalSearchSpace = 16 ^ searchLength stats
         remaining = totalSearchSpace - candidatesGenerated progress
         eta = if rate > 0 then Just (fromIntegral remaining / rate) else Nothing
-        reduction = calculateSearchSpaceReduction (searchLength stats) (trieProgramsExcluded (undefined))
+        excluded = trieProgramsBlockedEstimate (trieStats stats)  -- Use the blocked estimate
+        reduction = calculateSearchSpaceReduction (searchLength stats) excluded
     in stats
         { totalCandidatesGenerated = candidatesGenerated progress
         , totalCandidatesTested = candidatesTested progress
