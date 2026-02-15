@@ -476,6 +476,47 @@ Tested 10 different length 5 programs to find improvements over the baseline of 
 
 **Conclusion:** The formula `16N - 48` for odd N still holds. No improvement found for length 5.
 
+---
+
+## REVOLUTIONARY DISCOVERY: ADD/SUB-Based Loops!
+
+### The Game-Changer: Pattern `[4, 1, 8, 15, 15]` for Length 5
+
+**Output: 62 characters** (nearly 2x the INC R0 approach!)
+
+**How it works:**
+The loop executes INC R1 EVERY ITERATION, causing R1 to grow:
+- Iteration 1: INC R1 → R1=1, ADD → R0=0+1=1, PRINT 15
+- Iteration 2: INC R1 → R1=2, ADD → R0=1+2=3, PRINT 15
+- Iteration 3: INC R1 → R1=3, ADD → R0=3+3=6, PRINT 15
+- Iteration 4: INC R1 → R1=4, ADD → R0=6+4=10, PRINT 15
+- Iteration 5: INC R1 → R1=5, ADD → R0=10+5=15, PRINT 15
+- Iteration 6: INC R1 → R1=6, ADD → R0=15+6=21 (wraps to 5), PRINT 15
+- Iteration 7: INC R1 → R1=7, ADD → R0=5+7=12, PRINT 15
+- ...continues until R0 becomes 0 again
+- Each iteration outputs 2 chars (PRINT 15)
+- **Total: 31 iterations × 2 chars = 62 characters**
+
+**Why this is superior:**
+- R1 keeps growing (0→1→2→...→15→0→1→...)
+- Each ADD uses a different R1 value
+- Creates different R0 values that eventually loop back to 0
+- Much longer cycle than simple INC R0 (which gives exactly 16 iterations)
+
+### Verified Results with ADD/SUB
+
+| Length | Program | Output | Pattern |
+|--------|---------|--------|---------|
+| 5 | [4, 1, 8, 15, 15] | 62 | INC R1, ADD, PRINT, JNZ |
+| 5 | [4, 2, 8, 15, 15] | 62 | INC R1, SUB, PRINT, JNZ |
+| 6 | [4, 4, 1, 8, 15, 15] | 30 | Double INC R1 (worse!) |
+| 7 | [4, 1, 8, 15, 8, 15, 15] | 124 | INC R1, ADD, 2 PRINTs, JNZ |
+
+**Key Pattern:**
+- Single INC R1 before ADD/SUB is crucial
+- Multiple INC R1 reduce the output (30 chars vs 62)
+- This works because the loop re-executes INC R1 each iteration
+
 ## Final Formula Summary
 
 **For N ≥ 4:**
