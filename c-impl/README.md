@@ -46,16 +46,17 @@ run, 1 for an internal execution error, and 2 for invalid arguments/input.
 ./build/make-release/4917-c run --program 8,1,13,0 --max-steps 20 --json
 ```
 
-`search` is an exhaustive correctness baseline over every N-cell nibble vector
-in lexicographic order, zero-padded to 16 cells. Length is restricted to 1–4
-so runtime remains bounded. Each candidate starts reset and is run under the
-same step limit. Only HALT candidates can win; limited candidates are
-unresolved. Output marks the result exhaustive only if every candidate halted.
-Search reports the first winner in enumeration order and the total number of
-winners. Candidate and count fields are decimal strings in `4917-search-v1`.
+`search` checks every N-cell nibble vector in lexicographic order, zero-padded
+to 16 cells. Length is restricted to 1–5. Each candidate starts reset and runs
+until it halts or Floyd's tortoise-and-hare detector finds a repeated execution
+state. Only HALT candidates can win; cycles are counted separately. Output is
+exhaustive when every candidate resolves to HALT or cycle without an execution
+error. Search reports the first winner in enumeration order and the total
+number of winners. Candidate and count fields are decimal strings in
+`4917-search-v2`.
 
 ```sh
-./build/make-release/4917-c search --length 3 --max-steps 10000 --json
+./build/make-release/4917-c search --length 3 --json
 ```
 
 `step` is a low-level diagnostic adapter for arbitrary valid states. It
@@ -130,6 +131,7 @@ a baseline is collected.
 Keep argument validation and presentation outside `4917_core`. Any specialized
 execution path must be checked against `i4917_step` over generated and fixed
 cases. The bounded hot loop intentionally does not allocate or detect cycles;
-`i4917_run_until_halt_or_cycle` is a diagnostic API using visited full states,
-excluding the output counter. Its output prefix is not a canonical cross-
-implementation result. Counter overflow is an explicit error, never wraparound.
+`i4917_run_until_halt_or_cycle` uses Floyd's tortoise-and-hare algorithm and
+compares execution state while excluding the output counter. It replays the
+actual prefix after classification to preserve output counts and report real
+counter overflow. Counter overflow is an explicit error, never wraparound.
