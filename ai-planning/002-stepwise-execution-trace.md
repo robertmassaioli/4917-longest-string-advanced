@@ -30,7 +30,7 @@ Add a `trace` command with syntax along these lines:
 The `--program` format should match the proposed `run` command: comma-separated
 memory bytes from 0 through 15, up to 16 bytes, with omitted memory padded by
 zeroes. `--max-steps` sets the maximum number of instructions to execute; use a
-documented default of 1000 and reject negative values.
+documented default of 10000 and reject negative values.
 
 ## Trace output
 
