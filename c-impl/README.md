@@ -10,6 +10,13 @@ execution, and no runtime dependency on Stack, Python, or a test framework.
 Requires CMake 3.20+ and a C11 compiler. The presets use Unix Makefiles, so
 Ninja is not required.
 
+The command-line frontend uses vendored Argtable3 3.3.1 at upstream commit
+`b50c6c81f25eef8af51141678b333c55b661414d`. Its BSD-3-Clause license is
+included under `third_party/argtable3/LICENSE`. The source is pinned in this
+repository, so configure and build work offline and do not run package-manager
+or network fetch steps. Argtable3 is linked only into `4917-c`; it is not
+linked into `4917_core`, the unit/property tests, or the benchmark.
+
 ```sh
 cmake --preset debug
 cmake --build --preset debug
@@ -33,6 +40,15 @@ the fixed seed and trial index; add any minimized failure as a named test and
 shared case.
 
 ## Commands
+
+Run `4917-c --help` for the command list, or append `--help`/`-h` to a
+subcommand for its options. Each command accepts only its own options.
+Repeated scalar options, unknown options, missing option values, and extra
+positional arguments are rejected with exit code 2 and command-specific usage
+on stderr. Numeric values must be nonnegative decimal digits and must fit in
+`uint64_t`; command-specific range errors are also reported on stderr with
+exit code 2. CSV parsing remains domain validation performed by the frontend,
+after option parsing.
 
 `run` validates 1–16 CSV nibble values, pads memory with zeroes, resets the
 machine, and executes up to the default 10,000 steps. HALT counts as a step.
@@ -71,7 +87,10 @@ the integration boundary used for one-step differential testing.
 
 The C unit/property suite checks arithmetic laws for all nibble pairs, opcode
 boundaries, wrapping, output count, self-modification, cycle classification,
-run limits, and generated run-vs-step equivalence. Optional differential
+run limits, and generated run-vs-step equivalence. When Python 3 is available,
+CTest also runs `cli-contract`, which checks help, all command forms, defaults,
+malformed and out-of-range values, duplicate and irrelevant options, extra
+arguments, CSV validation, exit codes, and error streams. Optional differential
 testing uses a batched Haskell oracle and Python driver:
 
 ```sh

@@ -1,18 +1,38 @@
 #include "4917/machine.h"
-#include <errno.h>
+#include "argtable3.h"
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static void usage(FILE *f) {
-    fputs("4917-c\n  run --program CSV [--max-steps N] [--json]\n  search --length N [--max-steps N] [--json]\n  step --memory CSV --r0 N --r1 N --pc N [--output-characters N] [--json]\n", f);
+    fputs("Usage: 4917-c <command> [options]\n\n"
+          "Commands:\n"
+          "  run      Execute a program\n"
+          "  search   Exhaustively search programs of a given length\n"
+          "  step     Execute one instruction from a supplied state\n\n"
+          "Run '4917-c <command> --help' for command options.\n", f);
 }
+
+static void command_usage(FILE *f, const char *command, void **table,
+                          const char *description) {
+    fprintf(f, "Usage: 4917-c %s", command);
+    arg_print_syntax(f, table, "\n");
+    fprintf(f, "%s\n\nOptions:\n", description);
+    arg_print_glossary(f, table, "  %-28s %s\n");
+}
+
 static bool number(const char *s, uint64_t *out) {
-    if (!s || !*s || *s == '-') return false;
-    errno = 0; char *end = NULL; unsigned long long n = strtoull(s, &end, 10);
-    if (errno || end == s || *end) return false;
-    *out = (uint64_t)n; return true;
+    if (!s || !*s) return false;
+    uint64_t value = 0;
+    for (const unsigned char *at = (const unsigned char *)s; *at; ++at) {
+        if (*at < '0' || *at > '9') return false;
+        uint64_t digit = (uint64_t)(*at - '0');
+        if (value > (UINT64_MAX - digit) / 10) return false;
+        value = value * 10 + digit;
+    }
+    *out = value;
+    return true;
 }
 static bool parse_csv(const char *csv, uint8_t p[16], size_t *len) {
     if (!csv || !*csv) return false;
@@ -90,24 +110,168 @@ static int search_cmd(uint64_t length,uint64_t limit,bool json) {
     }else printf("candidates: %" PRIu64 "\ncompleted: %" PRIu64 "\nunresolved: %" PRIu64 "\nexhaustive: %s\nbest output characters: %" PRIu64 "\nwinner count: %" PRIu64 "\n",total,completed,unresolved,unresolved?"no":"yes",best,winners);
     return 0;
 }
-int main(int argc,char **argv){
-    if(argc<2||!strcmp(argv[1],"--help")||!strcmp(argv[1],"-h")){usage(stdout);return argc<2?2:0;}
-    bool run=!strcmp(argv[1],"run"),search=!strcmp(argv[1],"search"),step=!strcmp(argv[1],"step"),json=false;
-    if(!run&&!search&&!step){usage(stderr);return 2;}
-    const char *program=NULL,*memory=NULL;uint64_t length=0,limit=10000,r0=0,r1=0,pc=0,output=0;
-    for(int i=2;i<argc;i++){
-        if(!strcmp(argv[i],"--json"))json=true;
-        else if(i+1<argc&&!strcmp(argv[i],"--program"))program=argv[++i];
-        else if(i+1<argc&&!strcmp(argv[i],"--memory"))memory=argv[++i];
-        else if(i+1<argc&&!strcmp(argv[i],"--length")){if(!number(argv[++i],&length))return 2;}
-        else if(i+1<argc&&!strcmp(argv[i],"--max-steps")){if(!number(argv[++i],&limit))return 2;}
-        else if(i+1<argc&&!strcmp(argv[i],"--r0")){if(!number(argv[++i],&r0))return 2;}
-        else if(i+1<argc&&!strcmp(argv[i],"--r1")){if(!number(argv[++i],&r1))return 2;}
-        else if(i+1<argc&&!strcmp(argv[i],"--pc")){if(!number(argv[++i],&pc))return 2;}
-        else if(i+1<argc&&!strcmp(argv[i],"--output-characters")){if(!number(argv[++i],&output))return 2;}
-        else{usage(stderr);return 2;}
+static int parse_error(const char *command, struct arg_end *end,
+                       void **table) {
+    arg_print_errors(stderr, end, command);
+    fputs("Try '4917-c ", stderr);
+    fputs(command, stderr);
+    fputs(" --help' for more information.\n", stderr);
+    command_usage(stderr, command, table, "");
+    return 2;
+}
+
+static int invalid_number(const char *command, const char *option,
+                          const char *value, void **table) {
+    fprintf(stderr, "4917-c %s: invalid nonnegative decimal value for %s: '%s'\n",
+            command, option, value ? value : "");
+    command_usage(stderr, command, table, "");
+    return 2;
+}
+
+int main(int argc, char **argv) {
+    if (argc < 2) {
+        usage(stderr);
+        return 2;
     }
-    if(run){if(!program){usage(stderr);return 2;}return run_cmd(program,limit,json);}
-    if(step){if(!memory){usage(stderr);return 2;}return step_cmd(memory,r0,r1,pc,output,json);}
-    return search_cmd(length,limit,json);
+    if (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h")) {
+        usage(stdout);
+        return 0;
+    }
+
+    const char *command = argv[1];
+    bool run = !strcmp(command, "run");
+    bool search = !strcmp(command, "search");
+    bool step = !strcmp(command, "step");
+    if (!run && !search && !step) {
+        fprintf(stderr, "4917-c: unknown command '%s'\n", command);
+        usage(stderr);
+        return 2;
+    }
+
+    struct arg_str *program_arg = NULL;
+    struct arg_str *memory_arg = NULL;
+    struct arg_str *length_arg = NULL;
+    struct arg_str *max_steps_arg = NULL;
+    struct arg_str *r0_arg = NULL;
+    struct arg_str *r1_arg = NULL;
+    struct arg_str *pc_arg = NULL;
+    struct arg_str *output_arg = NULL;
+    struct arg_lit *json_arg = NULL;
+    struct arg_lit *help_arg = arg_lit0("h", "help", "Print this help and exit");
+    struct arg_end *end = arg_end(20);
+    void *table[10];
+    size_t table_size = 0;
+
+    if (run) {
+        program_arg = arg_str1(NULL, "program", "CSV", "Program values (1-16 nibbles)");
+        max_steps_arg = arg_str0(NULL, "max-steps", "N", "Stop after at most N instructions (default: 10000)");
+        json_arg = arg_lit0(NULL, "json", "Write machine-readable JSON");
+        table[table_size++] = program_arg;
+        table[table_size++] = max_steps_arg;
+        table[table_size++] = json_arg;
+    } else if (search) {
+        length_arg = arg_str1(NULL, "length", "N", "Program length (1-4)");
+        max_steps_arg = arg_str0(NULL, "max-steps", "N", "Stop each candidate after at most N instructions (default: 10000)");
+        json_arg = arg_lit0(NULL, "json", "Write machine-readable JSON");
+        table[table_size++] = length_arg;
+        table[table_size++] = max_steps_arg;
+        table[table_size++] = json_arg;
+    } else {
+        memory_arg = arg_str1(NULL, "memory", "CSV", "Exactly 16 memory nibbles");
+        r0_arg = arg_str0(NULL, "r0", "N", "Initial r0 value (default: 0)");
+        r1_arg = arg_str0(NULL, "r1", "N", "Initial r1 value (default: 0)");
+        pc_arg = arg_str0(NULL, "pc", "N", "Initial program counter (default: 0)");
+        output_arg = arg_str0(NULL, "output-characters", "N", "Initial output-character count (default: 0)");
+        json_arg = arg_lit0(NULL, "json", "Write machine-readable JSON");
+        table[table_size++] = memory_arg;
+        table[table_size++] = r0_arg;
+        table[table_size++] = r1_arg;
+        table[table_size++] = pc_arg;
+        table[table_size++] = output_arg;
+        table[table_size++] = json_arg;
+    }
+    table[table_size++] = help_arg;
+    table[table_size++] = end;
+
+    if (arg_nullcheck(table) != 0) {
+        fputs("4917-c: unable to allocate command-line parser state\n", stderr);
+        arg_freetable(table, table_size);
+        return 1;
+    }
+
+    int errors = arg_parse(argc - 1, argv + 1, table);
+    if (help_arg->count > 0) {
+        command_usage(stdout, command, table,
+                      run ? "Execute a program." :
+                      search ? "Exhaustively search programs of a given length." :
+                               "Execute one instruction from a supplied state.");
+        arg_freetable(table, table_size);
+        return 0;
+    }
+    if (errors > 0) {
+        int result = parse_error(command, end, table);
+        arg_freetable(table, table_size);
+        return result;
+    }
+
+    uint64_t limit = 10000;
+    uint64_t value = 0;
+    if (max_steps_arg && max_steps_arg->count > 0) {
+        if (!number(max_steps_arg->sval[0], &limit)) {
+            int result = invalid_number(command, "--max-steps",
+                                        max_steps_arg->sval[0], table);
+            arg_freetable(table, table_size);
+            return result;
+        }
+    }
+    bool json = json_arg->count > 0;
+    int result;
+
+    if (run) {
+        result = run_cmd(program_arg->sval[0], limit, json);
+    } else if (search) {
+        if (!number(length_arg->sval[0], &value)) {
+            result = invalid_number(command, "--length", length_arg->sval[0], table);
+        } else if (value < 1 || value > 4) {
+            fprintf(stderr, "4917-c search: length must be from 1 through 4 (got '%s')\n",
+                    length_arg->sval[0]);
+            command_usage(stderr, command, table, "");
+            result = 2;
+        } else {
+            result = search_cmd(value, limit, json);
+        }
+    } else {
+        uint64_t r0 = 0, r1 = 0, pc = 0, output = 0;
+        struct {
+            struct arg_str *argument;
+            const char *name;
+            uint64_t *value;
+        } numbers[] = {
+            {r0_arg, "--r0", &r0},
+            {r1_arg, "--r1", &r1},
+            {pc_arg, "--pc", &pc},
+            {output_arg, "--output-characters", &output}
+        };
+        result = 0;
+        for (size_t i = 0; i < sizeof(numbers) / sizeof(numbers[0]); ++i) {
+            if (numbers[i].argument->count > 0 &&
+                !number(numbers[i].argument->sval[0], numbers[i].value)) {
+                result = invalid_number(command, numbers[i].name,
+                                        numbers[i].argument->sval[0], table);
+                break;
+            }
+        }
+        if (result == 0 && (r0 > 15 || r1 > 15 || pc > 15)) {
+            const char *option = r0 > 15 ? "--r0" : r1 > 15 ? "--r1" : "--pc";
+            fprintf(stderr, "4917-c step: %s must be from 0 through 15\n", option);
+            command_usage(stderr, command, table, "");
+            result = 2;
+        }
+        if (result == 0) {
+            result = step_cmd(memory_arg->sval[0], r0, r1, pc, output, json);
+        }
+    }
+
+    arg_freetable(table, table_size);
+    return result;
 }
