@@ -8,6 +8,7 @@ module CLI
     , SearchOptions(..)
     , SolveOptions(..)
     , parseCommand
+    , parseCommandArgs
     , runCommand
     ) where
 
@@ -72,7 +73,17 @@ data ProgramOptions = ProgramOptions
 
 -- | Parse command line arguments
 parseCommand :: IO Command
-parseCommand = execParser $ info (commandParser <**> helper)
+parseCommand = execParser commandInfo
+
+-- | Pure command-line parsing for deterministic tests and embedding callers.
+parseCommandArgs :: [String] -> Either String Command
+parseCommandArgs arguments = case execParserPure defaultPrefs commandInfo arguments of
+    Success parsedCommand -> Right parsedCommand
+    Failure failure -> Left (fst (renderFailure failure "4917-cli"))
+    CompletionInvoked _ -> Left "command completion was requested"
+
+commandInfo :: ParserInfo Command
+commandInfo = info (commandParser <**> helper)
     ( fullDesc
    <> progDesc "4917 Processor - Longest String Problem Solver"
    <> header "4917-cli - A comprehensive toolkit for the 4917 processor" )

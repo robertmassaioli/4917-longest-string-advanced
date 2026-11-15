@@ -4,6 +4,7 @@ module Commands.ProgramExecution
     ( parseProgramBytes
     , RunResult(..)
     , executeProgram
+    , renderRunResult
     , traceProgram
     , renderTrace
     , runProgramCommand
@@ -26,8 +27,9 @@ parseProgramBytes input
   where
     fields = splitCommas input
     parseByte field = case reads field of
-        [(n, "")] | n >= (0 :: Int) && n <= 15 -> Right (fromIntegral n :: Word8)
+        [(n, "")] | not (null field) && all isAsciiDigit field && n >= (0 :: Int) && n <= 15 -> Right (fromIntegral n :: Word8)
         _ -> Left ("invalid byte " ++ show field ++ "; expected an integer from 0 through 15")
+    isAsciiDigit character = character >= '0' && character <= '9'
 
 splitCommas :: String -> [String]
 splitCommas [] = [""]
@@ -124,10 +126,17 @@ runProgramCommand :: String -> Int -> IO ()
 runProgramCommand input maxSteps = do
     bytes <- either die pure (parseProgramBytes input)
     when (maxSteps < 0) (die "maximum step count must not be negative")
-    case executeProgram bytes maxSteps of
-        Halted values steps -> putStrLn ("Printed values: " ++ renderValues values ++ "\nHalted after " ++ show steps ++ " steps; output characters: " ++ show (sum (map decimalChars values)))
-        LoopDetected values steps -> putStrLn ("Printed values: " ++ renderValues values ++ "\nLoop detected after " ++ show steps ++ " steps; output characters: " ++ show (sum (map decimalChars values)))
-        StepLimitReached values steps -> putStrLn ("Printed values: " ++ renderValues values ++ "\nMaximum step limit reached after " ++ show steps ++ " steps; output characters: " ++ show (sum (map decimalChars values)))
+    putStrLn (renderRunResult (executeProgram bytes maxSteps))
+
+renderRunResult :: RunResult -> String
+renderRunResult result =
+    let (values, steps, termination) = case result of
+            Halted emitted count -> (emitted, count, "Halted")
+            LoopDetected emitted count -> (emitted, count, "Loop detected")
+            StepLimitReached emitted count -> (emitted, count, "Maximum step limit reached")
+    in "Printed values: " ++ renderValues values ++ "\n"
+       ++ termination ++ " after " ++ show steps ++ " steps; output characters: "
+       ++ show (sum (map decimalChars values))
   where
     decimalChars :: Int -> Int
     renderValues = intercalate "," . map show

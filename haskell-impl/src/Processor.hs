@@ -7,10 +7,12 @@ module Processor
     , OutputInfo(..)
     , outputInfoToCount
     , ProgramExecutionResult(..)
+    , ProgramRunResult(..)
     , createDevice
     , initProgram
     , stepProgram
     , runProgram
+    , runProgramResult
     , runProgramLoopCheck
     , copyProgram
     , comparePrograms
@@ -124,35 +126,50 @@ stepProgram device@Device{..} =
 
         _  -> (device { pc = newPC }, NoOutput, False)  -- Unknown instruction, treat as NOP
 
--- | Run a program with a timeout (in steps)
--- Returns the total output count, or 0 if timeout reached
+-- | Result of bounded execution. A timeout retains output produced before the
+-- limit so that it cannot be confused with a valid zero-output termination.
+data ProgramRunResult
+    = ProgramCompleted Int
+    | ProgramTimedOut Int
+    deriving (Show, Eq)
+
+-- | Compatibility API for callers that historically used 0 on timeout.
+-- New code should use 'runProgramResult' to distinguish timeout from a
+-- completed program that emitted no output.
 {-# INLINE runProgram #-}
 runProgram :: Device -> Int -> Int
-runProgram device timeout = go (initProgram device) timeout 0
+runProgram device timeout = case runProgramResult device timeout of
+    ProgramCompleted output -> output
+    ProgramTimedOut _ -> 0
+
+-- | Run a program with a bounded number of steps and distinguish completion
+-- from timeout. The returned count is the output produced during this run.
+runProgramResult :: Device -> Int -> ProgramRunResult
+runProgramResult device timeout = go (initProgram device) (max 0 timeout) 0
   where
-    go _ 0 _ = 0  -- Timeout reached
+    go _ 0 outputAcc = ProgramTimedOut outputAcc
     go dev t outputAcc
         | t >= 4 = -- Unroll 4 iterations at once
             let (!dev1, !out1, !fin1) = stepProgram dev
                 !count1 = outputInfoToCount out1
-            in if fin1 then outputAcc + count1
+            in if fin1 then ProgramCompleted (outputAcc + count1)
                else let (!dev2, !out2, !fin2) = stepProgram dev1
                         !count2 = outputInfoToCount out2
-                    in if fin2 then outputAcc + count1 + count2
+                    in if fin2 then ProgramCompleted (outputAcc + count1 + count2)
                        else let (!dev3, !out3, !fin3) = stepProgram dev2
                                 !count3 = outputInfoToCount out3
-                            in if fin3 then outputAcc + count1 + count2 + count3
+                            in if fin3 then ProgramCompleted (outputAcc + count1 + count2 + count3)
                                else let (!dev4, !out4, !fin4) = stepProgram dev3
                                         !count4 = outputInfoToCount out4
                                         !newOutputAcc = outputAcc + count1 + count2 + count3 + count4
-                                    in if fin4 then newOutputAcc
+                                    in if fin4 then ProgramCompleted newOutputAcc
                                        else go dev4 (t - 4) newOutputAcc
         | otherwise = -- Handle remaining iterations normally
             let (!newDev, !outputInfo, !finished) = stepProgram dev
                 !outputCount = outputInfoToCount outputInfo
                 !newOutputAcc = outputAcc + outputCount
             in if finished
-               then newOutputAcc
+               then ProgramCompleted newOutputAcc
                else go newDev (t - 1) newOutputAcc
 
 -- | Result of running a program with loop detection

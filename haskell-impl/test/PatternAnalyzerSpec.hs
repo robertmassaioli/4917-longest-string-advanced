@@ -2,15 +2,32 @@ module PatternAnalyzerSpec (spec) where
 
 import Test.Hspec
 import Test.Hspec.QuickCheck
+import Test.QuickCheck
 import PatternAnalyzer
 import ExecutionTracing (ProgramResult(..), TerminationType(..), ExecutionTrace(..), ExecutionState(..), TracePoint(..))
 import Processor (Byte)
 import LegacyWildcardPatterns (WildcardPattern(..), matchWildcardPattern)
 import Data.Time (getCurrentTime)
 import Data.Maybe (isJust, isNothing)
+import ProcessorTestSupport (genProgram, shrinkProgram)
 
 spec :: Spec
 spec = describe "PatternAnalyzer" $ do
+  modifyMaxSuccess (max 300) $
+    prop "generated wildcard generalizations match their source programs" $
+      forAllShrink genProgram shrinkProgram $ \program ->
+        all (\patternType -> case generateWildcardPattern program patternType of
+                Nothing -> False
+                Just wildcard -> matchesWildcardPattern program wildcard)
+            [HaltPattern, SimpleLoopPattern, ComplexLoopPattern]
+
+  modifyMaxSuccess (max 300) $
+    prop "generated patterns keep confidence scores in range" $
+      forAllShrink genProgram shrinkProgram $ \program -> ioProperty $ do
+        result <- createTestProgramResult program 0 1 Halt [0]
+        let confidence = patternConfidence result HaltPattern
+        pure (confidence >= 0 && confidence <= 1)
+
   context "Pattern Type Detection" $ do
     it "HALT Pattern Detection" $ do
       let program = [8, 15, 0]  -- PRINT 15, HALT

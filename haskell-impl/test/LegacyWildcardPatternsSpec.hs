@@ -2,13 +2,31 @@ module LegacyWildcardPatternsSpec (spec) where
 
 import Test.Hspec
 import Test.Hspec.QuickCheck
+import Test.QuickCheck
 import LegacyWildcardPatterns
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Word (Word8)
+import ProcessorTestSupport (genProgram, shrinkProgram)
 
 spec :: Spec
 spec = describe "Wildcard Patterns" $ do
+  modifyMaxSuccess (max 300) $
+    prop "generalized patterns always match their source program" $
+      forAllShrink genProgram shrinkProgram $ \program ->
+        let generalized = wildcardFromProgram program "generated"
+        in matchWildcardPattern program generalized /= Nothing
+           && wildcardConfidence generalized >= 0
+           && wildcardConfidence generalized <= 1
+
+  modifyMaxSuccess (max 300) $
+    prop "repeated variables match exactly when their program bytes agree" $
+      forAll ((,) <$> chooseInt (0, 255) <*> chooseInt (0, 255)) $ \(left, right) ->
+        let generalized = createWildcardPattern
+                [Variable "same", Variable "same"] [] "repeated variable" 0.5
+            outcome = matchWildcardPattern [fromIntegral left, fromIntegral right] generalized
+        in (outcome /= Nothing) == (left == right)
+
   context "Basic Pattern Matching" $ do
     it "Fixed Byte Matching" $ do
       let pattern = createWildcardPattern [FixedByte 8, FixedByte 15] [] "PRINT 15" 1.0

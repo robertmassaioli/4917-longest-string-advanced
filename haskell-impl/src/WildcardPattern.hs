@@ -39,7 +39,7 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Maybe (mapMaybe)
 import qualified Data.Vector.Unboxed as Vector
-import Data.List (intercalate, sort)
+import Data.List (intercalate, nub, sort)
 import Text.Printf (printf)
 
 -- | Core pattern types for program optimization
@@ -333,16 +333,18 @@ classifyDeadRegisterPosition originalByte
 -- | Calculate search space reduction factor
 calculateReductionFactor :: [OptimizedInstruction] -> Double
 calculateReductionFactor pattern = 
-    let totalOriginalSpace = 16 ^ length pattern  -- 16^n for original program
-        reducedSpace = product (map instructionSpaceSize pattern)
-        reductionFactor = fromIntegral totalOriginalSpace / fromIntegral reducedSpace
+    let totalOriginalSpace = 16 ^ length pattern :: Integer
+        reducedSpace = product (map (toInteger . instructionSpaceSize) pattern)
+        reductionFactor = if reducedSpace == 0
+            then 1 / 0  -- An empty AnyOf set admits no candidate programs.
+            else fromIntegral totalOriginalSpace / fromIntegral reducedSpace
     in reductionFactor
 
 instructionSpaceSize :: OptimizedInstruction -> Int
 instructionSpaceSize instruction = case instruction of
     Required _ -> 1      -- Only one valid value
     Wildcard -> 16       -- All 16 values valid  
-    AnyOf options -> length options  -- Number of valid options
+    AnyOf options -> length (nub (filter (<= 15) options))  -- Distinct valid values
 
 -- | Generate canonical equivalence class representation
 generateEquivalenceClass :: [OptimizedInstruction] -> String

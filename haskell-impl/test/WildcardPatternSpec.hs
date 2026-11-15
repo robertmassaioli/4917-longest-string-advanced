@@ -1,10 +1,15 @@
 module WildcardPatternSpec (spec) where
 
 import Test.Hspec
+import Test.Hspec.QuickCheck
+import Test.QuickCheck
 import WildcardPattern
 import TrackedProcessor
+import ProcessorTestSupport (genNibble)
+import qualified Processor as P
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.List (nub)
 
 -- Helper function to create and run a tracked device
 runTestProgram :: [Byte] -> TrackedDevice
@@ -18,9 +23,77 @@ analyzeTestProgram program =
     let device = runTestProgram program
     in analyzeProgram program device
 
+genOptimizedInstruction :: Gen OptimizedInstruction
+genOptimizedInstruction = oneof
+    [ Required <$> genNibble
+    , pure Wildcard
+    , do
+        first <- genNibble
+        rest <- listOf genNibble
+        pure (AnyOf (first : rest))
+    ]
+
+shrinkOptimizedInstruction :: OptimizedInstruction -> [OptimizedInstruction]
+shrinkOptimizedInstruction (Required value) = [Required smaller | smaller <- shrink value, smaller <= 15]
+shrinkOptimizedInstruction Wildcard = []
+shrinkOptimizedInstruction (AnyOf options) =
+    [AnyOf smaller | smaller <- shrinkList shrink options, not (null smaller), all (<= 15) smaller]
+    ++ [AnyOf [smaller] | value <- nub options, smaller <- shrink value, smaller <= 15]
+
+shrinkOptimizedPattern :: [OptimizedInstruction] -> [[OptimizedInstruction]]
+shrinkOptimizedPattern pattern =
+    [take index pattern ++ [smaller] ++ drop (index + 1) pattern
+    | (index, instruction) <- zip [0..] pattern
+    , smaller <- shrinkOptimizedInstruction instruction]
+
+genHaltTailCase :: Gen ([P.Byte], [P.Byte])
+genHaltTailCase = do
+    size <- chooseInt (0, 15)
+    tailBytes <- vectorOf size genNibble
+    alternatives <- vectorOf size genNibble
+    pure (tailBytes, alternatives)
+
+matches :: OptimizedInstruction -> P.Byte -> Bool
+matches (Required expected) actual = expected == actual
+matches Wildcard _ = True
+matches (AnyOf options) actual = actual `elem` options
+
 
 spec :: Spec
 spec = describe "WildcardPattern" $ do
+
+  modifyMaxSuccess (max 300) $
+    prop "keeps instruction-space sizes in the 0-to-16 range" $
+      forAllShrink genOptimizedInstruction shrinkOptimizedInstruction $ \instruction ->
+        let size = instructionSpaceSize instruction
+        in size >= 0 && size <= 16
+
+  modifyMaxSuccess (max 300) $
+    prop "keeps reduction factors finite and at least one for nonempty patterns" $
+      forAllShrink (vectorOf 16 genOptimizedInstruction) shrinkOptimizedPattern $ \pattern ->
+        let factor = calculateReductionFactor pattern
+        in not (isNaN factor || isInfinite factor) && factor >= 1
+
+  it "does not overflow the search-space calculation for sixteen wildcards" $
+    calculateReductionFactor (replicate 16 Wildcard) `shouldBe` 1.0
+
+  it "counts distinct valid AnyOf alternatives" $
+    instructionSpaceSize (AnyOf [3, 3, 255]) `shouldBe` 1
+
+  it "represents an impossible empty AnyOf pattern as an infinite reduction" $
+    calculateReductionFactor [AnyOf []] `shouldSatisfy` isInfinite
+
+  modifyMaxSuccess (max 300) $
+    prop "wildcarding cells after an immediate HALT preserves program behavior" $
+      forAll genHaltTailCase $ \(tailBytes, alternatives) ->
+        let original = 0 : tailBytes
+            replacement = 0 : alternatives
+            optimized = optimizeProgram (analyzeTestProgram original)
+            paddedReplacement = replacement ++ replicate 16 0
+            patternMatches = and (zipWith matches (wildcardPattern optimized) paddedReplacement)
+        in patternMatches
+           && P.runProgramResult (P.createDevice original) 16
+                == P.runProgramResult (P.createDevice replacement) 16
 
   context "Instruction Category Constants" $ do
     it "registerManipulating contains correct instructions" $ do

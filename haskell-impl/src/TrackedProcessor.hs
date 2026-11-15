@@ -90,7 +90,18 @@ validateProgram [] = Left $ ValidationError EmptyProgram "Program cannot be empt
 validateProgram program 
     | length program > 16 = Left $ ValidationError ProgramTooLong 
         ("Program length " ++ show (length program) ++ " exceeds maximum of 16 instructions") Nothing
-    | otherwise = validateInstructions program 0
+    | otherwise = do
+        validateProgramValues program 0
+        validateInstructions program 0
+
+-- Validate operands as well as opcodes. Every memory cell in a valid machine
+-- program is a four-bit value, even when the cell is consumed as data.
+validateProgramValues :: [Byte] -> Int -> Either ValidationError ()
+validateProgramValues [] _ = Right ()
+validateProgramValues (value:rest) position
+    | value > 15 = Left $ ValidationError InvalidInstructionValue
+        ("Invalid program value " ++ show value ++ " at position " ++ show position ++ ". Must be 0-15.") (Just position)
+    | otherwise = validateProgramValues rest (position + 1)
 
 -- Validate each instruction in the program
 validateInstructions :: [Byte] -> Int -> Either ValidationError [Byte]
@@ -198,7 +209,7 @@ executeInstructionWithTracking :: Byte -> TrackedDevice -> (TrackedDevice, Set I
 executeInstructionWithTracking instruction device =
     case instruction of
         -- HALT (0)
-        0 -> (device { halted = True }, Set.empty)
+        0 -> (device { halted = True, pc = (pc device + 1) `mod` 16 }, Set.empty)
         
         -- ADD (1): R0 = R0 + R1
         1 -> let newR0 = (r0 device + r1 device) `mod` 16
@@ -316,10 +327,12 @@ executeInstructionWithTracking instruction device =
 
 -- Run tracked program with step limit - independent implementation
 runTrackedProgram :: TrackedDevice -> Int -> TrackedDevice
-runTrackedProgram device 0 = device
-runTrackedProgram device maxSteps
-    | halted device = device
-    | otherwise = runTrackedProgram (stepTrackedProgram device) (maxSteps - 1)
+runTrackedProgram device maxSteps = run device (max 0 maxSteps)
+  where
+    run current 0 = current
+    run current remaining
+        | halted current = current
+        | otherwise = run (stepTrackedProgram current) (remaining - 1)
 
 -- Loop detection version that tracks memory accesses - independent implementation
 runTrackedProgramLoopCheck :: TrackedDevice -> TrackedDevice
@@ -330,6 +343,6 @@ runTrackedProgramLoopCheck = runTrackedProgramLoopCheck' Set.empty
         | currentState `Set.member` seenStates = device  -- Loop detected
         | otherwise = runTrackedProgramLoopCheck' newSeenStates newDevice
       where
-        currentState = (pc device, r0 device, r1 device)  -- Simple state representation
+        currentState = (pc device, r0 device, r1 device, Vector.toList (memory device))
         newDevice = stepTrackedProgram device
         newSeenStates = Set.insert currentState seenStates

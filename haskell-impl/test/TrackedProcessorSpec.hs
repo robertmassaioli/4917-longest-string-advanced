@@ -1,10 +1,15 @@
 module TrackedProcessorSpec (spec) where
 
 import Test.Hspec
+import Test.Hspec.QuickCheck
+import Test.QuickCheck
 import TrackedProcessor
+import qualified Processor as P
+import ProcessorTestSupport (genDevice, shrinkDevice, fromDevice, referenceRun, RefState(..))
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Vector.Unboxed ((!))  -- For memory indexing
+import qualified Data.Vector.Unboxed as V
 
 -- Helper function to unwrap Either for tests that expect valid programs
 createTestDevice :: [Byte] -> TrackedDevice
@@ -45,6 +50,9 @@ spec = describe "TrackedProcessor" $ do
       [255] `shouldFailWith` InvalidInstructionValue
       [16, 0] `shouldFailWith` InvalidInstructionValue
 
+    it "rejects invalid values in operand and data cells too" $
+      [8, 255, 0] `shouldFailWith` InvalidInstructionValue
+
     it "validates program constraints" $ do
       [] `shouldFailWith` EmptyProgram
 
@@ -56,7 +64,7 @@ spec = describe "TrackedProcessor" $ do
             stepped = stepTrackedProgram tracked
         isHalted stepped `shouldBe` True
         getAccessedLocations stepped `shouldBe` Set.fromList [0]
-        getPc stepped `shouldBe` 0
+        getPc stepped `shouldBe` 1
 
       it "ADD (1) - R0 = R0 + R1" $ do
         let program = [1, 0]  -- ADD, HALT
@@ -349,8 +357,21 @@ spec = describe "TrackedProcessor" $ do
           step1 = stepTrackedProgram tracked
           step2 = stepTrackedProgram step1
       isHalted step2 `shouldBe` True
-      getPc step2 `shouldBe` 1
+      getPc step2 `shouldBe` 2
       getAccessedLocations step2 `shouldBe` Set.fromList [0, 1]
+
+    it "treats a negative step limit as zero" $ do
+      let initial = createTestDevice [3, 0]
+          final = runTrackedProgram initial (-1)
+      getSteps final `shouldBe` 0
+      getPc final `shouldBe` 0
+
+    it "does not report a loop while self-modifying memory is still changing" $ do
+      let initial = (createTestDevice [11, 0, 13, 0]) { r0 = 0 }
+          final = runTrackedProgramLoopCheck initial
+      isHalted final `shouldBe` True
+      getPc final `shouldBe` 1
+      getSteps final `shouldBe` 3
 
   context "Register Consumption Tracking" $ do
     describe "Non-consuming operations" $ do
@@ -501,3 +522,55 @@ spec = describe "TrackedProcessor" $ do
         getR0WasConsumed final `shouldBe` True
         getR1WasConsumed final `shouldBe` True
         getR0ContainsCombination final `shouldBe` True
+
+  modifyMaxSuccess (const 300) $
+    prop "matches base processor machine state for a generated single step" $
+      forAllShrink genDevice shrinkDevice $ \device ->
+        case createTrackedDevice (V.toList (P.memory device)) of
+          Left _ -> counterexample "nibble-valued generated memory was rejected" False
+          Right initial ->
+            let tracked = initial
+                  { pc = P.pc device
+                  , r0 = P.r0 device
+                  , r1 = P.r1 device
+                  , outputLength = P.outputCount device
+                  }
+                (expected, _, _) = P.stepProgram device
+                actual = stepTrackedProgram tracked
+                actualMemory = V.toList (getMemory actual)
+            in counterexample ("base initial state: " ++ show device)
+                 ( actualMemory == V.toList (P.memory expected)
+                   && getR0 actual == P.r0 expected
+                   && getR1 actual == P.r1 expected
+                   && getPc actual == P.pc expected
+                   && getOutput actual == P.outputCount expected
+                 )
+
+  modifyMaxSuccess (const 300) $
+    prop "bounded tracked execution matches the independent reference runner" $
+      forAllShrink ((,) <$> genDevice <*> chooseInt (-2, 40)) shrinkDeviceAndLimit $ \(device, limit) ->
+        let initialized = P.initProgram device
+            (expected, expectedHalted, _) = referenceRun (fromDevice initialized) limit
+        in case createTrackedDevice (V.toList (P.memory initialized)) of
+             Left _ -> counterexample "nibble-valued generated memory was rejected" False
+             Right initial ->
+               let trackedInitial = initial
+                     { pc = P.pc initialized
+                     , r0 = P.r0 initialized
+                     , r1 = P.r1 initialized
+                     , outputLength = P.outputCount initialized
+                     }
+                   actual = runTrackedProgram trackedInitial limit
+               in counterexample ("base initial state: " ++ show initialized)
+                    ( V.toList (getMemory actual) == refMemory expected
+                      && getR0 actual == refR0 expected
+                      && getR1 actual == refR1 expected
+                      && getPc actual == refPc expected
+                      && getOutput actual == refOutputCount expected
+                      && isHalted actual == expectedHalted
+                    )
+
+shrinkDeviceAndLimit :: (P.Device, Int) -> [(P.Device, Int)]
+shrinkDeviceAndLimit (device, limit) =
+  [(smaller, limit) | smaller <- shrinkDevice device]
+  ++ [(device, smaller) | smaller <- shrink limit, smaller >= 0]
