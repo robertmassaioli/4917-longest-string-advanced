@@ -82,7 +82,6 @@ runExample verbose (title, description, program) = do
         Right device -> do
             -- Run the program to completion
             let finalDevice = runTrackedProgram device 1000
-            a
             -- Analyze the program
             let analysis = analyzeProgram program finalDevice
                 optimized = optimizeProgram analysis
