@@ -1,27 +1,33 @@
-# 4917 C implementation
+# 4917 C++ implementation
 
-This is the performance-oriented peer to `haskell-impl/`. The production core
-is C11 with fixed-width machine values, no allocation in `step` or bounded
-execution, and no runtime dependency on Stack, Python, or a test framework.
+This is the performance-oriented C++17 peer to `haskell-impl/`. The processor
+core uses fixed-width machine values and keeps bounded execution allocation-
+free. Its hot runner has a dedicated dispatch loop; `i4917_step` remains the
+reference single-step operation for diagnostics and differential checks.
 `spec/processor.md` is the shared behavioral contract.
+
+The library keeps a small C ABI in `include/4917/machine.h`. The C
+property-test and standalone benchmark clients use that boundary to exercise
+the same C++ engine.
 
 ## Build and run
 
-Requires CMake 3.20+, a C11 compiler, and Argtable3 3.3.1 or newer. The presets
-use Unix Makefiles, so Ninja is not required. On macOS, install the C
-dependencies with Homebrew:
+Requires CMake 3.20+, C++17, and CLI11 2.7.2 or newer. Install the normal
+build dependency with:
 
 ```sh
-brew install argtable3 google-benchmark
-export CMAKE_PREFIX_PATH="$(brew --prefix argtable3):$(brew --prefix google-benchmark)"
+brew install cli11
 ```
 
-Argtable3 is required by the CLI. Google Benchmark is only needed for the
-optional C++ benchmark comparison target. CMake prefers the installed
-Argtable3 package; if it is missing, it downloads the pinned 3.3.1 release
-archive with a SHA-256 check. Disable that fallback with
-`-DI4917_FETCH_ARGTABLE3=OFF` when an installed package is required. Neither
-library is linked into `4917_core`.
+Google Benchmark is optional and only needed for its comparison target:
+
+```sh
+brew install google-benchmark
+```
+
+Homebrew package config files are discovered automatically. If CLI11 is not
+installed, CMake fetches the pinned 2.7.2 source archive and checks its
+SHA-256.
 
 ```sh
 cmake --preset debug
@@ -30,102 +36,47 @@ ctest --preset debug
 
 cmake --preset release
 cmake --build --preset release
-./build/make-release/4917-c --help
-
-cmake --preset sanitizers
-cmake --build --preset sanitizers
-ctest --preset sanitizers
+./build/make-release/4917-cpp --help
 ```
 
-Production-only builds can disable tests with
-`-DI4917_BUILD_TESTS=OFF`. CMake may download Argtable3 when no system package
-is found. Formatting and static analysis are optional developer tools and are not part of normal CMake
-builds. CI pins clang-format 18.1.3 and Cppcheck 2.13.0 on Ubuntu 24.04. On
-Ubuntu 24.04, install the same versions with `sudo apt-get install
-clang-format-18=1:18.1.3-1ubuntu1 cppcheck=2.13.0-2ubuntu3`; on other
-platforms, use clang-format 18.1.3 and Cppcheck 2.13.0.
-
-```sh
-# From the repository root
-# Check formatting without changing files (requires clang-format-18)
-CLANG_FORMAT=clang-format-18 c-impl/scripts/format-c.sh --check
-
-# Apply formatting to C sources, headers, tests, and benchmarks
-CLANG_FORMAT=clang-format-18 c-impl/scripts/format-c.sh --fix
-
-# Configure a compile database, then run the CI Cppcheck profile
-cmake -S c-impl -B c-impl/build/cppcheck -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-  -DI4917_BUILD_BENCHMARKS=ON
-c-impl/scripts/check-cppcheck.sh
-```
-
-Cppcheck reads only translation units from this CMake compilation database
-and uses the actual C11 include paths and definitions. The enforced profile
-starts with error and warning diagnostics; findings should be fixed or
-narrowly suppressed with an adjacent explanation. Neither tool is needed to
-build or run the C implementation.
-
-CTest contains
-deterministic instruction/boundary cases and 10,000 fixed-seed generated
-program checks. The test harness is plain C to keep compiler requirements to
-C11. Generated run-equivalence failures report
-the fixed seed and trial index; add any minimized failure as a named test and
-shared case.
+The C property-test and standalone benchmark clients require a C compiler as
+well as a C++ compiler. A production-only build needs only C++: disable tests
+with `-DI4917_BUILD_TESTS=OFF` and leave `-DI4917_BUILD_BENCHMARKS=OFF`.
 
 ## Commands
 
-Run `4917-c --help` for the command list, or append `--help`/`-h` to a
-subcommand for its options. Each command accepts only its own options.
-Repeated scalar options, unknown options, missing option values, and extra
-positional arguments are rejected with exit code 2 and command-specific usage
-on stderr. Numeric values must be nonnegative decimal digits and must fit in
-`uint64_t`; command-specific range errors are also reported on stderr with
-exit code 2. CSV parsing remains domain validation performed by the frontend,
-after option parsing.
-
-`run` validates 1–16 CSV nibble values, pads memory with zeroes, resets the
-machine, and executes up to the default 10,000 steps. HALT counts as a step.
-The JSON output schema is `4917-run-v1`; step and output-character counts are
-decimal strings to avoid JSON integer precision loss. Output values and final
-memory/register/PC are included. Exit codes are 0 for a completed or limited
-run, 1 for an internal execution error, and 2 for invalid arguments/input.
+Run `4917-cpp --help` for commands or append `--help` to a subcommand. Numeric
+values must be nonnegative decimal digits and fit in `uint64_t`. CSV parsing
+validates 1–16 nibble values.
 
 ```sh
-./build/make-release/4917-c run --program 3,4,1,8,10,0 --max-steps 100
-./build/make-release/4917-c run --program 8,1,13,0 --max-steps 20 --json
+./build/make-release/4917-cpp run --program 3,4,1,8,10,0 --max-steps 100
+./build/make-release/4917-cpp run --program 8,1,13,0 --max-steps 20 --json
+./build/make-release/4917-cpp search --length 3 --json
+./build/make-release/4917-cpp step --memory 8,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0 --json
 ```
 
-`search` checks every N-cell nibble vector in lexicographic order, zero-padded
-to 16 cells. Length is restricted to 1–5. Each candidate starts reset and runs
-until it halts or Floyd's tortoise-and-hare detector finds a repeated execution
-state. Only HALT candidates can win; cycles are counted separately. Output is
-exhaustive when every candidate resolves to HALT or cycle without an execution
-error. Search reports the first winner in enumeration order and the total
-number of winners. Candidate and count fields are decimal strings in
-`4917-search-v2`.
+`run` executes up to the default 10,000 steps. HALT counts as a step. Its JSON
+schema is `4917-run-v1`; output values and final machine state are included.
+Exit codes are 0 for a completed or limited run, 1 for an execution error, and
+2 for invalid arguments or input.
 
-```sh
-./build/make-release/4917-c search --length 3 --json
-```
+`search` enumerates every N-cell nibble vector in lexicographic order, padded
+to 16 memory cells. Length is restricted to 1–5. Each candidate runs until it
+halts or a repeated execution state is found. HALT candidates can win; cycles
+are counted separately. The result is exhaustive if no candidate errors. Its
+JSON schema is `4917-search-v2`.
 
-`step` is a low-level diagnostic adapter for arbitrary valid states. It
-requires exactly 16 memory cells and accepts register, PC, and output-count
-values; `4917-step-v1` returns the single event and resulting state. It is also
-the integration boundary used for one-step differential testing.
+`step` executes one instruction from a supplied state with exactly 16 memory
+cells. Its JSON schema is `4917-step-v1`.
 
-```sh
-./build/make-release/4917-c step --memory 8,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0 --r0 0 --r1 0 --pc 0 --json
-```
+## Correctness checks
 
-## Tests and Haskell differential checks
-
-The C unit/property suite checks arithmetic laws for all nibble pairs, opcode
-boundaries, wrapping, output count, self-modification, cycle classification,
-run limits, and generated run-vs-step equivalence. When Python 3 is available,
-CTest also runs `cli-contract`, which checks help, all command forms, defaults,
-malformed and out-of-range values, duplicate and irrelevant options, extra
-arguments, CSV validation, exit codes, and error streams. Optional differential
-testing uses a batched Haskell oracle and Python driver:
+The C property suite checks arithmetic, opcode boundaries, wrapping, output
+counts, self-modification, cycle classification, bounded execution, and
+10,000 fixed-seed generated run-vs-step cases. The Python CLI contract suite
+checks help, option handling, validation, schemas, and exit codes. Optional
+differential testing compares with the Haskell oracle:
 
 ```sh
 cmake -S . -B build/differential -DI4917_ENABLE_HASKELL_DIFFERENTIAL=ON
@@ -133,113 +84,37 @@ cmake --build build/differential
 ctest --test-dir build/differential --output-on-failure
 ```
 
-This requires Stack and Python 3; it runs fixed regressions plus 250 generated
-bounded programs using seed `0x4917`, compares all 256 opcode/PC pairs plus
-256 additional generated arbitrary states, and checks exact length-two search
-against an unpruned Haskell baseline. It batches execution and single-step
-requests through the oracle and compares semantic output, final state, and
-termination with C's machine-readable interface. C-only builds remain
-independent of Haskell.
-
 ## Benchmarks
 
-The standalone C benchmark has no third-party timing dependency. It is
-informational, not a correctness threshold. Timings include per-run machine
-initialization and bounded execution; they exclude process startup and output
-formatting. Search uses all 256 two-cell candidates. Each case prints actual
-instructions or candidates per second and a result sink to keep calls
-observable.
+The standalone C benchmark measures the C++ core through its C ABI. It reports
+five-sample min/median/max instruction or candidate throughput. Individual
+opcode fixtures execute 1,048,576 `i4917_step` calls per sample. Build and run
+it with:
 
 ```sh
 cmake --preset benchmarks
 cmake --build --preset benchmarks
-./build/make-benchmarks/4917-bench
 ./build/make-benchmarks/4917-bench --json > benchmark-results.ndjson
-```
-
-The default run includes straight-line, arithmetic-heavy, output-heavy,
-branch, self-modifying, and small exhaustive-search workloads, followed by
-single-step measurements for every opcode. To measure only the instruction
-set, or one opcode, run:
-
-```sh
-./build/make-benchmarks/4917-bench --instructions --json
 ./build/make-benchmarks/4917-bench --instruction 9 --json
 ```
 
-Opcode selectors are decimal values 0–15. Opcodes 14 and 15 each report both
-taken and not-taken cases. Each individual-opcode sample executes 1,048,576
-calls to `i4917_step` on one prebuilt valid state, resetting PC before each
-call so the selected opcode repeats. Registers and memory evolve as the
-instruction specifies. State setup is outside the timed region; the API's
-state validation and instruction execution are timed. Each fixture takes five
-timed samples and reports min/median/max throughput, so an individual opcode
-can be rerun while tuning its implementation. Record revision, compiler,
-flags/build type, and machine with saved results. No speedup is claimed before
-a baseline is collected.
-
-### Optional Google Benchmark comparison
-
-An opt-in C++17 harness is available to compare calibration, repetitions, and
-structured reporting with the dependency-free C harness. The C core and CLI
-remain C11; only `4917-google-bench` uses C++. The target requires an installed
-Google Benchmark package version 1.9.1 or newer in the 1.x series. Homebrew
-currently provides 1.10.0. This target adds no CI timing threshold.
-
-The normal build does not enable C++ or require Google Benchmark. After
-installing the Homebrew dependencies and setting `CMAKE_PREFIX_PATH` as shown
-above, configure and build the optional harness with:
+Google Benchmark is an optional C++ harness using the same core; it compares
+calibration and reporting, not C and C++ implementations:
 
 ```sh
 cmake --preset google-benchmarks
 cmake --build --preset google-benchmarks
 ./build/make-google-benchmarks/4917-google-bench \
   --benchmark_repetitions=5 \
-  --benchmark_report_aggregates_only=false \
-  --benchmark_out=google-benchmark-results.json \
-  --benchmark_out_format=json
+  --benchmark_report_aggregates_only=false
 ```
 
-The harness registers all 16 single-instruction workloads, with taken and
-not-taken cases for both conditional branches, plus short straight-line,
-arithmetic-heavy, and exhaustive length-two search workloads. Its
-per-instruction fixture uses a prebuilt valid state, rewinds PC in the timed
-loop, and measures `i4917_step` through the exported C API, including state
-validation. Each fixture performs a correctness preflight before timing. The
-Google output includes raw repetition records and aggregates; counters name
-single steps, logical steps, or candidates per second. Custom JSON context
-records the framework version, C/C++ compilers and flags, build type, source
-revision, and fixture semantics. The framework also records host and CPU
-context where supported.
+The C optimization campaign and its paired measurements are documented in
+[`benchmarks/hill-climb.md`](benchmarks/hill-climb.md). Those recorded speedups
+measure the C campaign candidate against its C baseline; they do not predict
+the C++ port's performance. Compare the C++ build directly with the same
+fixtures and settings before making a language-level performance claim.
 
-If the package is installed outside the default CMake search paths, add its
-prefix to `CMAKE_PREFIX_PATH`. CMake requires the system package for this
-optional target; it does not download Google Benchmark.
-
-```sh
-cmake --preset google-benchmarks \
-  -DCMAKE_PREFIX_PATH="$(brew --prefix argtable3);$(brew --prefix google-benchmark)"
-cmake --build --preset google-benchmarks
-```
-
-Google Benchmark calibrates iteration counts to its minimum time and reports
-repetitions/statistics; set `--benchmark_min_time=0.01s` for a short
-registration smoke run. For useful comparisons, keep the C core build,
-compiler, flags, machine, and workload fixtures the same, use at least five
-repetitions on an otherwise idle host, and retain the complete JSON output. The
-existing C harness instead uses fixed work counts and five min/median/max samples. Neither
-framework nor repetitions make local timings statistically conclusive: CPU
-frequency, thermal state, background work, and machine variation still affect
-results. Hardware performance counters remain optional and are not required by
-this harness. Treat the framework as an evaluation path until a controlled
-comparison establishes ongoing value.
-
-## Optimization rules
-
-Keep argument validation and presentation outside `4917_core`. Any specialized
-execution path must be checked against `i4917_step` over generated and fixed
-cases. The bounded hot loop intentionally does not allocate or detect cycles;
-`i4917_run_until_halt_or_cycle` uses Floyd's tortoise-and-hare algorithm and
-compares execution state while excluding the output counter. It replays the
-actual prefix after classification to preserve output counts and report real
-counter overflow. Counter overflow is an explicit error, never wraparound.
+Keep compiler, flags, machine, and fixtures the same for comparisons. CPU
+frequency, thermal state, background work, and host load affect local timings;
+the benchmarks have no CI timing threshold.

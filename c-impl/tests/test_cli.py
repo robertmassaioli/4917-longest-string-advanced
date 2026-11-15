@@ -30,7 +30,7 @@ def main():
         if diagnostic:
             assert diagnostic in result.stderr, (arguments, result.stderr)
 
-    assert "Commands:" in succeeds("--help")
+    assert "SUBCOMMANDS:" in succeeds("--help")
     assert "--max-steps" in succeeds("run", "--help")
     assert "--length" in succeeds("search", "-h")
     assert "--output-characters" in succeeds("step", "--help")
@@ -55,8 +55,8 @@ def main():
     rejects("run", diagnostic="--program")
     rejects("search", diagnostic="--length")
     rejects("step", diagnostic="--memory")
-    rejects("run", "--program", diagnostic="requires an argument")
-    rejects("run", "--program", "0", "--max-steps", diagnostic="requires an argument")
+    rejects("run", "--program", diagnostic="--program")
+    rejects("run", "--program", "0", "--max-steps", diagnostic="--max-steps")
     rejects("run", "--program", "0", "--unknown")
     rejects("run", "--program", "0", "--length", "1")
     rejects("search", "--length", "1", "--program", "0")
@@ -65,7 +65,7 @@ def main():
     rejects("run", "--program", "0", "--json", "--json")
     rejects("search", "--length", "1", "--length", "2")
 
-    rejects("run", "--program", "0", "--max-steps", "", diagnostic="requires an argument")
+    rejects("run", "--program", "0", "--max-steps", "", diagnostic="--max-steps")
     rejects("run", "--program", "0", "--max-steps", "-1", diagnostic="invalid")
     rejects("run", "--program", "0", "--max-steps", "1x", diagnostic="invalid")
     rejects(

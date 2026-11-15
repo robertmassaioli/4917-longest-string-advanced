@@ -1,7 +1,8 @@
 #include "4917/machine.h"
 
-#include <stdlib.h>
-#include <string.h>
+#include <cstring>
+#include <new>
+#include <vector>
 
 bool i4917_state_valid(const i4917_state *s) {
     if (s == NULL || s->r0 > 15 || s->r1 > 15 || s->pc > 15)
@@ -23,7 +24,7 @@ void i4917_init(i4917_state *s, const uint8_t *program, size_t length) {
 i4917_error i4917_step(i4917_state *s, i4917_event *event) {
     if (!i4917_state_valid(s) || event == NULL)
         return I4917_INVALID_STATE;
-    *event = (i4917_event){0};
+    *event = {};
     const uint8_t pc = s->pc;
     const uint8_t op = s->memory[pc];
     const uint8_t operand_pc = (uint8_t)((pc + 1u) & 15u);
@@ -104,7 +105,7 @@ i4917_error i4917_step(i4917_state *s, i4917_event *event) {
 
 static bool same_execution(const i4917_state *a, const i4917_state *b) {
     return a->r0 == b->r0 && a->r1 == b->r1 && a->pc == b->pc &&
-           memcmp(a->memory, b->memory, I4917_MEMORY_SIZE) == 0;
+           std::memcmp(a->memory, b->memory, I4917_MEMORY_SIZE) == 0;
 }
 
 static i4917_run_result result(i4917_state s, uint64_t steps, uint64_t start_output,
@@ -115,33 +116,34 @@ static i4917_run_result result(i4917_state s, uint64_t steps, uint64_t start_out
 
 i4917_run_result i4917_run_bounded(const i4917_state *initial, uint64_t limit) {
     if (initial == NULL) {
-        i4917_state empty = {0};
+        i4917_state empty{};
         return result(empty, 0, 0, I4917_RUN_ERROR);
     }
     i4917_state s = *initial;
     const uint64_t initial_output = s.output_characters;
-    if (!i4917_state_valid(&s)) return result(s, 0, initial_output, I4917_RUN_ERROR);
+    if (!i4917_state_valid(&s))
+        return result(s, 0, initial_output, I4917_RUN_ERROR);
     uint8_t r0 = 0, r1 = 0, pc = 0;
     uint64_t output = 0;
     uint64_t steps = 0;
     while (steps < limit) {
         const uint8_t op = s.memory[pc];
-        const uint8_t operand_pc = (uint8_t)((pc + 1u) & 15u);
-        const uint8_t after_operand = (uint8_t)((pc + 2u) & 15u);
+        const uint8_t operand_pc = static_cast<uint8_t>((pc + 1U) & 15U);
+        const uint8_t after_operand = static_cast<uint8_t>((pc + 2U) & 15U);
         const uint8_t operand = s.memory[operand_pc];
         const uint8_t next = operand_pc;
         bool halted = false;
         switch (op) {
         case 0: pc = next; halted = true; break;
-        case 1: r0 = (uint8_t)((r0 + r1) & 15u); pc = next; break;
-        case 2: r0 = (uint8_t)((r0 + 16u - r1) & 15u); pc = next; break;
-        case 3: r0 = (uint8_t)((r0 + 1u) & 15u); pc = next; break;
-        case 4: r1 = (uint8_t)((r1 + 1u) & 15u); pc = next; break;
-        case 5: r0 = (uint8_t)((r0 - 1u) & 15u); pc = next; break;
-        case 6: r1 = (uint8_t)((r1 - 1u) & 15u); pc = next; break;
+        case 1: r0 = static_cast<uint8_t>((r0 + r1) & 15U); pc = next; break;
+        case 2: r0 = static_cast<uint8_t>((r0 + 16U - r1) & 15U); pc = next; break;
+        case 3: r0 = static_cast<uint8_t>((r0 + 1U) & 15U); pc = next; break;
+        case 4: r1 = static_cast<uint8_t>((r1 + 1U) & 15U); pc = next; break;
+        case 5: r0 = static_cast<uint8_t>((r0 - 1U) & 15U); pc = next; break;
+        case 6: r1 = static_cast<uint8_t>((r1 - 1U) & 15U); pc = next; break;
         case 7: pc = next; break;
         case 8: {
-            const uint64_t amount = operand < 10 ? 1u : 2u;
+            const uint64_t amount = operand < 10 ? 1U : 2U;
             if (output > UINT64_MAX - amount) {
                 s.r0 = r0; s.r1 = r1; s.pc = pc; s.output_characters = output;
                 return result(s, steps, 0, I4917_RUN_ERROR);
@@ -174,7 +176,7 @@ i4917_run_result i4917_run_bounded(const i4917_state *initial, uint64_t limit) {
    uses the allocation-free loop above. */
 i4917_run_result i4917_run_until_halt_or_cycle(const i4917_state *initial) {
     if (initial == NULL) {
-        i4917_state empty = {0};
+        i4917_state empty{};
         return result(empty, 0, 0, I4917_RUN_ERROR);
     }
     i4917_state s = *initial;
@@ -183,41 +185,30 @@ i4917_run_result i4917_run_until_halt_or_cycle(const i4917_state *initial) {
         return result(s, 0, initial_output, I4917_RUN_ERROR);
     s.r0 = s.r1 = s.pc = 0;
     s.output_characters = 0;
-    size_t capacity = 1024, count = 0;
-    i4917_state *seen = (i4917_state *)malloc(capacity * sizeof(*seen));
-    if (seen == NULL)
+    std::vector<i4917_state> seen;
+    try {
+        seen.reserve(1024);
+    } catch (const std::bad_alloc &) {
         return result(s, 0, 0, I4917_RUN_ERROR);
+    }
     for (uint64_t n = 0;; ++n) {
-        for (size_t i = 0; i < count; ++i)
-            if (same_execution(&seen[i], &s)) {
-                free(seen);
+        for (const i4917_state &prior : seen)
+            if (same_execution(&prior, &s)) {
                 return result(s, n, 0, I4917_CYCLE);
             }
         if (n == UINT64_MAX) {
-            free(seen);
             return result(s, n, 0, I4917_RUN_ERROR);
         }
-        if (count == capacity) {
-            if (capacity > SIZE_MAX / 2 / sizeof(*seen)) {
-                free(seen);
-                return result(s, n, 0, I4917_RUN_ERROR);
-            }
-            capacity *= 2;
-            i4917_state *grown = (i4917_state *)realloc(seen, capacity * sizeof(*seen));
-            if (grown == NULL) {
-                free(seen);
-                return result(s, n, 0, I4917_RUN_ERROR);
-            }
-            seen = grown;
+        try {
+            seen.push_back(s);
+        } catch (const std::bad_alloc &) {
+            return result(s, n, 0, I4917_RUN_ERROR);
         }
-        seen[count++] = s;
         i4917_event event;
         if (i4917_step(&s, &event) != I4917_OK) {
-            free(seen);
             return result(s, n, 0, I4917_RUN_ERROR);
         }
         if (event.halted) {
-            free(seen);
             return result(s, n + 1, 0, I4917_HALTED);
         }
     }
