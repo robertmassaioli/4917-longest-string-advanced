@@ -101,12 +101,15 @@ observable.
 cmake --preset benchmarks
 cmake --build --preset benchmarks
 ./build/make-benchmarks/4917-bench
+./build/make-benchmarks/4917-bench --json > benchmark-results.ndjson
 ```
 
 The baseline includes straight-line, arithmetic-heavy, output-heavy, branch,
-self-modifying, and small exhaustive-search workloads. Record revision,
-compiler, flags/build type, machine, and repeated-run spread when comparing
-results. No speedup is claimed before a baseline is collected.
+self-modifying, and small exhaustive-search workloads. Each fixture takes five
+timed samples; text and NDJSON output include min/median/max throughput,
+repetitions, and actual work per sample. Record revision, compiler,
+flags/build type, and machine with saved results. No speedup is claimed before
+a baseline is collected.
 
 ## Optimization rules
 
