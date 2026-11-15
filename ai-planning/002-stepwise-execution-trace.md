@@ -34,14 +34,15 @@ documented default of 10000 and reject negative values.
 
 ## Trace output
 
-Print an initial state followed by one line for each instruction executed. A
-step line should show:
+Print an initial state followed by one line for each instruction executed. The
+initial state must show all 16 memory values. A step line should show:
 
 - the step number;
 - the instruction address and instruction byte, with its operand when it is a
   two-byte instruction;
 - R0, R1, and the program counter before and after the instruction;
-- all 16 memory values after the instruction;
+- memory after the instruction: print all 16 values if any cell differs from
+  the preceding state, otherwise print `memory: unchanged`;
 - the number of output characters emitted by that step and the cumulative
   character count.
 
@@ -73,9 +74,11 @@ instructions.
 
 1. `4917-cli trace --help` describes the byte format and maximum-step option.
 2. The command emits an initial state and exactly one complete state row per
-   executed instruction.
-3. Each row contains all 16 memory cells, registers, PC, instruction details,
-   per-step output delta, and cumulative output-character count.
+   executed instruction. The initial row includes all 16 memory values.
+3. Each step row contains registers, PC, instruction details, per-step output
+   delta, and cumulative output-character count. Its memory field shows all 16
+   values when memory changed, or `memory: unchanged` when it did not change
+   from the preceding row.
 4. HALT stops execution after its own row; reaching the maximum stops without
    executing an additional instruction.
 5. A program that prints values below and above 10 reports character counts
