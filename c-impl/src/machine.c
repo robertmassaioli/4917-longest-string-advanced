@@ -120,18 +120,53 @@ i4917_run_result i4917_run_bounded(const i4917_state *initial, uint64_t limit) {
     }
     i4917_state s = *initial;
     const uint64_t initial_output = s.output_characters;
-    if (!i4917_state_valid(&s))
-        return result(s, 0, initial_output, I4917_RUN_ERROR);
-    s.r0 = s.r1 = s.pc = 0;
-    s.output_characters = 0;
-    for (uint64_t n = 0; n < limit; ++n) {
-        i4917_event event;
-        if (i4917_step(&s, &event) != I4917_OK)
-            return result(s, n, 0, I4917_RUN_ERROR);
-        if (event.halted)
-            return result(s, n + 1, 0, I4917_HALTED);
+    if (!i4917_state_valid(&s)) return result(s, 0, initial_output, I4917_RUN_ERROR);
+    uint8_t r0 = 0, r1 = 0, pc = 0;
+    uint64_t output = 0;
+    uint64_t steps = 0;
+    while (steps < limit) {
+        const uint8_t op = s.memory[pc];
+        const uint8_t operand_pc = (uint8_t)((pc + 1u) & 15u);
+        const uint8_t after_operand = (uint8_t)((pc + 2u) & 15u);
+        const uint8_t operand = s.memory[operand_pc];
+        const uint8_t next = operand_pc;
+        bool halted = false;
+        switch (op) {
+        case 0: pc = next; halted = true; break;
+        case 1: r0 = (uint8_t)((r0 + r1) & 15u); pc = next; break;
+        case 2: r0 = (uint8_t)((r0 + 16u - r1) & 15u); pc = next; break;
+        case 3: r0 = (uint8_t)((r0 + 1u) & 15u); pc = next; break;
+        case 4: r1 = (uint8_t)((r1 + 1u) & 15u); pc = next; break;
+        case 5: r0 = (uint8_t)((r0 - 1u) & 15u); pc = next; break;
+        case 6: r1 = (uint8_t)((r1 - 1u) & 15u); pc = next; break;
+        case 7: pc = next; break;
+        case 8: {
+            const uint64_t amount = operand < 10 ? 1u : 2u;
+            if (output > UINT64_MAX - amount) {
+                s.r0 = r0; s.r1 = r1; s.pc = pc; s.output_characters = output;
+                return result(s, steps, 0, I4917_RUN_ERROR);
+            }
+            output += amount; pc = after_operand; break;
+        }
+        case 9: r0 = s.memory[operand]; pc = after_operand; break;
+        case 10: r1 = s.memory[operand]; pc = after_operand; break;
+        case 11: s.memory[operand] = r0; pc = after_operand; break;
+        case 12: s.memory[operand] = r1; pc = after_operand; break;
+        case 13: pc = operand; break;
+        case 14: pc = r0 == 0 ? operand : after_operand; break;
+        case 15: pc = r0 != 0 ? operand : after_operand; break;
+        default:
+            s.r0 = r0; s.r1 = r1; s.pc = pc; s.output_characters = output;
+            return result(s, steps, 0, I4917_RUN_ERROR);
+        }
+        ++steps;
+        if (halted) {
+            s.r0 = r0; s.r1 = r1; s.pc = pc; s.output_characters = output;
+            return result(s, steps, 0, I4917_HALTED);
+        }
     }
-    return result(s, limit, 0, I4917_LIMIT_REACHED);
+    s.r0 = r0; s.r1 = r1; s.pc = pc; s.output_characters = output;
+    return result(s, steps, 0, I4917_LIMIT_REACHED);
 }
 
 /* A visited-state table preserves the actual run prefix and avoids Floyd's
