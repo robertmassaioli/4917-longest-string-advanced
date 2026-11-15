@@ -32,6 +32,7 @@ library
                      , Commands.CacheDemo
                      , Commands.Search
                      , Commands.Solve
+                     , Commands.ProgramExecution
   build-depends:       base >=4.7 && <5
                      , vector >=0.12 && <0.14
                      , time >=1.9 && <1.13
@@ -73,6 +74,7 @@ test-suite spec
                      , TrackedProcessorSpec
                      , LegacyWildcardPatternsSpec
                      , WildcardPatternSpec
+                     , ProgramExecutionSpec
   ghc-options:         -threaded -rtsopts -with-rtsopts=-N
   build-depends:       base >=4.7 && <5
                      , hspec >=2.7 && <2.12
