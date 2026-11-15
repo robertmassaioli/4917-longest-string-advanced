@@ -1,0 +1,40 @@
+name: C implementation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  c-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake --preset debug
+      - run: cmake --build --preset debug
+      - run: ctest --preset debug
+      - run: cmake --preset sanitizers
+      - run: cmake --build --preset sanitizers
+      - run: ctest --preset sanitizers
+  haskell-differential:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
+        with:
+          enable-stack: true
+          stack-version: latest
+      - run: cmake -S c-impl -B c-impl/build/differential -DI4917_ENABLE_HASKELL_DIFFERENTIAL=ON
+      - run: cmake --build c-impl/build/differential
+      - run: ctest --test-dir c-impl/build/differential --output-on-failure
+        timeout-minutes: 10
+  haskell-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
+        with:
+          enable-stack: true
+          stack-version: latest
+      - run: stack test
+        working-directory: haskell-impl
+        timeout-minutes: 20

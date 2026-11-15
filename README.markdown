@@ -14,6 +14,20 @@ stack build
 stack exec 4917-cli -- --help
 ```
 
+The performance-oriented C peer is built separately with CMake:
+
+```bash
+cd c-impl
+cmake --preset release
+cmake --build --preset release
+ctest --preset release
+./build/make-release/4917-c run --program 3,4,1,8,10,0 --json
+```
+
+The shared processor contract and semantic differences are documented in
+[`spec/processor.md`](spec/processor.md). See [`c-impl/README.md`](c-impl/README.md)
+for C commands, tests, differential checks, benchmarks, and sanitizer builds.
+
 ## Building and Running
 
 ### Build Commands
