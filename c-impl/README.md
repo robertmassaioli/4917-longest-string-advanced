@@ -104,12 +104,24 @@ cmake --build --preset benchmarks
 ./build/make-benchmarks/4917-bench --json > benchmark-results.ndjson
 ```
 
-The baseline includes straight-line, arithmetic-heavy, output-heavy, branch,
-self-modifying, and small exhaustive-search workloads. Each fixture takes five
-timed samples; text and NDJSON output include min/median/max throughput,
-repetitions, and actual work per sample. Record revision, compiler,
-flags/build type, and machine with saved results. No speedup is claimed before
-a baseline is collected.
+The default run includes straight-line, arithmetic-heavy, output-heavy,
+branch, self-modifying, and small exhaustive-search workloads, followed by
+single-step measurements for every opcode. To measure only the instruction
+set, or one opcode, run:
+
+```sh
+./build/make-benchmarks/4917-bench --instructions --json
+./build/make-benchmarks/4917-bench --instruction 9 --json
+```
+
+Opcode selectors are decimal values 0–15. Opcodes 14 and 15 each report both
+taken and not-taken cases. Each individual-opcode sample executes 65,536
+single `i4917_step` calls over prebuilt valid states; state setup is outside
+the timed region, while the API's state validation and instruction execution
+are timed. Each fixture takes five timed samples and reports min/median/max
+throughput, so an individual opcode can be rerun while tuning its
+implementation. Record revision, compiler, flags/build type, and machine with
+saved results. No speedup is claimed before a baseline is collected.
 
 ## Optimization rules
 
