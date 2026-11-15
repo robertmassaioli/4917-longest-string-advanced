@@ -7,15 +7,21 @@ execution, and no runtime dependency on Stack, Python, or a test framework.
 
 ## Build and run
 
-Requires CMake 3.20+ and a C11 compiler. The presets use Unix Makefiles, so
-Ninja is not required.
+Requires CMake 3.20+, a C11 compiler, and Argtable3 3.3.1 or newer. The presets
+use Unix Makefiles, so Ninja is not required. On macOS, install the C
+dependencies with Homebrew:
 
-The command-line frontend uses vendored Argtable3 3.3.1 at upstream commit
-`b50c6c81f25eef8af51141678b333c55b661414d`. Its BSD-3-Clause license is
-included under `third_party/argtable3/LICENSE`. The source is pinned in this
-repository, so configure and build work offline and do not run package-manager
-or network fetch steps. Argtable3 is linked only into `4917-c`; it is not
-linked into `4917_core`, the unit/property tests, or the benchmark.
+```sh
+brew install argtable3 google-benchmark
+export CMAKE_PREFIX_PATH="$(brew --prefix argtable3):$(brew --prefix google-benchmark)"
+```
+
+Argtable3 is required by the CLI. Google Benchmark is only needed for the
+optional C++ benchmark comparison target. CMake prefers the installed
+Argtable3 package; if it is missing, it downloads the pinned 3.3.1 release
+archive with a SHA-256 check. Disable that fallback with
+`-DI4917_FETCH_ARGTABLE3=OFF` when an installed package is required. Neither
+library is linked into `4917_core`.
 
 ```sh
 cmake --preset debug
@@ -32,8 +38,8 @@ ctest --preset sanitizers
 ```
 
 Production-only builds can disable tests with
-`-DI4917_BUILD_TESTS=OFF`; CMake does not fetch dependencies. Formatting and
-static analysis are optional developer tools and are not part of normal CMake
+`-DI4917_BUILD_TESTS=OFF`. CMake may download Argtable3 when no system package
+is found. Formatting and static analysis are optional developer tools and are not part of normal CMake
 builds. CI pins clang-format 18.1.3 and Cppcheck 2.13.0 on Ubuntu 24.04. On
 Ubuntu 24.04, install the same versions with `sudo apt-get install
 clang-format-18=1:18.1.3-1ubuntu1 cppcheck=2.13.0-2ubuntu3`; on other
@@ -61,8 +67,8 @@ build or run the C implementation.
 
 CTest contains
 deterministic instruction/boundary cases and 10,000 fixed-seed generated
-program checks. The test harness is plain C to keep the default build offline
-and compiler requirements to C11. Generated run-equivalence failures report
+program checks. The test harness is plain C to keep compiler requirements to
+C11. Generated run-equivalence failures report
 the fixed seed and trial index; add any minimized failure as a named test and
 shared case.
 
@@ -175,13 +181,13 @@ a baseline is collected.
 
 An opt-in C++17 harness is available to compare calibration, repetitions, and
 structured reporting with the dependency-free C harness. The C core and CLI
-remain C11; only `4917-google-bench` uses C++. Google Benchmark 1.9.1 is pinned
-to commit `c58e6d0710581e3a08d65c349664128a8d9a2461` and its source archive is
-SHA-256 verified. The framework's own tests and GoogleTest integration are
-disabled. This target adds no CI timing threshold.
+remain C11; only `4917-google-bench` uses C++. The target requires an installed
+Google Benchmark package version 1.9.1 or newer in the 1.x series. Homebrew
+currently provides 1.10.0. This target adds no CI timing threshold.
 
-The normal build does not enable C++ or fetch anything. To use the pinned
-dependency, the explicit preset fetches it during configure:
+The normal build does not enable C++ or require Google Benchmark. After
+installing the Homebrew dependencies and setting `CMAKE_PREFIX_PATH` as shown
+above, configure and build the optional harness with:
 
 ```sh
 cmake --preset google-benchmarks
@@ -205,19 +211,14 @@ records the framework version, C/C++ compilers and flags, build type, source
 revision, and fixture semantics. The framework also records host and CPU
 context where supported.
 
-For an offline setup, install the exact Google Benchmark 1.9.1 CMake package
-and configure with `-DI4917_BUILD_GOOGLE_BENCHMARKS=ON
--DI4917_FETCH_GOOGLE_BENCHMARK=OFF`. Alternatively, pre-populate the CMake
-FetchContent source override and disable fetching:
+If the package is installed outside the default CMake search paths, add its
+prefix to `CMAKE_PREFIX_PATH`. CMake requires the system package for this
+optional target; it does not download Google Benchmark.
 
 ```sh
-cmake -S . -B build/google-benchmarks-offline \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DI4917_BUILD_TESTS=OFF \
-  -DI4917_BUILD_GOOGLE_BENCHMARKS=ON \
-  -DI4917_FETCH_GOOGLE_BENCHMARK=OFF \
-  -DFETCHCONTENT_SOURCE_DIR_GOOGLEBENCHMARK=/path/to/google-benchmark-1.9.1
-cmake --build build/google-benchmarks-offline
+cmake --preset google-benchmarks \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix argtable3);$(brew --prefix google-benchmark)"
+cmake --build --preset google-benchmarks
 ```
 
 Google Benchmark calibrates iteration counts to its minimum time and reports

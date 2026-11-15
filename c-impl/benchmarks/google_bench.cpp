@@ -155,7 +155,8 @@ BENCHMARK(search_length_two);
 
 int main(int argc, char **argv) {
   benchmark::Initialize(&argc, argv);
-  benchmark::AddCustomContext("benchmark_framework", "Google Benchmark 1.9.1");
+  benchmark::AddCustomContext("benchmark_framework",
+                              "Google Benchmark " I4917_BENCH_FRAMEWORK_VERSION);
   benchmark::AddCustomContext("build_type", I4917_BENCH_BUILD_TYPE);
   benchmark::AddCustomContext("c_compiler", I4917_BENCH_C_COMPILER);
   benchmark::AddCustomContext("c_flags", I4917_BENCH_C_FLAGS);
