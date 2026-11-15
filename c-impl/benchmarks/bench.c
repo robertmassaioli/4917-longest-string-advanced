@@ -7,9 +7,11 @@
 #include <time.h>
 
 #define SAMPLE_COUNT 5
-#define INSTRUCTION_BATCH 65536
+#define INSTRUCTION_BATCH (1u << 20)
 static volatile uint64_t sink;
 static bool json_output;
+/* Volatile indirect dispatch keeps whole loops observable with LTO enabled. */
+static i4917_error (* volatile instruction_step)(i4917_state *, i4917_event *) = i4917_step;
 static const char *instruction_names[16] = {
     "halt", "add-r0-r1", "sub-r0-r1", "inc-r0", "inc-r1", "dec-r0",
     "dec-r1", "nop", "output", "load-r0", "load-r1", "store-r0",
@@ -31,37 +33,28 @@ static void run_case(const char *name,const uint8_t *program,size_t length,uint6
     report(name,repetitions,work,"instructions",times);
 }
 static bool run_instruction_case(unsigned opcode,int branch_taken){
-    i4917_state *states=malloc(INSTRUCTION_BATCH*sizeof(*states));
-    if(!states){fputs("unable to allocate instruction benchmark states\n",stderr);return false;}
     double times[SAMPLE_COUNT];uint64_t work=0;
     for(size_t sample=0;sample<SAMPLE_COUNT;sample++){
+        i4917_state state;i4917_init(&state,(uint8_t[]){0},1);
+        state.memory[0]=(uint8_t)opcode;state.memory[1]=15;state.memory[15]=6;
+        state.r0=(uint8_t)(opcode==14?(branch_taken?0:1):(opcode==15?(branch_taken?1:0):7));
+        state.r1=9;
+        double start=now();
         for(size_t i=0;i<INSTRUCTION_BATCH;i++){
-            i4917_state *s=&states[i];
-            i4917_init(s,(uint8_t[]){0},1);
-            s->memory[0]=(uint8_t)opcode;
-            s->memory[1]=15;
-            s->memory[15]=6;
-            s->r0=(uint8_t)(i&15u);
-            s->r1=(uint8_t)((i>>4)&15u);
-            if(opcode==14)s->r0=(uint8_t)(branch_taken?0:1);
-            if(opcode==15)s->r0=(uint8_t)(branch_taken?1:0);
-            s->output_characters=(uint64_t)i;
-        }
-        uint64_t checksum=0;double start=now();
-        for(size_t i=0;i<INSTRUCTION_BATCH;i++){
+            /* Rewind only the PC so each call executes the selected opcode.
+               Registers/memory evolve as that real instruction specifies. */
+            state.pc=0;
             i4917_event event;
-            if(i4917_step(&states[i],&event)!=I4917_OK){free(states);fputs("instruction benchmark state failed validation\n",stderr);return false;}
-            checksum+=(uint64_t)states[i].r0+states[i].r1+states[i].pc+
-                      states[i].memory[15]+states[i].output_characters+
-                      (event.emitted?(uint64_t)event.value:0u)+(event.halted?1u:0u);
+            if(instruction_step(&state,&event)!=I4917_OK){fputs("instruction benchmark state failed validation\n",stderr);return false;}
         }
-        times[sample]=now()-start;work=INSTRUCTION_BATCH;sink+=checksum;
+        times[sample]=now()-start;work=INSTRUCTION_BATCH;
+        sink+=(uint64_t)state.r0+state.r1+state.pc+state.memory[15]+state.output_characters;
     }
     char name[64];
     if(opcode==14||opcode==15)snprintf(name,sizeof(name),"instruction-%02u-%s-%s",opcode,instruction_names[opcode],branch_taken?"taken":"not-taken");
     else snprintf(name,sizeof(name),"instruction-%02u-%s",opcode,instruction_names[opcode]);
     report(name,INSTRUCTION_BATCH,work,"single_steps",times);
-    free(states);return true;
+    return true;
 }
 static bool run_instruction_cases(int selected){
     if(selected>=0){

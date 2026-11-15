@@ -115,13 +115,15 @@ set, or one opcode, run:
 ```
 
 Opcode selectors are decimal values 0–15. Opcodes 14 and 15 each report both
-taken and not-taken cases. Each individual-opcode sample executes 65,536
-single `i4917_step` calls over prebuilt valid states; state setup is outside
-the timed region, while the API's state validation and instruction execution
-are timed. Each fixture takes five timed samples and reports min/median/max
-throughput, so an individual opcode can be rerun while tuning its
-implementation. Record revision, compiler, flags/build type, and machine with
-saved results. No speedup is claimed before a baseline is collected.
+taken and not-taken cases. Each individual-opcode sample executes 1,048,576
+calls to `i4917_step` on one prebuilt valid state, resetting PC before each
+call so the selected opcode repeats. Registers and memory evolve as the
+instruction specifies. State setup is outside the timed region; the API's
+state validation and instruction execution are timed. Each fixture takes five
+timed samples and reports min/median/max throughput, so an individual opcode
+can be rerun while tuning its implementation. Record revision, compiler,
+flags/build type, and machine with saved results. No speedup is claimed before
+a baseline is collected.
 
 ## Optimization rules
 
