@@ -3,7 +3,7 @@ module ProcessorSpec (spec) where
 import Test.Hspec
 import Test.Hspec.QuickCheck
 import Processor
-import Data.Vector.Unboxed ((!))
+import Data.Vector.Unboxed ((!), (//))
 
 -- | Convert legacy tests to Hspec format while maintaining exact same pass/fail behavior
 spec :: Spec
@@ -191,6 +191,33 @@ spec = describe "Processor" $ do
       -- After 5 steps: Step 0->1->0->1->0 = 2.5 iterations, so R0 should be 2 or 3
       r0 finalDevice `shouldSatisfy` (>= 2)  -- Should have incremented at least twice
       isHalted finalDevice `shouldBe` False  -- Should not halt in 5 steps
+
+  context "Loop detection" $ do
+    it "detects loops that produce output" $ do
+      let device = createDevice [8, 1, 13, 0]
+      runProgramLoopCheck device `shouldBe` InfiniteLoopDetected
+
+    it "still detects loops that do not produce output" $ do
+      let device = createDevice [13, 0]
+      runProgramLoopCheck device `shouldBe` InfiniteLoopDetected
+
+    it "counts output before a finite program halts" $ do
+      let device = createDevice [8, 15, 8, 5, 0]
+      runProgramLoopCheck device `shouldBe` ProgramTerminated 3
+
+    it "compares all execution state fields and ignores output count" $ do
+      let base = createDevice [7, 0]
+          sameState = base { outputCount = 12 }
+          differentMemory = base { memory = memory base // [(1, 3)] }
+          differentR0 = base { r0 = 1 }
+          differentR1 = base { r1 = 1 }
+          differentPC = base { pc = 1 }
+      sameExecutionState base sameState `shouldBe` True
+      sameExecutionState base differentMemory `shouldBe` False
+      sameExecutionState base differentR0 `shouldBe` False
+      sameExecutionState base differentR1 `shouldBe` False
+      sameExecutionState base differentPC `shouldBe` False
+      comparePrograms base sameState `shouldBe` False
 
 -- | Helper function to run a program for a limited number of steps
 runProgramLimited :: Device -> Int -> Device

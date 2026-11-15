@@ -14,6 +14,7 @@ module Processor
     , runProgramLoopCheck
     , copyProgram
     , comparePrograms
+    , sameExecutionState
     , programLength
     , runStep
     , isHalted
@@ -179,7 +180,7 @@ runProgramLoopCheck device = go slowDev fastDev 0
             newOutputAcc = outputAcc + outputCount1 + outputCount2
         in if fast2Finished
            then ProgramTerminated newOutputAcc
-           else if comparePrograms newSlow fast2
+           else if sameExecutionState newSlow fast2
                 then InfiniteLoopDetected  -- Loop detected
                 else go newSlow fast2 newOutputAcc
 
@@ -190,6 +191,15 @@ copyProgram = id  -- In Haskell, assignment creates a copy due to immutability
 -- | Compare two programs for equality
 comparePrograms :: Device -> Device -> Bool
 comparePrograms = (==)  -- We derived Eq for Device
+
+-- | Compare only the state that can affect future execution.
+-- The output count is cumulative bookkeeping and does not affect instructions.
+sameExecutionState :: Device -> Device -> Bool
+sameExecutionState left right =
+    memory left == memory right
+        && r0 left == r0 right
+        && r1 left == r1 right
+        && pc left == pc right
 
 -- | Calculate the length of a program (last non-zero memory location + 1)
 programLength :: Device -> Int
