@@ -22,8 +22,9 @@ costs are recovered.
 ## Motivation and verified starting point
 
 `c-impl/src/main.c::search_cmd` enumerates candidate IDs from zero through
-`16^length - 1`, decodes each ID as a length-cell base-16 program, and calls
-`i4917_run_bounded`. Only halted candidates count as completed and can win;
+`16^length - 1`, decodes each ID as a length-cell base-16 program, zero-pads
+the rest of the 16-cell memory, and calls `i4917_run_bounded`. Only halted
+candidates count as completed and can win;
 step-limited candidates are unresolved. It tracks the best output-character
 count, number of winners, and the first winner in enumeration order. The public
 search command currently restricts length to 1–4, so the largest current space
@@ -71,6 +72,20 @@ the same ordering as the current loop, including candidates with leading or
 trailing zero cells. Decoding must be shared with or directly tested against
 the sequential path rather than reimplemented with a different convention.
 
+Here, length counts memory cells containing nibble values, not decoded
+instructions: some instructions also consume an operand cell. It specifies
+exactly `L` supplied cells, including leading/trailing zeroes, rather than
+requiring the last cell to be nonzero. Only those `L` cells vary; memory cells
+`L` through 15 start at zero. Shorter programs padded to `L` cells therefore
+already occur in this space. Do not enumerate all 16 memory cells and filter
+afterward, or require a 16-cell prefix before splitting work.
+
+For example, at `L = 4`, candidate `0x1234` initializes memory with
+`[1, 2, 3, 4, 0, ..., 0]`. At a hypothetical `L = 8`, ID `0x01234567`
+initializes `[0, 1, 2, 3, 4, 5, 6, 7, 0, ..., 0]`; the leading zero is
+retained. Length 8 illustrates the arithmetic below, but remains outside the
+current CLI contract.
+
 Represent a chunk as `(search_id, chunk_id, begin, count)`, where `begin` is
 the first candidate ID and `count` is positive. Its range is the half-open
 interval `[begin, begin + count)`. To avoid addition overflow, validate
@@ -80,12 +95,61 @@ applying the same remaining-range check. Chunk IDs are monotonically increasing
 within a search and are for protocol identity; candidate IDs determine
 enumeration and tie order.
 
+For a validated positive chunk size `C`, generate fresh chunks lazily:
+
+```text
+next_id = 0
+on a request for fresh work, if next_id < total:
+    begin = next_id
+    count = min(C, total - begin)
+    next_id = begin + count
+    dispatch [begin, next_id)
+```
+
+The coordinator is the sole owner of this cursor. A worker claims a range by
+receiving an assignment; it does not compute its own static fraction of the
+domain. Adjacent fresh chunks share one boundary, so they cover `[0, total)`
+without gaps or overlaps regardless of worker count. Retrying a failed chunk
+reuses its range and identity without advancing `next_id`. The last fresh
+chunk may be smaller than `C`, and `C >= total` produces one chunk. Compute
+the number of chunks as `total / C + (total % C != 0)`, avoiding the
+potentially overflowing expression `(total + C - 1) / C`.
+
+| Supplied cells `L` | Domain `[0, total)` | Example `C` | Fresh chunks | Final chunk |
+| --- | --- | --- | --- | --- |
+| 4 | `[0, 65,536)` | 1,000 | 66 | `[65,000, 65,536)`, 536 candidates |
+| 8, illustrative future domain | `[0, 4,294,967,296)` | 1,000,000 | 4,295 | `[4,294,000,000, 4,294,967,296)`, 967,296 candidates |
+
+These chunk sizes are arithmetic examples, not proposed defaults. If eight
+workers take the first eight length-4 chunks, the next worker to finish
+receives `[8,000, 9,000)`, irrespective of which initial chunk it processed.
+There is no requirement for the program to fill all 16 memory cells.
+
 Compute `16^L` using checked multiplication. If the supported maximum length is
 raised, do not silently wrap a `uint64_t` total or candidate cursor. Either
 retain a documented maximum whose entire range fits the chosen integer type,
 or introduce a wider candidate-ID representation and update the protocol,
 decoder, CLI, JSON schema, tests, and Haskell oracle together. Do not imply that
 this proposal expands the current length limit.
+
+Use `uint64_t` consistently for totals, candidate cursors, chunk bounds/counts,
+chunk IDs, and aggregate candidate/winner counts. At length 8, individual IDs
+fit in 32 bits, but `total = 2^32` and the final exclusive endpoint do not.
+With 64-bit arithmetic the full count fits through length 15; at length 16,
+the count and exclusive endpoint are `2^64`, which cannot be represented in
+`uint64_t` even though every individual packed candidate can. Do not use an
+unchecked shift such as `1ULL << (4 * L)` at that boundary. Exercise future
+length-8 arithmetic in isolated range tests, without exposing an unsupported
+CLI length or executing all of its candidates.
+
+If a future command says “at most `L`”, decide whether it means distinct
+zero-padded machine images or separately labelled programs of every supplied
+length. The current `16^L` domain already contains all images obtainable from
+shorter supplied programs, once padded; searching lengths 1 through `L`
+separately instead visits `sum(16^k, k=1..L)` labelled candidates and repeats
+some machine images, changing winner counts and tie ordering. This proposal
+preserves the existing supplied-length domain; a new length mode needs an
+explicit contract rather than a silent reinterpretation of `--length`.
 
 ## Coordinator and worker responsibilities
 
@@ -95,22 +159,39 @@ chunks, and assigns the next chunk whenever a worker becomes idle. Each worker
 evaluates its assigned range sequentially with the production bounded runner,
 then sends exactly one result for that chunk and requests more work. The
 coordinator stops assigning ranges after all candidate IDs have been
-dispatched.
+dispatched and all retries have been assigned. Dispatch completion alone is
+not search completion: wait until every outstanding assignment is accepted
+and the retry queue is empty before finalizing.
 
 The coordinator validates every response against the worker's outstanding
-assignment before accepting it. It tracks per-worker state (idle, assigned,
-finished, failed), assigned chunk identity, and accepted chunk identities.
-Results are committed exactly once. An unknown, duplicated, malformed, or
-out-of-range response is a worker/protocol error; it must not affect totals.
+assignment before accepting it. It tracks per-worker state (starting, idle,
+assigned, stopping, finished, failed), the current channel instance, and the
+outstanding chunk identity. Accepting a complete result merges it and clears
+the assignment as one coordinator operation before any next assignment.
+Responses must match both the live channel instance and its outstanding
+assignment, so stale or duplicate results cannot be accepted a second time.
+Do not retain a set of every accepted chunk ID: that would grow with the
+search. Retain only bounded worker/assignment and pending-retry records plus
+aggregate counters. An unknown, duplicated, malformed, or out-of-range
+response is a worker/protocol error; it must not affect totals.
 
 On a clean worker exit, the coordinator verifies that no assignment remains
 outstanding. If a worker exits or its channel fails while holding a chunk,
-requeue that whole chunk unless cancellation has begun. Since per-candidate
-evaluation has no shared side effects, replay is safe; discard any partial
+requeue that whole chunk unless cancellation has begun. Drain any complete
+buffered result frame before treating EOF as a missing result; a result
+already accepted is never requeued. Close the old channel and reap the old
+process before reassigning its unaccepted chunk, so two live attempts cannot
+race to commit it. Since per-candidate evaluation has no shared side effects,
+replay is safe; discard any partial
 response and do not count it. Put a bounded retry policy on repeated failure
 of the same chunk to avoid an infinite respawn loop. Exhausting the retry
 policy fails the search with a nonzero exit status and clearly marks the result
 as unavailable/incomplete, never as exhaustive.
+
+Prioritize pending retries before issuing fresh chunks and bound their records
+by the configured pool size. If no workers remain, either start a replacement
+under a bounded startup/restart policy or fail; never wait forever with pending
+work and no process capable of doing it.
 
 The coordinator owns final output. Workers do not print progress or final
 search results to the user's stdout. Optional progress reporting, if added,
@@ -130,20 +211,39 @@ can differ.
 
 The initial protocol needs only:
 
+- `READY` from a freshly initialized worker; this is its initial request for
+  work, sent once on its private channel;
 - `WORK(search_id, chunk_id, begin, count, length, max_steps)` from coordinator
   to worker;
 - `RESULT(search_id, chunk_id, completed, unresolved, best_output_chars,
   winner_count, first_winner_id)` from worker to coordinator;
 - `STOP` and `ERROR` messages for normal shutdown and protocol/runtime failure.
 
+A valid `RESULT` also requests the next chunk, so no second `READY` is sent
+between assignments. The coordinator answers the initial `READY` or an
+accepted `RESULT` with either one `WORK` or `STOP` if there is currently no
+assignable work. An idle worker may be stopped while other chunks are still
+running; pending retries can use remaining or replacement workers. A worker
+has at most one assignment, and an unexpected `READY`, `WORK`, or `RESULT`
+for its current state is a protocol error. The parent must service all worker
+channels using bounded buffers/nonblocking I/O or an equivalent event-loop
+mechanism; it must not block waiting for one slow worker while other workers
+are blocked trying to send results. Handle short reads/writes and interrupted
+I/O, and put bounded startup/shutdown handling around workers that never send
+`READY` or fail to exit after `STOP`.
+
 Encode integer fields in a documented fixed-width byte order and validate
 message version, type, length, field ranges, and assignment identity. The
 worker result is an aggregate, so IPC volume stays proportional to the number
 of chunks rather than candidates. The coordinator can validate structural
-invariants such as `completed + unresolved == count`, `winner_count <=
-completed`, and winner IDs lying inside the assigned range. These checks
-detect protocol errors but are not a replacement for differential correctness
-tests.
+invariants without overflowing: first check `completed <= count`, then
+`unresolved == count - completed`, `winner_count <= completed`, and winner
+IDs lying inside the assigned range. Define an explicit absent-winner flag
+for `first_winner_id` when `winner_count == 0`; ID zero is a valid winner and
+cannot be a sentinel. Require zero winners exactly when `completed == 0`;
+otherwise require a positive winner count and an in-range first-winner ID.
+These checks detect protocol errors but are not a replacement for differential
+correctness tests.
 
 Avoid shared-memory queues and cross-process atomic state in the first version.
 A parent-owned queue is small, easy to audit, naturally supports retries, and
@@ -164,7 +264,10 @@ aggregate the following using checked arithmetic:
 - lowest candidate ID attaining the maximum.
 
 For each chunk, the worker reports its maximum, the count at that maximum, and
-the lowest winning candidate ID. When merging a chunk summary:
+the lowest winning candidate ID. Ignore chunks with zero halted candidates
+when merging winner fields, while still adding their accounting counters.
+When merging a nonempty chunk summary, initialize the winner fields if no
+halted candidate has yet been accepted; otherwise:
 
 1. If its best score exceeds the global best, replace the score, winner count,
    and first winner ID.
@@ -175,8 +278,12 @@ the lowest winning candidate ID. When merging a chunk summary:
 This produces the same first winner as sequential ascending-ID enumeration
 without retaining all results. A chunk with no halted candidate reports zero
 winners and no first-winner ID; zero-output halting programs remain winners
-under the current behavior. The output schema and text format should remain
-stable between sequential and parallel search, except for explicitly added
+under the current behavior. Preserve the existing JSON representation when
+the entire search has no winners: `best_output_characters` and `winner_count`
+are zero and `first_winner` is an `L`-element zero array. The internal absent
+winner flag does not by itself authorize a public schema change. The output
+schema and text format should remain stable between sequential and parallel
+search, except for explicitly added
 optional execution metadata such as worker count. Do not make elapsed time or
 worker completion order part of correctness output.
 
@@ -191,13 +298,23 @@ Every candidate uses the exact existing `--max-steps` bound; reaching it is an
 unresolved candidate, not a worker failure. Keep candidate-level accounting
 and aggregate unresolved counts unchanged.
 
+The current sequential `search_cmd` counts every non-HALT runner result,
+including `I4917_RUN_ERROR`, as unresolved. Preserve that behavior for parity;
+distinguish it from worker startup, IPC, or coordinator errors, which prevent
+accounting for a chunk. Changing both search paths to report candidate runner
+errors separately would be a separate semantic decision.
+
 On user cancellation or coordinator shutdown, stop assigning chunks, tell idle
 workers to stop, request assigned workers to stop at a safe candidate boundary,
 and wait for children to exit. Discard partial chunk results unless the
 protocol explicitly supports a completed-prefix result with a separately
 specified meaning. Cancellation must not be reported as exhaustive. Bound
 shutdown waiting and then terminate/reap remaining children using the chosen
-platform abstraction. Ensure every child is reaped and every pipe/handle is
+platform abstraction. A worker must check for cancellation between candidates
+rather than only after an entire chunk; this may require polling the command
+channel while a chunk is assigned. A single long candidate may still run until
+its bound, so cancellation of the parent must not wait indefinitely for a
+candidate boundary. Ensure every child is reaped and every pipe/handle is
 closed on all error paths.
 
 Validate `--jobs` and `--chunk-size` before starting workers. Reject zero,
@@ -262,18 +379,27 @@ compare sequential and parallel results exactly for the same inputs. Add tests
 that cover:
 
 - Every current length (1–4) where runtime permits, varied step limits
-  including zero, and searches with all halted, all unresolved, and mixed
-  candidates.
+  including zero, all-unresolved searches at a zero step limit, mixed
+  searches, and isolated chunk fixtures with all halted candidates.
 - Chunk sizes 1, a non-divisor of the candidate count, equal to the total,
   greater than the total, and boundary values; jobs 1, 2, and more jobs than
   chunks.
 - Candidate range decoding at first/last IDs and chunk boundaries, verifying
   lexicographic program order and no gaps or overlaps in the dispatched ranges.
+- Direct scheduling/decoding tests for the length-4 and hypothetical length-8
+  examples above, leading/trailing zeroes, the `2^32` endpoint, checked
+  `16^16` rejection, and chunk-count arithmetic near `UINT64_MAX`; these
+  tests inspect ranges without evaluating the entire large domain.
 - Tie aggregation across chunks that complete out of order, including multiple
   zero-output winners and winners split across the first/last chunk.
 - Checked range arithmetic, counter aggregation, malformed protocol frames,
   stale/duplicate chunk IDs, worker exits before result, worker exits after a
   full result, retry limit, and coordinator cancellation/shutdown.
+- Initial `READY` and implicit request-after-`RESULT` transitions, short or
+  truncated frames, cancellation during a chunk, bounded restart failure, and
+  no-winner chunk summaries arriving before/after zero-output winners.
+- A long sequence of tiny chunks with bounded coordinator storage, verifying
+  accepted-result deduplication does not require retaining completed chunk IDs.
 - Repeated runs with randomized worker delays to confirm byte-for-byte stable
   result fields and first-winner selection.
 - Differential checks against the Haskell or independent unpruned oracle for
@@ -321,8 +447,8 @@ available CPU quota affect results.
 1. Extract or isolate candidate-ID decoding and chunk-range arithmetic, keeping
    the sequential search output unchanged; add direct range and tie-order tests.
 2. Define the versioned worker protocol and platform process abstraction. Add a
-   worker mode that evaluates exactly one assigned chunk and returns one
-   summary.
+   persistent worker mode that evaluates one assigned chunk at a time and
+   returns one summary before waiting for another assignment.
 3. Implement the coordinator's bounded dynamic queue, response validation,
    retry/reap behavior, deterministic summary merge, and cancellation cleanup.
 4. Add CLI configuration and CTest coverage for process parity and injected
@@ -345,3 +471,7 @@ available CPU quota affect results.
 - Is a worker pool reused across multiple searches in one process worth the
   additional lifecycle complexity, or is one-shot CLI search the only initial
   target?
+- If “at most length” is desired later, should candidates be distinct padded
+  machine images (already covered by the current domain) or programs labelled
+  by supplied length? Should length 8 be supported? Both are separate decisions
+  from chunk scheduling and must not silently expand this implementation.
