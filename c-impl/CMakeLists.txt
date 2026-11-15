@@ -3,6 +3,8 @@ project(4917_c VERSION 1.0.0 LANGUAGES C)
 
 option(I4917_BUILD_TESTS "Build CTest unit/property tests" ON)
 option(I4917_BUILD_BENCHMARKS "Build standalone benchmark suite" OFF)
+option(I4917_BUILD_GOOGLE_BENCHMARKS "Build optional Google Benchmark comparison suite" OFF)
+option(I4917_FETCH_GOOGLE_BENCHMARK "Fetch pinned Google Benchmark when no package is installed" ON)
 option(I4917_ENABLE_SANITIZERS "Enable AddressSanitizer and UBSan" OFF)
 option(I4917_ENABLE_HASKELL_DIFFERENTIAL "Register Haskell differential tests when Stack is available" OFF)
 
@@ -83,5 +85,57 @@ if(I4917_BUILD_BENCHMARKS)
   target_link_libraries(4917-bench PRIVATE 4917_core)
   if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     target_compile_options(4917-bench PRIVATE -O3 -Wall -Wextra -Wpedantic)
+  endif()
+endif()
+
+if(I4917_BUILD_GOOGLE_BENCHMARKS)
+  # The optional comparison harness is the only C++ target. Production targets
+  # and the core library above remain C11 and have no benchmark dependency.
+  enable_language(CXX)
+  set(CMAKE_CXX_STANDARD 17)
+  set(CMAKE_CXX_STANDARD_REQUIRED ON)
+  set(CMAKE_CXX_EXTENSIONS OFF)
+
+  find_package(benchmark 1.9.1 EXACT CONFIG QUIET)
+  if(NOT TARGET benchmark::benchmark)
+    if(NOT I4917_FETCH_GOOGLE_BENCHMARK AND
+       NOT FETCHCONTENT_SOURCE_DIR_GOOGLEBENCHMARK)
+      message(FATAL_ERROR
+        "Google Benchmark 1.9.1 was not found. Install its CMake package, "
+        "provide FETCHCONTENT_SOURCE_DIR_GOOGLEBENCHMARK, or enable "
+        "I4917_FETCH_GOOGLE_BENCHMARK.")
+    endif()
+    include(FetchContent)
+    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(googlebenchmark
+      URL https://github.com/google/benchmark/archive/c58e6d0710581e3a08d65c349664128a8d9a2461.tar.gz
+      URL_HASH SHA256=17fbd9d8ea361688f3059bd381afe828a55479cf3ce77f96b351f30b4a481bc8
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(googlebenchmark)
+  endif()
+
+  add_executable(4917-google-bench benchmarks/google_bench.cpp)
+  target_link_libraries(4917-google-bench PRIVATE 4917_core benchmark::benchmark)
+  target_compile_definitions(4917-google-bench PRIVATE
+    I4917_BENCH_BUILD_TYPE="${CMAKE_BUILD_TYPE}"
+    I4917_BENCH_C_COMPILER="${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}"
+    I4917_BENCH_C_FLAGS="${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_RELEASE}"
+    I4917_BENCH_CXX_COMPILER="${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}"
+    I4917_BENCH_CXX_FLAGS="${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_RELEASE} -O3")
+  execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    OUTPUT_VARIABLE I4917_SOURCE_REVISION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  if(NOT I4917_SOURCE_REVISION)
+    set(I4917_SOURCE_REVISION "unknown")
+  endif()
+  target_compile_definitions(4917-google-bench PRIVATE
+    I4917_SOURCE_REVISION="${I4917_SOURCE_REVISION}")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+    target_compile_options(4917-google-bench PRIVATE -O3 -Wall -Wextra -Wpedantic)
   endif()
 endif()
