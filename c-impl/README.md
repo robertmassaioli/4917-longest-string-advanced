@@ -7,8 +7,21 @@ execution, and no runtime dependency on Stack, Python, or a test framework.
 
 ## Build and run
 
-Requires CMake 3.20+ and a C11 compiler. The presets use Unix Makefiles, so
-Ninja is not required.
+Requires CMake 3.20+, a C11 compiler, and Argtable3 3.3.1 or newer. The presets
+use Unix Makefiles, so Ninja is not required. On macOS, install the C
+dependencies with Homebrew:
+
+```sh
+brew install argtable3 google-benchmark
+export CMAKE_PREFIX_PATH="$(brew --prefix argtable3):$(brew --prefix google-benchmark)"
+```
+
+Argtable3 is required by the CLI. Google Benchmark is only needed for the
+optional C++ benchmark comparison target. CMake prefers the installed
+Argtable3 package; if it is missing, it downloads the pinned 3.3.1 release
+archive with a SHA-256 check. Disable that fallback with
+`-DI4917_FETCH_ARGTABLE3=OFF` when an installed package is required. Neither
+library is linked into `4917_core`.
 
 ```sh
 cmake --preset debug
@@ -25,14 +38,50 @@ ctest --preset sanitizers
 ```
 
 Production-only builds can disable tests with
-`-DI4917_BUILD_TESTS=OFF`; CMake does not fetch dependencies. CTest contains
+`-DI4917_BUILD_TESTS=OFF`. CMake may download Argtable3 when no system package
+is found. Formatting and static analysis are optional developer tools and are not part of normal CMake
+builds. CI pins clang-format 18.1.3 and Cppcheck 2.13.0 on Ubuntu 24.04. On
+Ubuntu 24.04, install the same versions with `sudo apt-get install
+clang-format-18=1:18.1.3-1ubuntu1 cppcheck=2.13.0-2ubuntu3`; on other
+platforms, use clang-format 18.1.3 and Cppcheck 2.13.0.
+
+```sh
+# From the repository root
+# Check formatting without changing files (requires clang-format-18)
+CLANG_FORMAT=clang-format-18 c-impl/scripts/format-c.sh --check
+
+# Apply formatting to C sources, headers, tests, and benchmarks
+CLANG_FORMAT=clang-format-18 c-impl/scripts/format-c.sh --fix
+
+# Configure a compile database, then run the CI Cppcheck profile
+cmake -S c-impl -B c-impl/build/cppcheck -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DI4917_BUILD_BENCHMARKS=ON
+c-impl/scripts/check-cppcheck.sh
+```
+
+Cppcheck reads only translation units from this CMake compilation database
+and uses the actual C11 include paths and definitions. The enforced profile
+starts with error and warning diagnostics; findings should be fixed or
+narrowly suppressed with an adjacent explanation. Neither tool is needed to
+build or run the C implementation.
+
+CTest contains
 deterministic instruction/boundary cases and 10,000 fixed-seed generated
-program checks. The test harness is plain C to keep the default build offline
-and compiler requirements to C11. Generated run-equivalence failures report
+program checks. The test harness is plain C to keep compiler requirements to
+C11. Generated run-equivalence failures report
 the fixed seed and trial index; add any minimized failure as a named test and
 shared case.
 
 ## Commands
+
+Run `4917-c --help` for the command list, or append `--help`/`-h` to a
+subcommand for its options. Each command accepts only its own options.
+Repeated scalar options, unknown options, missing option values, and extra
+positional arguments are rejected with exit code 2 and command-specific usage
+on stderr. Numeric values must be nonnegative decimal digits and must fit in
+`uint64_t`; command-specific range errors are also reported on stderr with
+exit code 2. CSV parsing remains domain validation performed by the frontend,
+after option parsing.
 
 `run` validates 1–16 CSV nibble values, pads memory with zeroes, resets the
 machine, and executes up to the default 10,000 steps. HALT counts as a step.
@@ -72,7 +121,10 @@ the integration boundary used for one-step differential testing.
 
 The C unit/property suite checks arithmetic laws for all nibble pairs, opcode
 boundaries, wrapping, output count, self-modification, cycle classification,
-run limits, and generated run-vs-step equivalence. Optional differential
+run limits, and generated run-vs-step equivalence. When Python 3 is available,
+CTest also runs `cli-contract`, which checks help, all command forms, defaults,
+malformed and out-of-range values, duplicate and irrelevant options, extra
+arguments, CSV validation, exit codes, and error streams. Optional differential
 testing uses a batched Haskell oracle and Python driver:
 
 ```sh
@@ -125,6 +177,62 @@ timed samples and reports min/median/max throughput, so an individual opcode
 can be rerun while tuning its implementation. Record revision, compiler,
 flags/build type, and machine with saved results. No speedup is claimed before
 a baseline is collected.
+
+### Optional Google Benchmark comparison
+
+An opt-in C++17 harness is available to compare calibration, repetitions, and
+structured reporting with the dependency-free C harness. The C core and CLI
+remain C11; only `4917-google-bench` uses C++. The target requires an installed
+Google Benchmark package version 1.9.1 or newer in the 1.x series. Homebrew
+currently provides 1.10.0. This target adds no CI timing threshold.
+
+The normal build does not enable C++ or require Google Benchmark. After
+installing the Homebrew dependencies and setting `CMAKE_PREFIX_PATH` as shown
+above, configure and build the optional harness with:
+
+```sh
+cmake --preset google-benchmarks
+cmake --build --preset google-benchmarks
+./build/make-google-benchmarks/4917-google-bench \
+  --benchmark_repetitions=5 \
+  --benchmark_report_aggregates_only=false \
+  --benchmark_out=google-benchmark-results.json \
+  --benchmark_out_format=json
+```
+
+The harness registers all 16 single-instruction workloads, with taken and
+not-taken cases for both conditional branches, plus short straight-line,
+arithmetic-heavy, and exhaustive length-two search workloads. Its
+per-instruction fixture uses a prebuilt valid state, rewinds PC in the timed
+loop, and measures `i4917_step` through the exported C API, including state
+validation. Each fixture performs a correctness preflight before timing. The
+Google output includes raw repetition records and aggregates; counters name
+single steps, logical steps, or candidates per second. Custom JSON context
+records the framework version, C/C++ compilers and flags, build type, source
+revision, and fixture semantics. The framework also records host and CPU
+context where supported.
+
+If the package is installed outside the default CMake search paths, add its
+prefix to `CMAKE_PREFIX_PATH`. CMake requires the system package for this
+optional target; it does not download Google Benchmark.
+
+```sh
+cmake --preset google-benchmarks \
+  -DCMAKE_PREFIX_PATH="$(brew --prefix argtable3);$(brew --prefix google-benchmark)"
+cmake --build --preset google-benchmarks
+```
+
+Google Benchmark calibrates iteration counts to its minimum time and reports
+repetitions/statistics; set `--benchmark_min_time=0.01s` for a short
+registration smoke run. For useful comparisons, keep the C core build,
+compiler, flags, machine, and workload fixtures the same, use at least five
+repetitions on an otherwise idle host, and retain the complete JSON output. The
+existing C harness instead uses fixed work counts and five min/median/max samples. Neither
+framework nor repetitions make local timings statistically conclusive: CPU
+frequency, thermal state, background work, and machine variation still affect
+results. Hardware performance counters remain optional and are not required by
+this harness. Treat the framework as an evaluation path until a controlled
+comparison establishes ongoing value.
 
 ## Optimization rules
 

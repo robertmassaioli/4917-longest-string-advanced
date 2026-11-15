@@ -38,3 +38,22 @@ jobs:
       - run: stack test
         working-directory: haskell-impl
         timeout-minutes: 20
+
+  c-quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned formatting and analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            clang-format-18=1:18.1.3-1ubuntu1 \
+            cppcheck=2.13.0-2ubuntu3
+      - name: Check C formatting
+        run: CLANG_FORMAT=clang-format-18 c-impl/scripts/format-c.sh --check
+      - name: Configure C compilation database
+        run: >-
+          cmake -S c-impl -B c-impl/build/cppcheck
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DI4917_BUILD_BENCHMARKS=ON
+      - name: Run Cppcheck
+        run: c-impl/scripts/check-cppcheck.sh

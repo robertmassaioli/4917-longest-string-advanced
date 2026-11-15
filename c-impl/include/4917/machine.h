@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define I4917_MEMORY_SIZE 16
 
 typedef struct {
@@ -34,5 +38,9 @@ void i4917_init(i4917_state *state, const uint8_t *program, size_t length);
 i4917_error i4917_step(i4917_state *state, i4917_event *event);
 i4917_run_result i4917_run_bounded(const i4917_state *initial, uint64_t limit);
 i4917_run_result i4917_run_until_halt_or_cycle(const i4917_state *initial);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
