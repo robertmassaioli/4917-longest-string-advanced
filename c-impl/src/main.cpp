@@ -1,4 +1,5 @@
 #include "4917/machine.h"
+#include "machine_internal.hpp"
 
 #include <CLI/CLI.hpp>
 
@@ -171,9 +172,7 @@ int search_cmd(uint64_t length, bool json) {
             program[static_cast<size_t>(i - 1)] = static_cast<uint8_t>(encoded & 15U);
             encoded >>= 4;
         }
-        i4917_state initial;
-        i4917_init(&initial, program.data(), static_cast<size_t>(length));
-        const i4917_run_result result = i4917_run_until_halt_or_cycle(&initial);
+        const i4917_run_result result = i4917_detail::run_search_program(program);
         if (result.termination == I4917_HALTED) {
             ++halted;
             if (!winners || result.output_characters > best) {

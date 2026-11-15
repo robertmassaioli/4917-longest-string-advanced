@@ -1,0 +1,83 @@
+{
+  "command": "4917-cpp search --length 5 --json",
+  "baseline": "/tmp/4917-cpp-baseline-61eb925",
+  "candidate": "/Users/robertmassaioli/Code/4917-longest-string-advanced.worktrees/cpp-opt-search-entry/c-impl/build/make-release/4917-cpp",
+  "pairs": [
+    {
+      "pair": 1,
+      "baseline_elapsed_ns": 111150459,
+      "candidate_elapsed_ns": 106882500
+    },
+    {
+      "pair": 2,
+      "candidate_elapsed_ns": 102686000,
+      "baseline_elapsed_ns": 111293042
+    },
+    {
+      "pair": 3,
+      "baseline_elapsed_ns": 111316791,
+      "candidate_elapsed_ns": 104994417
+    },
+    {
+      "pair": 4,
+      "candidate_elapsed_ns": 105054333,
+      "baseline_elapsed_ns": 115594416
+    },
+    {
+      "pair": 5,
+      "baseline_elapsed_ns": 109673375,
+      "candidate_elapsed_ns": 105194542
+    },
+    {
+      "pair": 6,
+      "candidate_elapsed_ns": 108298291,
+      "baseline_elapsed_ns": 111295125
+    },
+    {
+      "pair": 7,
+      "baseline_elapsed_ns": 110436084,
+      "candidate_elapsed_ns": 105068750
+    },
+    {
+      "pair": 8,
+      "candidate_elapsed_ns": 106621708,
+      "baseline_elapsed_ns": 109420791
+    },
+    {
+      "pair": 9,
+      "baseline_elapsed_ns": 108909959,
+      "candidate_elapsed_ns": 106214667
+    },
+    {
+      "pair": 10,
+      "candidate_elapsed_ns": 110999125,
+      "baseline_elapsed_ns": 113591792
+    },
+    {
+      "pair": 11,
+      "baseline_elapsed_ns": 109815833,
+      "candidate_elapsed_ns": 99519792
+    },
+    {
+      "pair": 12,
+      "candidate_elapsed_ns": 108111208,
+      "baseline_elapsed_ns": 113178750
+    },
+    {
+      "pair": 13,
+      "baseline_elapsed_ns": 105959334,
+      "candidate_elapsed_ns": 110849916
+    },
+    {
+      "pair": 14,
+      "candidate_elapsed_ns": 109496708,
+      "baseline_elapsed_ns": 110273667
+    },
+    {
+      "pair": 15,
+      "baseline_elapsed_ns": 110242917,
+      "candidate_elapsed_ns": 103704583
+    }
+  ],
+  "output": "{\"schema\":\"4917-search-v2\",\"length\":5,\"candidate_count\":\"1048576\",\"halted\":\"969109\",\"cycled\":\"79467\",\"errors\":\"0\",\"exhaustive\":true,\"best_output_characters\":\"62\",\"winner_count\":\"72\",\"first_winner\":[4,1,8,10,15]}\n"
+}

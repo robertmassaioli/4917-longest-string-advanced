@@ -15,6 +15,41 @@ static void step_case(uint8_t op, uint8_t r0, uint8_t r1, uint8_t operand, uint8
     assert(s.r1 == er1);
     assert(s.pc == epc);
 }
+/* Independent first-visit oracle checks complete state and output, including
+   cycles with a nonempty prefix and programs that modify their own code. */
+static void check_cycle_run(const uint8_t *program, size_t length) {
+    i4917_state initial;
+    i4917_init(&initial, program, length);
+    i4917_state walked = initial;
+    i4917_state seen[512];
+    for (uint64_t n = 0; n < 512; ++n) {
+        bool repeated = false;
+        for (uint64_t i = 0; i < n; ++i)
+            if (walked.r0 == seen[i].r0 && walked.r1 == seen[i].r1 &&
+                walked.pc == seen[i].pc && memcmp(walked.memory, seen[i].memory, 16) == 0) {
+                repeated = true;
+                break;
+            }
+        if (repeated) {
+            i4917_run_result actual = i4917_run_until_halt_or_cycle(&initial);
+            assert(actual.termination == I4917_CYCLE && actual.steps == n);
+            assert(actual.output_characters == walked.output_characters);
+            assert(memcmp(&actual.final_state, &walked, sizeof(walked)) == 0);
+            return;
+        }
+        seen[n] = walked;
+        i4917_event event;
+        assert(i4917_step(&walked, &event) == I4917_OK);
+        if (event.halted) {
+            i4917_run_result actual = i4917_run_until_halt_or_cycle(&initial);
+            assert(actual.termination == I4917_HALTED && actual.steps == n + 1);
+            assert(actual.output_characters == walked.output_characters);
+            assert(memcmp(&actual.final_state, &walked, sizeof(walked)) == 0);
+            return;
+        }
+    }
+}
+
 int main(void) {
     /* Arithmetic laws cover every operand pair and wrap in both directions. */
     for (unsigned a = 0; a < 16; a++)
@@ -122,6 +157,21 @@ int main(void) {
     i4917_init(&init, (uint8_t[]){11, 0, 13, 0}, 4);
     r = i4917_run_until_halt_or_cycle(&init);
     assert(r.termination == I4917_HALTED && r.steps == 3);
+    for (unsigned packed = 0; packed < 4096; ++packed) {
+        uint8_t program[] = {(uint8_t)(packed & 15), (uint8_t)((packed >> 4) & 15),
+                             (uint8_t)((packed >> 8) & 15)};
+        check_cycle_run(program, sizeof(program));
+    }
+    /* Full memory exercises PC wrap and operand wrap in cycle detection. */
+    uint32_t cycle_seed = 0x1749u;
+    for (unsigned trial = 0; trial < 1000; ++trial) {
+        uint8_t program[16];
+        for (unsigned i = 0; i < 16; ++i) {
+            cycle_seed = cycle_seed * 1664525u + 1013904223u;
+            program[i] = (uint8_t)(cycle_seed >> 28);
+        }
+        check_cycle_run(program, sizeof(program));
+    }
     /* Deterministic generated step/run equivalence and valid-state invariants. */
     uint32_t seed = 0x4917u;
     for (unsigned trial = 0; trial < 10000; trial++) {

@@ -1,0 +1,113 @@
+{
+  "command": "4917-cpp search --length 5 --json",
+  "baseline": "/tmp/4917-cpp-baseline-61eb925",
+  "candidate": "c-impl/build/make-release/4917-cpp",
+  "pairs": [
+    {
+      "pair": 1,
+      "baseline_elapsed_ns": 105418375,
+      "candidate_elapsed_ns": 81654792
+    },
+    {
+      "pair": 2,
+      "candidate_elapsed_ns": 89822542,
+      "baseline_elapsed_ns": 113159916
+    },
+    {
+      "pair": 3,
+      "baseline_elapsed_ns": 109081292,
+      "candidate_elapsed_ns": 88721958
+    },
+    {
+      "pair": 4,
+      "candidate_elapsed_ns": 90748500,
+      "baseline_elapsed_ns": 113218500
+    },
+    {
+      "pair": 5,
+      "baseline_elapsed_ns": 111918750,
+      "candidate_elapsed_ns": 88457792
+    },
+    {
+      "pair": 6,
+      "candidate_elapsed_ns": 79509542,
+      "baseline_elapsed_ns": 113086583
+    },
+    {
+      "pair": 7,
+      "baseline_elapsed_ns": 112491375,
+      "candidate_elapsed_ns": 91583959
+    },
+    {
+      "pair": 8,
+      "candidate_elapsed_ns": 83528875,
+      "baseline_elapsed_ns": 112116958
+    },
+    {
+      "pair": 9,
+      "baseline_elapsed_ns": 115029250,
+      "candidate_elapsed_ns": 90824417
+    },
+    {
+      "pair": 10,
+      "candidate_elapsed_ns": 90538834,
+      "baseline_elapsed_ns": 111207833
+    },
+    {
+      "pair": 11,
+      "baseline_elapsed_ns": 112142250,
+      "candidate_elapsed_ns": 87040541
+    },
+    {
+      "pair": 12,
+      "candidate_elapsed_ns": 90711875,
+      "baseline_elapsed_ns": 113457875
+    },
+    {
+      "pair": 13,
+      "baseline_elapsed_ns": 109655125,
+      "candidate_elapsed_ns": 75227167
+    },
+    {
+      "pair": 14,
+      "candidate_elapsed_ns": 83512000,
+      "baseline_elapsed_ns": 114112667
+    },
+    {
+      "pair": 15,
+      "baseline_elapsed_ns": 111805125,
+      "candidate_elapsed_ns": 87036167
+    },
+    {
+      "pair": 16,
+      "candidate_elapsed_ns": 100691416,
+      "baseline_elapsed_ns": 114738584
+    },
+    {
+      "pair": 17,
+      "baseline_elapsed_ns": 111086708,
+      "candidate_elapsed_ns": 82740875
+    },
+    {
+      "pair": 18,
+      "candidate_elapsed_ns": 89585792,
+      "baseline_elapsed_ns": 113369625
+    },
+    {
+      "pair": 19,
+      "baseline_elapsed_ns": 109523833,
+      "candidate_elapsed_ns": 94708334
+    },
+    {
+      "pair": 20,
+      "candidate_elapsed_ns": 82988417,
+      "baseline_elapsed_ns": 107930542
+    },
+    {
+      "pair": 21,
+      "baseline_elapsed_ns": 108256459,
+      "candidate_elapsed_ns": 86412166
+    }
+  ],
+  "output": "{\"schema\":\"4917-search-v2\",\"length\":5,\"candidate_count\":\"1048576\",\"halted\":\"969109\",\"cycled\":\"79467\",\"errors\":\"0\",\"exhaustive\":true,\"best_output_characters\":\"62\",\"winner_count\":\"72\",\"first_winner\":[4,1,8,10,15]}\n"
+}

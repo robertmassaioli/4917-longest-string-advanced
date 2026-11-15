@@ -1,8 +1,7 @@
 #include "4917/machine.h"
+#include "machine_internal.hpp"
 
 #include <cstring>
-#include <new>
-#include <vector>
 
 bool i4917_state_valid(const i4917_state *s) {
     if (s == NULL || s->r0 > 15 || s->r1 > 15 || s->pc > 15)
@@ -171,45 +170,109 @@ i4917_run_result i4917_run_bounded(const i4917_state *initial, uint64_t limit) {
     return result(s, steps, 0, I4917_LIMIT_REACHED);
 }
 
-/* A visited-state table preserves the actual run prefix and avoids Floyd's
-   speculative output problem. This mode is diagnostic; bounded hot execution
-   uses the allocation-free loop above. */
+/* Detector states ignore output: speculative steps must not overflow before
+   the actual execution does. Public stepping still validates every state. */
+static void advance_execution(i4917_state *s) {
+    const uint8_t pc = s->pc;
+    const uint8_t next = static_cast<uint8_t>((pc + 1U) & 15U);
+    const uint8_t after_operand = static_cast<uint8_t>((pc + 2U) & 15U);
+    switch (s->memory[pc]) {
+    case 0: s->pc = next; break;
+    case 1: s->r0 = static_cast<uint8_t>((s->r0 + s->r1) & 15U); s->pc = next; break;
+    case 2: s->r0 = static_cast<uint8_t>((s->r0 + 16U - s->r1) & 15U); s->pc = next; break;
+    case 3: s->r0 = static_cast<uint8_t>((s->r0 + 1U) & 15U); s->pc = next; break;
+    case 4: s->r1 = static_cast<uint8_t>((s->r1 + 1U) & 15U); s->pc = next; break;
+    case 5: s->r0 = static_cast<uint8_t>((s->r0 - 1U) & 15U); s->pc = next; break;
+    case 6: s->r1 = static_cast<uint8_t>((s->r1 - 1U) & 15U); s->pc = next; break;
+    case 7: s->pc = next; break;
+    case 8: s->pc = after_operand; break;
+    case 9: s->r0 = s->memory[s->memory[next]]; s->pc = after_operand; break;
+    case 10: s->r1 = s->memory[s->memory[next]]; s->pc = after_operand; break;
+    case 11: s->memory[s->memory[next]] = s->r0; s->pc = after_operand; break;
+    case 12: s->memory[s->memory[next]] = s->r1; s->pc = after_operand; break;
+    case 13: s->pc = s->memory[next]; break;
+    case 14: s->pc = s->r0 == 0 ? s->memory[next] : after_operand; break;
+    case 15: s->pc = s->r0 != 0 ? s->memory[next] : after_operand; break;
+    }
+}
+
+static i4917_run_result replay_execution(const i4917_state &initial, uint64_t limit,
+                                        i4917_termination termination) {
+    i4917_state s = initial;
+    for (uint64_t n = 0; n < limit; ++n) {
+        i4917_event event;
+        if (i4917_step(&s, &event) != I4917_OK)
+            return result(s, n, 0, I4917_RUN_ERROR);
+        if (event.halted)
+            return result(s, n + 1, 0, I4917_HALTED);
+    }
+    return result(s, limit, 0, termination);
+}
+
+/* Strictly increasing PCs cannot revisit an execution state. Count this
+   prefix directly, then use constant-space Floyd detection if control goes
+   backwards or wraps. Replay restores the first-repeat output semantics. */
+static i4917_run_result run_initialized(i4917_state start) {
+    i4917_state probe = start;
+    for (uint64_t n = 0;; ++n) {
+        const uint8_t old_pc = probe.pc;
+        i4917_event event;
+        if (i4917_step(&probe, &event) != I4917_OK)
+            return result(probe, n, 0, I4917_RUN_ERROR);
+        if (event.halted)
+            return result(probe, n + 1, 0, I4917_HALTED);
+        if (probe.pc <= old_pc)
+            break;
+    }
+
+    i4917_state tortoise = start;
+    i4917_state hare = start;
+    uint64_t rounds = 0;
+    do {
+        advance_execution(&tortoise);
+        advance_execution(&hare);
+        advance_execution(&hare);
+        if (++rounds == UINT64_MAX)
+            return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+    } while (!same_execution(&tortoise, &hare));
+
+    uint64_t prefix = 0;
+    tortoise = start;
+    while (!same_execution(&tortoise, &hare)) {
+        advance_execution(&tortoise);
+        advance_execution(&hare);
+        if (++prefix == UINT64_MAX)
+            return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+    }
+    uint64_t period = 1;
+    advance_execution(&hare);
+    while (!same_execution(&tortoise, &hare)) {
+        if (period == UINT64_MAX)
+            return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+        ++period;
+        advance_execution(&hare);
+    }
+    if (prefix > UINT64_MAX - period)
+        return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+    return replay_execution(start, prefix + period, I4917_CYCLE);
+}
+
 i4917_run_result i4917_run_until_halt_or_cycle(const i4917_state *initial) {
     if (initial == NULL) {
         i4917_state empty{};
         return result(empty, 0, 0, I4917_RUN_ERROR);
     }
-    i4917_state s = *initial;
-    const uint64_t initial_output = s.output_characters;
-    if (!i4917_state_valid(&s))
-        return result(s, 0, initial_output, I4917_RUN_ERROR);
-    s.r0 = s.r1 = s.pc = 0;
-    s.output_characters = 0;
-    std::vector<i4917_state> seen;
-    try {
-        seen.reserve(1024);
-    } catch (const std::bad_alloc &) {
-        return result(s, 0, 0, I4917_RUN_ERROR);
-    }
-    for (uint64_t n = 0;; ++n) {
-        for (const i4917_state &prior : seen)
-            if (same_execution(&prior, &s)) {
-                return result(s, n, 0, I4917_CYCLE);
-            }
-        if (n == UINT64_MAX) {
-            return result(s, n, 0, I4917_RUN_ERROR);
-        }
-        try {
-            seen.push_back(s);
-        } catch (const std::bad_alloc &) {
-            return result(s, n, 0, I4917_RUN_ERROR);
-        }
-        i4917_event event;
-        if (i4917_step(&s, &event) != I4917_OK) {
-            return result(s, n, 0, I4917_RUN_ERROR);
-        }
-        if (event.halted) {
-            return result(s, n + 1, 0, I4917_HALTED);
-        }
-    }
+    i4917_state start = *initial;
+    if (!i4917_state_valid(&start))
+        return result(start, 0, start.output_characters, I4917_RUN_ERROR);
+    start.r0 = start.r1 = start.pc = 0;
+    start.output_characters = 0;
+    return run_initialized(start);
+}
+
+i4917_run_result i4917_detail::run_search_program(
+    const std::array<uint8_t, I4917_MEMORY_SIZE> &program) {
+    i4917_state start{};
+    std::memcpy(start.memory, program.data(), I4917_MEMORY_SIZE);
+    return run_initialized(start);
 }

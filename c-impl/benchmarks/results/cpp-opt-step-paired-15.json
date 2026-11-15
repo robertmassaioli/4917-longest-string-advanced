@@ -1,0 +1,83 @@
+{
+  "command": "4917-cpp search --length 5 --json",
+  "baseline": "/tmp/4917-cpp-baseline-61eb925",
+  "candidate": "/Users/robertmassaioli/Code/4917-longest-string-advanced.worktrees/cpp-opt-step/c-impl/build/opt-step-release/4917-cpp",
+  "pairs": [
+    {
+      "pair": 1,
+      "baseline_elapsed_ns": 110427292,
+      "candidate_elapsed_ns": 98726833
+    },
+    {
+      "pair": 2,
+      "candidate_elapsed_ns": 99103959,
+      "baseline_elapsed_ns": 106742125
+    },
+    {
+      "pair": 3,
+      "baseline_elapsed_ns": 113516667,
+      "candidate_elapsed_ns": 99488833
+    },
+    {
+      "pair": 4,
+      "candidate_elapsed_ns": 99915959,
+      "baseline_elapsed_ns": 114178500
+    },
+    {
+      "pair": 5,
+      "baseline_elapsed_ns": 113616125,
+      "candidate_elapsed_ns": 100311750
+    },
+    {
+      "pair": 6,
+      "candidate_elapsed_ns": 98458250,
+      "baseline_elapsed_ns": 110217958
+    },
+    {
+      "pair": 7,
+      "baseline_elapsed_ns": 116290458,
+      "candidate_elapsed_ns": 100990500
+    },
+    {
+      "pair": 8,
+      "candidate_elapsed_ns": 98137458,
+      "baseline_elapsed_ns": 112972042
+    },
+    {
+      "pair": 9,
+      "baseline_elapsed_ns": 113657708,
+      "candidate_elapsed_ns": 99636916
+    },
+    {
+      "pair": 10,
+      "candidate_elapsed_ns": 97917458,
+      "baseline_elapsed_ns": 107467833
+    },
+    {
+      "pair": 11,
+      "baseline_elapsed_ns": 112928584,
+      "candidate_elapsed_ns": 99208042
+    },
+    {
+      "pair": 12,
+      "candidate_elapsed_ns": 97413000,
+      "baseline_elapsed_ns": 109285042
+    },
+    {
+      "pair": 13,
+      "baseline_elapsed_ns": 114203833,
+      "candidate_elapsed_ns": 97830542
+    },
+    {
+      "pair": 14,
+      "candidate_elapsed_ns": 98149916,
+      "baseline_elapsed_ns": 115110292
+    },
+    {
+      "pair": 15,
+      "baseline_elapsed_ns": 111714083,
+      "candidate_elapsed_ns": 99529583
+    }
+  ],
+  "output": "{\"schema\":\"4917-search-v2\",\"length\":5,\"candidate_count\":\"1048576\",\"halted\":\"969109\",\"cycled\":\"79467\",\"errors\":\"0\",\"exhaustive\":true,\"best_output_characters\":\"62\",\"winner_count\":\"72\",\"first_winner\":[4,1,8,10,15]}\n"
+}

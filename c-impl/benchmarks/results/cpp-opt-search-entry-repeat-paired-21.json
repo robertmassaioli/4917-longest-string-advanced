@@ -1,0 +1,113 @@
+{
+  "command": "4917-cpp search --length 5 --json",
+  "baseline": "/tmp/4917-cpp-baseline-61eb925",
+  "candidate": "/Users/robertmassaioli/Code/4917-longest-string-advanced.worktrees/cpp-opt-search-entry/c-impl/build/make-release/4917-cpp",
+  "pairs": [
+    {
+      "pair": 1,
+      "baseline_elapsed_ns": 114163167,
+      "candidate_elapsed_ns": 106014667
+    },
+    {
+      "pair": 2,
+      "candidate_elapsed_ns": 102567875,
+      "baseline_elapsed_ns": 111046334
+    },
+    {
+      "pair": 3,
+      "baseline_elapsed_ns": 112608792,
+      "candidate_elapsed_ns": 103724208
+    },
+    {
+      "pair": 4,
+      "candidate_elapsed_ns": 104814708,
+      "baseline_elapsed_ns": 112427291
+    },
+    {
+      "pair": 5,
+      "baseline_elapsed_ns": 110455250,
+      "candidate_elapsed_ns": 102145542
+    },
+    {
+      "pair": 6,
+      "candidate_elapsed_ns": 105146208,
+      "baseline_elapsed_ns": 109161334
+    },
+    {
+      "pair": 7,
+      "baseline_elapsed_ns": 108475125,
+      "candidate_elapsed_ns": 101704834
+    },
+    {
+      "pair": 8,
+      "candidate_elapsed_ns": 105497833,
+      "baseline_elapsed_ns": 109127125
+    },
+    {
+      "pair": 9,
+      "baseline_elapsed_ns": 108527958,
+      "candidate_elapsed_ns": 103900916
+    },
+    {
+      "pair": 10,
+      "candidate_elapsed_ns": 102549542,
+      "baseline_elapsed_ns": 110238917
+    },
+    {
+      "pair": 11,
+      "baseline_elapsed_ns": 107486541,
+      "candidate_elapsed_ns": 105462500
+    },
+    {
+      "pair": 12,
+      "candidate_elapsed_ns": 104213666,
+      "baseline_elapsed_ns": 108541958
+    },
+    {
+      "pair": 13,
+      "baseline_elapsed_ns": 111577375,
+      "candidate_elapsed_ns": 103770708
+    },
+    {
+      "pair": 14,
+      "candidate_elapsed_ns": 102875458,
+      "baseline_elapsed_ns": 112119375
+    },
+    {
+      "pair": 15,
+      "baseline_elapsed_ns": 115803250,
+      "candidate_elapsed_ns": 105270708
+    },
+    {
+      "pair": 16,
+      "candidate_elapsed_ns": 105119500,
+      "baseline_elapsed_ns": 109523209
+    },
+    {
+      "pair": 17,
+      "baseline_elapsed_ns": 111100625,
+      "candidate_elapsed_ns": 105968958
+    },
+    {
+      "pair": 18,
+      "candidate_elapsed_ns": 104918250,
+      "baseline_elapsed_ns": 112828333
+    },
+    {
+      "pair": 19,
+      "baseline_elapsed_ns": 109820417,
+      "candidate_elapsed_ns": 98745209
+    },
+    {
+      "pair": 20,
+      "candidate_elapsed_ns": 110337625,
+      "baseline_elapsed_ns": 111730708
+    },
+    {
+      "pair": 21,
+      "baseline_elapsed_ns": 111909125,
+      "candidate_elapsed_ns": 104098292
+    }
+  ],
+  "output": "{\"schema\":\"4917-search-v2\",\"length\":5,\"candidate_count\":\"1048576\",\"halted\":\"969109\",\"cycled\":\"79467\",\"errors\":\"0\",\"exhaustive\":true,\"best_output_characters\":\"62\",\"winner_count\":\"72\",\"first_winner\":[4,1,8,10,15]}\n"
+}

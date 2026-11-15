@@ -1,0 +1,33 @@
+{
+  "command": "4917-cpp search --length 5 --json",
+  "baseline": "/tmp/4917-cpp-baseline-61eb925",
+  "candidate": "/tmp/4917-cpp-baseline-61eb925",
+  "pairs": [
+    {
+      "pair": 1,
+      "baseline_elapsed_ns": 110015209,
+      "candidate_elapsed_ns": 110056875
+    },
+    {
+      "pair": 2,
+      "candidate_elapsed_ns": 115676417,
+      "baseline_elapsed_ns": 119720209
+    },
+    {
+      "pair": 3,
+      "baseline_elapsed_ns": 114329667,
+      "candidate_elapsed_ns": 116264834
+    },
+    {
+      "pair": 4,
+      "candidate_elapsed_ns": 115543250,
+      "baseline_elapsed_ns": 108062500
+    },
+    {
+      "pair": 5,
+      "baseline_elapsed_ns": 111687583,
+      "candidate_elapsed_ns": 113499042
+    }
+  ],
+  "output": "{\"schema\":\"4917-search-v2\",\"length\":5,\"candidate_count\":\"1048576\",\"halted\":\"969109\",\"cycled\":\"79467\",\"errors\":\"0\",\"exhaustive\":true,\"best_output_characters\":\"62\",\"winner_count\":\"72\",\"first_winner\":[4,1,8,10,15]}\n"
+}

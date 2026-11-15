@@ -1,0 +1,63 @@
+{
+  "command": "4917-cpp search --length 5 --json",
+  "baseline": "/tmp/4917-cpp-baseline-61eb925",
+  "candidate": "/tmp/4917-cpp-baseline-61eb925",
+  "pairs": [
+    {
+      "pair": 1,
+      "baseline_elapsed_ns": 111154667,
+      "candidate_elapsed_ns": 115624292
+    },
+    {
+      "pair": 2,
+      "candidate_elapsed_ns": 111563750,
+      "baseline_elapsed_ns": 116446500
+    },
+    {
+      "pair": 3,
+      "baseline_elapsed_ns": 113894792,
+      "candidate_elapsed_ns": 111483291
+    },
+    {
+      "pair": 4,
+      "candidate_elapsed_ns": 116896375,
+      "baseline_elapsed_ns": 115792750
+    },
+    {
+      "pair": 5,
+      "baseline_elapsed_ns": 115909333,
+      "candidate_elapsed_ns": 115715917
+    },
+    {
+      "pair": 6,
+      "candidate_elapsed_ns": 115093625,
+      "baseline_elapsed_ns": 113986166
+    },
+    {
+      "pair": 7,
+      "baseline_elapsed_ns": 124595916,
+      "candidate_elapsed_ns": 117030000
+    },
+    {
+      "pair": 8,
+      "candidate_elapsed_ns": 291931750,
+      "baseline_elapsed_ns": 246810083
+    },
+    {
+      "pair": 9,
+      "baseline_elapsed_ns": 159750959,
+      "candidate_elapsed_ns": 173492334
+    },
+    {
+      "pair": 10,
+      "candidate_elapsed_ns": 175432750,
+      "baseline_elapsed_ns": 146586167
+    },
+    {
+      "pair": 11,
+      "baseline_elapsed_ns": 115379792,
+      "candidate_elapsed_ns": 112451875
+    }
+  ],
+  "output": "{\"schema\":\"4917-search-v2\",\"length\":5,\"candidate_count\":\"1048576\",\"halted\":\"969109\",\"cycled\":\"79467\",\"errors\":\"0\",\"exhaustive\":true,\"best_output_characters\":\"62\",\"winner_count\":\"72\",\"first_winner\":[4,1,8,10,15]}\n"
+}
