@@ -10,6 +10,13 @@ execution, and no runtime dependency on Stack, Python, or a test framework.
 Requires CMake 3.20+ and a C11 compiler. The presets use Unix Makefiles, so
 Ninja is not required.
 
+The command-line frontend uses vendored Argtable3 3.3.1 at upstream commit
+`b50c6c81f25eef8af51141678b333c55b661414d`. Its BSD-3-Clause license is
+included under `third_party/argtable3/LICENSE`. The source is pinned in this
+repository, so configure and build work offline and do not run package-manager
+or network fetch steps. Argtable3 is linked only into `4917-c`; it is not
+linked into `4917_core`, the unit/property tests, or the benchmark.
+
 ```sh
 cmake --preset debug
 cmake --build --preset debug
@@ -61,6 +68,15 @@ shared case.
 
 ## Commands
 
+Run `4917-c --help` for the command list, or append `--help`/`-h` to a
+subcommand for its options. Each command accepts only its own options.
+Repeated scalar options, unknown options, missing option values, and extra
+positional arguments are rejected with exit code 2 and command-specific usage
+on stderr. Numeric values must be nonnegative decimal digits and must fit in
+`uint64_t`; command-specific range errors are also reported on stderr with
+exit code 2. CSV parsing remains domain validation performed by the frontend,
+after option parsing.
+
 `run` validates 1–16 CSV nibble values, pads memory with zeroes, resets the
 machine, and executes up to the default 10,000 steps. HALT counts as a step.
 The JSON output schema is `4917-run-v1`; step and output-character counts are
@@ -98,7 +114,10 @@ the integration boundary used for one-step differential testing.
 
 The C unit/property suite checks arithmetic laws for all nibble pairs, opcode
 boundaries, wrapping, output count, self-modification, cycle classification,
-run limits, and generated run-vs-step equivalence. Optional differential
+run limits, and generated run-vs-step equivalence. When Python 3 is available,
+CTest also runs `cli-contract`, which checks help, all command forms, defaults,
+malformed and out-of-range values, duplicate and irrelevant options, extra
+arguments, CSV validation, exit codes, and error streams. Optional differential
 testing uses a batched Haskell oracle and Python driver:
 
 ```sh
@@ -151,6 +170,67 @@ timed samples and reports min/median/max throughput, so an individual opcode
 can be rerun while tuning its implementation. Record revision, compiler,
 flags/build type, and machine with saved results. No speedup is claimed before
 a baseline is collected.
+
+### Optional Google Benchmark comparison
+
+An opt-in C++17 harness is available to compare calibration, repetitions, and
+structured reporting with the dependency-free C harness. The C core and CLI
+remain C11; only `4917-google-bench` uses C++. Google Benchmark 1.9.1 is pinned
+to commit `c58e6d0710581e3a08d65c349664128a8d9a2461` and its source archive is
+SHA-256 verified. The framework's own tests and GoogleTest integration are
+disabled. This target adds no CI timing threshold.
+
+The normal build does not enable C++ or fetch anything. To use the pinned
+dependency, the explicit preset fetches it during configure:
+
+```sh
+cmake --preset google-benchmarks
+cmake --build --preset google-benchmarks
+./build/make-google-benchmarks/4917-google-bench \
+  --benchmark_repetitions=5 \
+  --benchmark_report_aggregates_only=false \
+  --benchmark_out=google-benchmark-results.json \
+  --benchmark_out_format=json
+```
+
+The harness registers all 16 single-instruction workloads, with taken and
+not-taken cases for both conditional branches, plus short straight-line,
+arithmetic-heavy, and exhaustive length-two search workloads. Its
+per-instruction fixture uses a prebuilt valid state, rewinds PC in the timed
+loop, and measures `i4917_step` through the exported C API, including state
+validation. Each fixture performs a correctness preflight before timing. The
+Google output includes raw repetition records and aggregates; counters name
+single steps, logical steps, or candidates per second. Custom JSON context
+records the framework version, C/C++ compilers and flags, build type, source
+revision, and fixture semantics. The framework also records host and CPU
+context where supported.
+
+For an offline setup, install the exact Google Benchmark 1.9.1 CMake package
+and configure with `-DI4917_BUILD_GOOGLE_BENCHMARKS=ON
+-DI4917_FETCH_GOOGLE_BENCHMARK=OFF`. Alternatively, pre-populate the CMake
+FetchContent source override and disable fetching:
+
+```sh
+cmake -S . -B build/google-benchmarks-offline \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DI4917_BUILD_TESTS=OFF \
+  -DI4917_BUILD_GOOGLE_BENCHMARKS=ON \
+  -DI4917_FETCH_GOOGLE_BENCHMARK=OFF \
+  -DFETCHCONTENT_SOURCE_DIR_GOOGLEBENCHMARK=/path/to/google-benchmark-1.9.1
+cmake --build build/google-benchmarks-offline
+```
+
+Google Benchmark calibrates iteration counts to its minimum time and reports
+repetitions/statistics; set `--benchmark_min_time=0.01s` for a short
+registration smoke run. For useful comparisons, keep the C core build,
+compiler, flags, machine, and workload fixtures the same, use at least five
+repetitions on an otherwise idle host, and retain the complete JSON output. The
+existing C harness instead uses fixed work counts and five min/median/max samples. Neither
+framework nor repetitions make local timings statistically conclusive: CPU
+frequency, thermal state, background work, and machine variation still affect
+results. Hardware performance counters remain optional and are not required by
+this harness. Treat the framework as an evaluation path until a controlled
+comparison establishes ongoing value.
 
 ## Optimization rules
 
