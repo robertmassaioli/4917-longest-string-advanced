@@ -25,7 +25,34 @@ ctest --preset sanitizers
 ```
 
 Production-only builds can disable tests with
-`-DI4917_BUILD_TESTS=OFF`; CMake does not fetch dependencies. CTest contains
+`-DI4917_BUILD_TESTS=OFF`; CMake does not fetch dependencies. Formatting and
+static analysis are optional developer tools and are not part of normal CMake
+builds. CI pins clang-format 18.1.3 and Cppcheck 2.13.0 on Ubuntu 24.04. On
+Ubuntu 24.04, install the same versions with `sudo apt-get install
+clang-format-18=1:18.1.3-1ubuntu1 cppcheck=2.13.0-2ubuntu3`; on other
+platforms, use clang-format 18.1.3 and Cppcheck 2.13.0.
+
+```sh
+# From the repository root
+# Check formatting without changing files (requires clang-format-18)
+CLANG_FORMAT=clang-format-18 c-impl/scripts/format-c.sh --check
+
+# Apply formatting to C sources, headers, tests, and benchmarks
+CLANG_FORMAT=clang-format-18 c-impl/scripts/format-c.sh --fix
+
+# Configure a compile database, then run the CI Cppcheck profile
+cmake -S c-impl -B c-impl/build/cppcheck -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+  -DI4917_BUILD_BENCHMARKS=ON
+c-impl/scripts/check-cppcheck.sh
+```
+
+Cppcheck reads only translation units from this CMake compilation database
+and uses the actual C11 include paths and definitions. The enforced profile
+starts with error and warning diagnostics; findings should be fixed or
+narrowly suppressed with an adjacent explanation. Neither tool is needed to
+build or run the C implementation.
+
+CTest contains
 deterministic instruction/boundary cases and 10,000 fixed-seed generated
 program checks. The test harness is plain C to keep the default build offline
 and compiler requirements to C11. Generated run-equivalence failures report
