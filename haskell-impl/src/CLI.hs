@@ -18,6 +18,7 @@ import Commands.OptimizeDemo (runOptimizeDemoCommand)
 import Commands.CacheDemo (runCacheDemoCommand)
 import Commands.Search (runSearchCommand)
 import Commands.Solve (runSolveCommand)
+import Commands.ProgramExecution (runProgramCommand, runTraceCommand)
 
 -- | Available commands
 data Command 
@@ -26,6 +27,8 @@ data Command
     | CacheDemo CacheDemoOptions
     | Search SearchOptions
     | Solve SolveOptions
+    | Run ProgramOptions
+    | Trace ProgramOptions
     deriving (Show, Eq)
 
 -- | Options for demo command
@@ -62,6 +65,11 @@ data SolveOptions = SolveOptions
     , solveVerbose :: Bool
     } deriving (Show, Eq)
 
+data ProgramOptions = ProgramOptions
+    { suppliedProgram :: String
+    , programMaxSteps :: Int
+    } deriving (Show, Eq)
+
 -- | Parse command line arguments
 parseCommand :: IO Command
 parseCommand = execParser $ info (commandParser <**> helper)
@@ -77,6 +85,8 @@ commandParser = hsubparser
    <> command "cache-demo"     (info cacheDemoParser     (progDesc "Demonstrate persistent memoization"))
    <> command "search"         (info searchParser        (progDesc "Search for optimal programs"))
    <> command "solve"          (info solveParser         (progDesc "Solve specific tasks"))
+   <> command "run"            (info runParser            (progDesc "Execute a supplied program"))
+   <> command "trace"          (info traceParser          (progDesc "Trace a supplied program step by step"))
    )
 
 -- | Parser for demo command
@@ -169,6 +179,24 @@ solveParser = do
        <> help "Enable verbose output" )
     pure $ Solve $ SolveOptions taskFile verbose
 
+runParser :: Parser Command
+runParser = Run <$> programOptions 1000
+
+traceParser :: Parser Command
+traceParser = Trace <$> programOptions 10000
+
+programOptions :: Int -> Parser ProgramOptions
+programOptions defaultMaxSteps = ProgramOptions
+    <$> strOption
+        ( long "program"
+       <> metavar "BYTE,BYTE,..."
+       <> help "Comma-separated memory bytes (integers 0-15, up to 16 values)" )
+    <*> option auto
+        ( long "max-steps"
+       <> metavar "N"
+       <> help ("Maximum instructions before stopping (default: " ++ show defaultMaxSteps ++ ")")
+       <> value defaultMaxSteps )
+
 -- | Execute a command
 runCommand :: Command -> IO ()
 runCommand (Demo opts) = runDemoCommand (demoLength opts) (demoVerbose opts)
@@ -176,3 +204,5 @@ runCommand (OptimizeDemo opts) = runOptimizeDemoCommand (optimizeDemoVerbose opt
 runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheDemoVerbose opts) (cacheDemoFresh opts) (cacheDemoCacheFile opts)
 runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)
+runCommand (Run opts) = runProgramCommand (suppliedProgram opts) (programMaxSteps opts)
+runCommand (Trace opts) = runTraceCommand (suppliedProgram opts) (programMaxSteps opts)
