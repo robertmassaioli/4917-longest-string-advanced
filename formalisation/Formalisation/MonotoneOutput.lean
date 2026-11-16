@@ -50,42 +50,85 @@ theorem outputStep_advances_two (s : MachineState) (value : Nibble)
     split at hOutput <;> simp_all
   simp [step, hOpcode]
 
-/-- A finite run whose PC strictly increases and stays below `limit`.
-`emitted` is the number of output characters contributed by the step. Its
-local budget is bounded by twice the PC distance; this captures OUTPUT's
-two-cell encoding and two-character maximum. -/
-inductive MonotoneOutputTrace (limit : Nat) : Nat → Nat → Prop where
-  | done {pc : Nat} :
-      pc < limit → MonotoneOutputTrace limit pc 0
-  | next {pc nextPC emitted restScore : Nat} :
-      pc < nextPC →
-      nextPC < limit →
-      emitted ≤ 2 * (nextPC - pc) →
-      MonotoneOutputTrace limit nextPC restScore →
-      MonotoneOutputTrace limit pc (emitted + restScore)
+/-- Character score emitted by one concrete machine step. -/
+def stepOutputCharacterScore (result : StepResult) : Nat :=
+  match result.output with
+  | none => 0
+  | some value => decimalCharacterCount value
 
-/-- A monotonically increasing run starting at PC 0 prints at most twice its
-program length in characters. -/
-theorem monotoneOutputTrace_score_bound {limit score : Nat}
-    (trace : MonotoneOutputTrace limit 0 score) :
+/-- In any strictly increasing machine step, the output (if any) fits within
+twice the distance advanced by the PC. OUTPUT advances by two; all other
+instructions emit nothing. -/
+theorem stepOutputCharacterScore_le_pcDistance (s : MachineState)
+    (hProgress : s.pc.val < (step s).state.pc.val) :
+    stepOutputCharacterScore (step s) ≤
+      2 * ((step s).state.pc.val - s.pc.val) := by
+  cases hOutput : (step s).output with
+  | none => simp [stepOutputCharacterScore, hOutput]
+  | some value =>
+      have hAdvance := outputStep_advances_two s value hOutput
+      have hPC : (step s).state.pc.val = (s.pc.val + 2) % 16 := by
+        rw [hAdvance]
+        simp [pcAdd, Fin.val_ofNat]
+      simp only [stepOutputCharacterScore, hOutput]
+      have hChars := decimalCharacterCount_le_two value
+      omega
+
+/-- A finite execution of the concrete machine in which every step strictly
+increases the PC and every visited PC stays below `limit`. The score is the
+number of decimal characters emitted before HALT. -/
+inductive MonotoneMachineRun (limit : Nat) : MachineState → Nat → Prop where
+  | halt {state : MachineState} :
+      state.pc.val < limit →
+      (step state).halted = true →
+      MonotoneMachineRun limit state 0
+  | next {state : MachineState} {restScore : Nat} :
+      state.pc.val < (step state).state.pc.val →
+      (step state).state.pc.val < limit →
+      (step state).halted = false →
+      MonotoneMachineRun limit (step state).state restScore →
+      MonotoneMachineRun limit state
+        (stepOutputCharacterScore (step state) + restScore)
+
+/-- Every monotone concrete machine run starting at PC 0 prints at most twice
+the program length in decimal characters. -/
+theorem monotoneMachineRun_score_bound {limit score : Nat}
+    {state : MachineState}
+    (hStart : state.pc.val = 0)
+    (run : MonotoneMachineRun limit state score) :
     score ≤ 2 * limit := by
-  have bound : ∀ {pc score}, MonotoneOutputTrace limit pc score →
-      score ≤ 2 * (limit - pc) := by
-    intro pc score hTrace
-    induction hTrace with
-    | done hPC => simp
-    | @next pc nextPC emitted restScore hAdvance hBound hRest ih =>
+  have bound : ∀ {state score}, MonotoneMachineRun limit state score →
+      score ≤ 2 * (limit - state.pc.val) := by
+    intro state score hRun
+    induction hRun with
+    | halt hPC hHalt => simp
+    | @next state restScore hProgress hNextPC hNotHalt hRest ih =>
+        have hLocal := stepOutputCharacterScore_le_pcDistance state hProgress
         omega
-  simpa using bound trace
+  have hBound := bound run
+  rw [hStart] at hBound
+  simpa using hBound
 
-/-- If a known program of this length prints more than the monotone bound,
-then no monotonically increasing execution can tie it. This is the comparison
-lemma to apply once the relevant lower bound on the longest score is proved. -/
-theorem monotoneOutputTrace_cannot_match_score {limit score bestScore : Nat}
-    (trace : MonotoneOutputTrace limit 0 score)
+/-- A monotone machine run cannot tie a known score that is strictly above
+the monotone upper bound. -/
+theorem monotoneMachineRun_cannot_match_score {limit score bestScore : Nat}
+    {state : MachineState}
+    (hStart : state.pc.val = 0)
+    (run : MonotoneMachineRun limit state score)
     (hBest : 2 * limit < bestScore) :
     score < bestScore := by
-  have hBound := monotoneOutputTrace_score_bound trace
+  have hBound := monotoneMachineRun_score_bound hStart run
+  omega
+
+/-- The exhaustive-search explainers report these best scores for lengths
+4–8. Lean checks here that each reported score exceeds the monotone-run
+bound. The search results themselves are not yet derived inside Lean. -/
+theorem reportedBestScoresExceedMonotoneBound :
+    2 * 4 < 32 ∧
+    2 * 5 < 62 ∧
+    2 * 6 < 93 ∧
+    2 * 7 < 172 ∧
+    2 * 8 < 482 := by
   omega
 
 end Formalisation
