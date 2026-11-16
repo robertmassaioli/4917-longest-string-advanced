@@ -80,6 +80,22 @@ The exact number of fixed-length search vectors covered at each size is in
 The project uses Lean's standard library only; Mathlib is not needed for this
 first lemma.
 
+## Executable static budget certificates
+
+`Formalisation/PreRunChecksC.lean` turns the `StaticPCBudget` proof obligation
+from `PreRunChecksB.lean` into a finite Boolean checker. Given a program, an
+allowed-PC set, and a proposed remaining-output budget for each PC, it checks
+every register pair at every admitted PC and verifies memory preservation,
+successor closure, and the score inequality. The theorem
+`verified_budget_bounds_run` proves that an accepted certificate bounds every
+halting run from reset. The examples prove acceptance of the `[8, 10, 0]`
+certificate with score bound 2 and rejection of the same certificate with an
+incorrect bound of 1.
+
+This is a checker for a supplied certificate; it does not yet generate the
+allowed-PC set or budgets from arbitrary input programs. See
+[`pre-run-checks-c.md`](pre-run-checks-c.md) for details and commands.
+
 ## Install Lean on macOS
 
 Lean is installed and versioned through `elan`. In Terminal, run the official
