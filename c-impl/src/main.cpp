@@ -15,6 +15,26 @@
 
 namespace {
 
+struct SearchCount {
+    uint64_t low = 0;
+    bool is_two_to_64 = false;
+
+    void increment() {
+        if (low == UINT64_MAX) {
+            low = 0;
+            is_two_to_64 = true;
+        } else if (!is_two_to_64) {
+            ++low;
+        }
+    }
+
+    bool is_zero() const { return low == 0 && !is_two_to_64; }
+
+    std::string text() const {
+        return is_two_to_64 ? "18446744073709551616" : std::to_string(low);
+    }
+};
+
 bool number(std::string_view text, uint64_t &value) {
     if (text.empty())
         return false;
@@ -156,16 +176,17 @@ int step_cmd(const std::string &csv, uint64_t r0, uint64_t r1, uint64_t pc,
 }
 
 int search_cmd(uint64_t length, bool json) {
-    if (length < 1 || length > 5) {
-        std::fputs("search length must be from 1 through 5\n", stderr);
+    if (length < 1 || length > I4917_MEMORY_SIZE) {
+        std::fprintf(stderr, "search length must be from 1 through %u\n",
+                     static_cast<unsigned>(I4917_MEMORY_SIZE));
         return 2;
     }
-    uint64_t total = 1;
-    for (uint64_t i = 0; i < length; ++i)
-        total *= 16;
-    uint64_t halted = 0, cycled = 0, errors = 0, best = 0, winners = 0;
+    const bool full_space = length == I4917_MEMORY_SIZE;
+    const uint64_t total = full_space ? 0 : (uint64_t{1} << (4 * length));
+    SearchCount halted, cycled, errors, winners;
+    uint64_t best = 0;
     std::array<uint8_t, I4917_MEMORY_SIZE> first{};
-    for (uint64_t id = 0; id < total; ++id) {
+    for (uint64_t id = 0; full_space || id < total;) {
         uint64_t encoded = id;
         std::array<uint8_t, I4917_MEMORY_SIZE> program{};
         for (uint64_t i = length; i > 0; --i) {
@@ -174,35 +195,45 @@ int search_cmd(uint64_t length, bool json) {
         }
         const i4917_run_result result = i4917_detail::run_search_program(program);
         if (result.termination == I4917_HALTED) {
-            ++halted;
-            if (!winners || result.output_characters > best) {
+            halted.increment();
+            if (winners.is_zero() || result.output_characters > best) {
                 best = result.output_characters;
-                winners = 1;
+                winners = SearchCount{1, false};
                 first = program;
             } else if (result.output_characters == best) {
-                ++winners;
+                winners.increment();
             }
         } else if (result.termination == I4917_CYCLE) {
-            ++cycled;
+            cycled.increment();
         } else {
-            ++errors;
+            errors.increment();
         }
+        if (full_space && id == UINT64_MAX)
+            break;
+        ++id;
     }
+    const std::string candidate_count = full_space ? "18446744073709551616" : std::to_string(total);
+    const std::string halted_text = halted.text();
+    const std::string cycled_text = cycled.text();
+    const std::string errors_text = errors.text();
+    const std::string winners_text = winners.text();
     if (json) {
         std::printf("{\"schema\":\"4917-search-v2\",\"length\":%" PRIu64
-                    ",\"candidate_count\":\"%" PRIu64 "\",\"halted\":\"%" PRIu64
-                    "\",\"cycled\":\"%" PRIu64 "\",\"errors\":\"%" PRIu64 "\",\"exhaustive\":%s,"
-                    "\"best_output_characters\":\"%" PRIu64 "\",\"winner_count\":\"%" PRIu64
+                    ",\"candidate_count\":\"%s\",\"halted\":\"%s"
+                    "\",\"cycled\":\"%s\",\"errors\":\"%s\",\"exhaustive\":%s,"
+                    "\"best_output_characters\":\"%" PRIu64 "\",\"winner_count\":\"%s"
                     "\",\"first_winner\":[",
-                    length, total, halted, cycled, errors, errors ? "false" : "true", best, winners);
+                    length, candidate_count.c_str(), halted_text.c_str(), cycled_text.c_str(),
+                    errors_text.c_str(), errors.is_zero() ? "true" : "false", best, winners_text.c_str());
         for (uint64_t i = 0; i < length; ++i)
             std::printf("%s%u", i ? "," : "", static_cast<unsigned>(first[static_cast<size_t>(i)]));
         std::puts("]}");
     } else {
-        std::printf("candidates: %" PRIu64 "\nhalted: %" PRIu64 "\ncycled: %" PRIu64
-                    "\nerrors: %" PRIu64 "\nexhaustive: %s\nbest output characters: %" PRIu64
-                    "\nwinner count: %" PRIu64 "\n",
-                    total, halted, cycled, errors, errors ? "no" : "yes", best, winners);
+        std::printf("candidates: %s\nhalted: %s\ncycled: %s"
+                    "\nerrors: %s\nexhaustive: %s\nbest output characters: %" PRIu64
+                    "\nwinner count: %s\n",
+                    candidate_count.c_str(), halted_text.c_str(), cycled_text.c_str(), errors_text.c_str(),
+                    errors.is_zero() ? "yes" : "no", best, winners_text.c_str());
     }
     return 0;
 }
@@ -241,7 +272,7 @@ int main(int argc, char **argv) {
         ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
 
     CLI::App *search = app.add_subcommand("search", "Exhaustively search programs of a given length");
-    search->add_option("--length", length_text, "Program length (1-5)")
+    search->add_option("--length", length_text, "Program length (1-16)")
         ->required()->multi_option_policy(CLI::MultiOptionPolicy::Throw);
     search->add_flag("--json", json, "Write machine-readable JSON")
         ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
@@ -289,9 +320,10 @@ int main(int argc, char **argv) {
         uint64_t length = 0;
         if (!read_number(length_text, "search", "--length", length))
             return 2;
-        if (length < 1 || length > 5) {
+        if (length < 1 || length > I4917_MEMORY_SIZE) {
             command_usage("search");
-            std::fprintf(stderr, "search length must be from 1 through 5 (got '%s')\n", length_text.c_str());
+            std::fprintf(stderr, "search length must be from 1 through %u (got '%s')\n",
+                         static_cast<unsigned>(I4917_MEMORY_SIZE), length_text.c_str());
             return 2;
         }
         return search_cmd(length, json);

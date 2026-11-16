@@ -73,8 +73,8 @@ def main():
         diagnostic="invalid"
     )
     rejects("search", "--length", "1", "--max-steps", "0")
-    rejects("search", "--length", "0", diagnostic="length must be from 1 through 5")
-    rejects("search", "--length", "6", diagnostic="length must be from 1 through 5")
+    rejects("search", "--length", "0", diagnostic="length must be from 1 through 16")
+    rejects("search", "--length", "17", diagnostic="length must be from 1 through 16")
     rejects("search", "--length", "word", diagnostic="invalid")
     rejects("step", "--memory", "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0", "--r0", "16", diagnostic="--r0 must be from 0 through 15")
     rejects("step", "--memory", "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0", "--output-characters", "x", diagnostic="invalid")
