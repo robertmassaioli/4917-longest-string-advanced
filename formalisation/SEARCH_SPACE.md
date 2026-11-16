@@ -123,3 +123,46 @@ are one pair among `16^11` vectors; the Lean development does not yet provide a
 program-wide canonicalizer that finds every such reorderable block. Apply the
 reduction only after a search tool has checked its premises. The termination
 table above is unchanged and remains the measured whole-vector reduction.
+
+## Illustrative single-core search time
+
+The C++ implementation's recorded exhaustive length-2 search rate is 42.7
+million candidates per second on macOS arm64 with a Release `-O3` build (see
+[`Cpp-Implementation-Proposal.md`](../Cpp-Implementation-Proposal.md)). The
+following estimates divide candidate counts by that rate. They assume every
+length sustains the length-2 rate, exclude process startup, and ignore the
+cost of applying a static filter. Treat them as optimistic throughput
+estimates, especially for longer programs: those candidates can execute more
+steps and cycle detection costs time. They are not measured full-search times.
+
+“After theorem filter” means the candidates left after removing programs
+proved to halt. That filter is useful when searching specifically for
+non-halting programs. It cannot discard those programs in a longest-string
+search, because a longest-string solution must halt. The raw-time column is
+therefore the applicable estimate for an exhaustive longest-string search
+with the current documented proofs. The commutation proofs are not included:
+they are not yet integrated into a whole-program canonicalizer.
+
+| Length | Raw candidates | After theorem filter | Raw search time | Residual non-halting search time |
+|---:|---:|---:|---:|---:|
+| 1 | 16 | 5 | < 1 μs | < 1 μs |
+| 2 | 256 | 115 | 6 μs | 2.7 μs |
+| 3 | 4,096 | 2,325 | < 0.1 ms | < 0.1 ms |
+| 4 | 65,536 | 42,275 | 1.5 ms | 1.0 ms |
+| 5 | 1,048,576 | 735,205 | 0.025 s | 0.017 s |
+| 6 | 16,777,216 | 12,418,515 | 0.39 s | 0.29 s |
+| 7 | 268,435,456 | 206,105,525 | 6.3 s | 4.8 s |
+| 8 | 4,294,967,296 | 3,381,004,675 | 1.68 min | 1.32 min |
+| 9 | 68,719,476,736 | 55,034,934,405 | 26.8 min | 21.5 min |
+| 10 | 1,099,511,627,776 | 891,130,148,915 | 7.15 h | 5.80 h |
+| 11 | 17,592,186,044,416 | 14,377,146,032,725 | 4.76 days | 3.90 days |
+| 12 | 281,474,976,710,656 | 231,375,199,599,075 | 76.3 days | 62.7 days |
+| 13 | 4,503,599,627,370,496 | 3,717,104,290,317,605 | 3.34 years | 2.76 years |
+| 14 | 72,057,594,037,927,936 | 59,643,737,749,831,315 | 53.5 years | 44.3 years |
+| 15 | 1,152,921,504,606,846,976 | 1,152,921,504,606,846,976 | 856 years | 856 years |
+| 16 | 18,446,744,073,709,551,616 | 18,446,744,073,709,551,616 | 13,700 years | 13,700 years |
+
+The CLI's documented C++ `search` command currently supports lengths 1–5;
+larger rows extrapolate the benchmark rate to the full vector domains. None
+of these estimates claims that the current implementation or Lean checker
+has already run those larger searches.
