@@ -231,4 +231,127 @@ theorem nop_commutes (instruction : RegisterInstruction) :
   constructor <;> rw [commute_iff_no_crossConflict] <;>
     cases instruction <;> rfl
 
+/-! ## Literal OUTPUT and arbitrary silent effects
+
+The register-only model above is extended here to observable effects. An
+effect transforms some data state and emits a finite output sequence. This
+state may include registers and memory, so a silent effect can represent a
+LOAD, STORE, or another deterministic state update. Program-counter movement
+is handled separately because straight-line instruction widths add modulo 16.
+At the encoded-program level, the moved instructions must both execute, and a
+STORE must not rewrite the OUTPUT opcode or operand before it is fetched.
+-/
+
+/-- A data-state effect together with the values it emits. -/
+abbrev ObservableEffect (State Output : Type) := State → State × List Output
+
+/-- A silent instruction effect changes data state but emits nothing. -/
+def silentEffect {State Output : Type} (update : State → State) :
+    ObservableEffect State Output := fun state => (update state, [])
+
+/-- A literal OUTPUT effect leaves data state alone and emits its operand. -/
+def literalOutput {State Output : Type} (value : Output) :
+    ObservableEffect State Output := fun state => (state, [value])
+
+/-- Sequentially compose two observable instruction effects. -/
+def sequenceEffects {State Output : Type}
+    (first second : ObservableEffect State Output) :
+    ObservableEffect State Output := fun state =>
+  let (middle, firstOutput) := first state
+  let (final, secondOutput) := second middle
+  (final, firstOutput ++ secondOutput)
+
+/-- A literal two-byte OUTPUT commutes observably with every silent data-state
+effect: the final state is the same and the output sequence is unchanged. This
+includes silent updates that read or write memory, because the output value is
+the already-decoded literal operand. -/
+theorem literalOutput_commutes_with_silent {State Output : Type}
+    (value : Output) (update : State → State) (state : State) :
+    sequenceEffects (literalOutput value) (silentEffect update) state =
+      sequenceEffects (silentEffect update) (literalOutput value) state := by
+  simp [sequenceEffects, literalOutput, silentEffect]
+
+/-- Two literal outputs commute exactly when they emit the same value. -/
+theorem two_literal_outputs_commute_iff {State Output : Type}
+    [DecidableEq Output] (first second : Output) (state : State) :
+    sequenceEffects (literalOutput first) (literalOutput second) state =
+      sequenceEffects (literalOutput second) (literalOutput first) state ↔
+        first = second := by
+  constructor
+  · intro h
+    have hOutput := congrArg Prod.snd h
+    have hEqualities : first = second ∧ second = first := by
+      simpa [sequenceEffects, literalOutput] using hOutput
+    exact hEqualities.1
+  · intro h
+    subst second
+    rfl
+
+/-- Concrete encoding fact for opcode 8: it emits the operand at the wrapped
+next cell, preserves data state, advances by two bytes, and does not halt. -/
+theorem step_literalOutput_effect (state : MachineState)
+    (hOpcode : (state.memory state.pc).val = 8) :
+    (step state).output = some (state.memory (pcAdd state.pc 1)) ∧
+      (step state).state.memory = state.memory ∧
+      (step state).state.r0 = state.r0 ∧
+      (step state).state.r1 = state.r1 ∧
+      (step state).state.pc = pcAdd state.pc 2 ∧
+      (step state).halted = false := by
+  simp [step, hOpcode]
+
+/-- The user's example: printing literal 5 and incrementing R0 have the same
+final register state and exact output sequence in either order. -/
+theorem print5_incR0_observably_commute (registers : Registers) :
+    sequenceEffects (literalOutput (5 : Nibble))
+        (silentEffect (applyRegisterInstruction .incR0)) registers =
+      sequenceEffects (silentEffect (applyRegisterInstruction .incR0))
+        (literalOutput (5 : Nibble)) registers := by
+  exact literalOutput_commutes_with_silent 5 _ registers
+
+/-- Literal OUTPUT commutes with every register instruction in the opcode 1–7
+family, not only INC_R0. -/
+theorem literalOutput_commutes_with_registerInstruction (value : Nibble)
+    (instruction : RegisterInstruction) (registers : Registers) :
+    sequenceEffects (literalOutput value)
+        (silentEffect (applyRegisterInstruction instruction)) registers =
+      sequenceEffects (silentEffect (applyRegisterInstruction instruction))
+        (literalOutput value) registers := by
+  exact literalOutput_commutes_with_silent value _ registers
+
+/-- Run two concrete machine steps and collect the values emitted by them. -/
+def executeTwoSteps (state : MachineState) : MachineState × List Nibble :=
+  let first := step state
+  let second := step first.state
+  let firstOutput := match first.output with
+    | none => []
+    | some value => [value]
+  let secondOutput := match second.output with
+    | none => []
+    | some value => [value]
+  (second.state, firstOutput ++ secondOutput)
+
+/-- End-to-end machine check of the user's example. The two code layouts
+`OUTPUT 5; INC_R0` and `INC_R0; OUTPUT 5` finish with equal registers and PC,
+and emit exactly `[5]`. Their program bytes differ because the instructions
+were physically reordered. -/
+theorem machine_output5_incR0_example :
+    let printedThenIncremented := executeTwoSteps (initialState [8, 5, 3])
+    let incrementedThenPrinted := executeTwoSteps (initialState [3, 8, 5])
+    printedThenIncremented.1.r0 = incrementedThenPrinted.1.r0 ∧
+      printedThenIncremented.1.r1 = incrementedThenPrinted.1.r1 ∧
+      printedThenIncremented.1.pc = incrementedThenPrinted.1.pc ∧
+      printedThenIncremented.2 = incrementedThenPrinted.2 ∧
+      printedThenIncremented.2 = [5] := by
+  decide
+
+/-- Instruction widths add modulo the 16-cell PC space, so the final PC after
+two straight-line instructions is independent of their order, even for one-
+and two-byte mixed pairs and across address wraparound. -/
+theorem pcAdd_two_instruction_order (pc : PC) (firstWidth secondWidth : Nat) :
+    pcAdd (pcAdd pc firstWidth) secondWidth =
+      pcAdd (pcAdd pc secondWidth) firstWidth := by
+  apply Fin.ext
+  simp [pcAdd, Fin.val_ofNat, Nat.add_mod]
+  omega
+
 end Formalisation.InstructionCommutation

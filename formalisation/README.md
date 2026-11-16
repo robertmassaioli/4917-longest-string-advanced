@@ -110,9 +110,19 @@ each starting at `(R0, R1) = (0, 0)`. Separate lemmas show the pattern behind
 the table: every pair among ADD/SUB/INC_R0/DEC_R0 commutes, INC_R1 and DEC_R1
 commute, independent INC/DEC operations on opposite registers commute, and
 NOP commutes with every instruction in the group.
-The result does not yet classify OUTPUT, LOAD, STORE, HALT, or jump
-instructions, whose output, memory, operands, and control flow introduce
-additional dependencies.
+LOAD, STORE, HALT, and jump instructions are not yet given an exact pairwise
+classification; their memory, operand, and control-flow dependencies need
+additional rules.
+
+The same module now also models literal OUTPUT as an observable effect.
+`literalOutput_commutes_with_silent` proves that printing a fixed value
+commutes with any deterministic silent data-state update, including register
+or memory changes. Two OUTPUT instructions commute exactly when their literal
+values are equal, because emitted output order is observable. The concrete
+machine example proves that `[OUTPUT 5, INC_R0]` and `[INC_R0, OUTPUT 5]` end
+with equal registers and PC and emit `[5]`. For an encoded program, the moved
+instructions must both execute and any STORE must leave the OUTPUT opcode and
+operand intact until fetched.
 
 ## Install Lean on macOS
 
