@@ -119,4 +119,30 @@ theorem runFuel_zeroOpcode_halts (s : MachineState) (fuel : Nat)
   | succ remaining =>
       simp [runFuel, step, hOpcode]
 
+/-- The operand byte for an instruction at PC 15 is fetched from cell 0. -/
+theorem operand_address_wraps_at_pc15 :
+    pcAdd (15 : PC) 1 = 0 := by
+  decide
+
+/-- A two-byte instruction at PC 15 advances to PC 1 after reading cell 0. -/
+theorem after_two_byte_instruction_at_pc15 :
+    pcAdd (15 : PC) 2 = 1 := by
+  decide
+
+/-- A two-byte instruction at PC 14 reads its operand at 15, then wraps to 0. -/
+theorem after_two_byte_instruction_at_pc14 :
+    pcAdd (14 : PC) 1 = 15 ∧ pcAdd (14 : PC) 2 = 0 := by
+  decide
+
+/-- For OUTPUT at PC 15, the cell-zero operand is emitted and execution
+continues at PC 1. -/
+theorem output_at_pc15_uses_wrapped_operand (s : MachineState)
+    (hPC : s.pc = 15)
+    (hOpcode : (s.memory s.pc).val = 8) :
+    (step s).output = some (s.memory 0) ∧ (step s).state.pc = 1 := by
+  rw [hPC] at hOpcode
+  simp [step, hPC, hOpcode]
+  rw [operand_address_wraps_at_pc15, after_two_byte_instruction_at_pc15]
+  exact ⟨rfl, rfl⟩
+
 end Formalisation

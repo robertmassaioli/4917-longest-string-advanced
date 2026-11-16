@@ -18,6 +18,34 @@ connects opcode 0 in the concrete step function to its HALT result, and
 `runFuel_zeroOpcode_halts`, which proves fuel-bounded execution stops
 immediately when the current opcode is HALT.
 
+The Lean model's `Fin 16` types enforce valid nibbles and addresses. Conformance
+comparisons with Haskell therefore concern valid machine states, matching the
+processor contract; Haskell's `Word8` record fields can also represent invalid
+values that the Lean state type intentionally excludes.
+
+## Haskell behavior check
+
+`step` uses `pcAdd` for both the wrapped operand address (`PC + 1`) and the
+post-instruction address (`PC + 2`). The explicit Lean boundary theorems cover
+these cases:
+
+| Lean result | Haskell regression case |
+| --- | --- |
+| Operand at PC 15 is cell 0; next PC is 1 | “fetches a two-byte operand from address zero when the opcode is at PC 15” |
+| Operand at PC 14 is cell 15; next PC is 0 | “fetches a two-byte operand at cell 15 and wraps the next PC” |
+| One-byte PC 15 increment wraps to 0 | “wraps one-byte instructions from PC 15 to PC 0” |
+
+The Haskell `ProcessorPropertySpec` also compares `Processor.stepProgram` with
+an independent list-based stepper, including every opcode at every PC and
+wrapped operand addresses. Run that focused suite from `haskell-impl/`:
+
+```sh
+stack test cli4917:test:spec --test-arguments=--match=boundary
+```
+
+These are executable conformance checks against the same valid-state behavior;
+they are not yet a machine-checked equivalence proof between Lean and Haskell.
+
 The full claim—programs of length at most 15 satisfying the intended
 forward-control-flow condition will halt—remains unproved. The next steps are
 to define that condition for the concrete machine, account for self-modifying
