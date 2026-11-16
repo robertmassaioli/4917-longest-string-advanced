@@ -20,6 +20,7 @@ import Commands.CacheDemo (runCacheDemoCommand)
 import Commands.Search (runSearchCommand)
 import Commands.Solve (runSolveCommand)
 import Commands.ProgramExecution (runProgramCommand, runTraceCommand)
+import Commands.Generalize (runGeneralizeCommand)
 
 -- | Available commands
 data Command 
@@ -30,6 +31,7 @@ data Command
     | Solve SolveOptions
     | Run ProgramOptions
     | Trace ProgramOptions
+    | Generalize GeneralizeOptions
     deriving (Show, Eq)
 
 -- | Options for demo command
@@ -71,6 +73,10 @@ data ProgramOptions = ProgramOptions
     , programMaxSteps :: Int
     } deriving (Show, Eq)
 
+data GeneralizeOptions = GeneralizeOptions
+    { generalizeProgram :: String
+    } deriving (Show, Eq)
+
 -- | Parse command line arguments
 parseCommand :: IO Command
 parseCommand = execParser commandInfo
@@ -98,6 +104,7 @@ commandParser = hsubparser
    <> command "solve"          (info solveParser         (progDesc "Solve specific tasks"))
    <> command "run"            (info runParser            (progDesc "Execute a supplied program"))
    <> command "trace"          (info traceParser          (progDesc "Trace a supplied program step by step"))
+   <> command "generalize"     (info generalizeParser     (progDesc "Trace memory usage and emit a generalized program pattern"))
    )
 
 -- | Parser for demo command
@@ -196,6 +203,12 @@ runParser = Run <$> programOptions 1000
 traceParser :: Parser Command
 traceParser = Trace <$> programOptions 10000
 
+generalizeParser :: Parser Command
+generalizeParser = Generalize <$> (GeneralizeOptions <$> strOption
+    ( long "program"
+   <> metavar "BYTE,BYTE,..."
+   <> help "Comma-separated memory bytes (integers 0-15, up to 16 values)" ))
+
 programOptions :: Int -> Parser ProgramOptions
 programOptions defaultMaxSteps = ProgramOptions
     <$> strOption
@@ -217,3 +230,4 @@ runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opt
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)
 runCommand (Run opts) = runProgramCommand (suppliedProgram opts) (programMaxSteps opts)
 runCommand (Trace opts) = runTraceCommand (suppliedProgram opts) (programMaxSteps opts)
+runCommand (Generalize opts) = runGeneralizeCommand (generalizeProgram opts)

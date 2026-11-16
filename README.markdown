@@ -80,6 +80,9 @@ stack exec 4917-cli -- demo --length 4 --verbose            # Demo specific leng
 
 # Solve specific tasks
 stack exec 4917-cli -- solve --task-file tasks.txt --verbose
+
+# Trace a program's memory/register usage and emit its generalized pattern
+stack exec 4917-cli -- generalize --program 8,5,0
 ```
 
 ### Running Tests

@@ -33,6 +33,7 @@ library
                      , Commands.Search
                      , Commands.Solve
                      , Commands.ProgramExecution
+                     , Commands.Generalize
   build-depends:       base >=4.7 && <5
                      , vector >=0.12 && <0.14
                      , time >=1.9 && <1.13
