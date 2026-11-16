@@ -100,8 +100,9 @@ allowed-PC set or budgets from arbitrary input programs. See
 
 `Formalisation/InstructionCommutation.lean` gives an exact result for the
 one-byte, silent register instructions (opcodes 1–7). Of their 49 ordered
-pairs, precisely four fail to commute for all register values: ADD or SUB on
-R0 paired with INC or DEC on R1. In every other pair, the final register values
+pairs, precisely eight fail to commute for all register values (four
+unordered pairs): ADD or SUB on R0 paired with INC or DEC on R1. In every
+other pair, the final register values
 are identical in either order. The proof exhaustively checks the 16×16
 register-state space and proves that these effects match `Machine.step`.
 The result does not yet classify OUTPUT, LOAD, STORE, HALT, or jump
