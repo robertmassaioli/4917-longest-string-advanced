@@ -131,6 +131,35 @@ R0 and LOAD R1 commute at arbitrary addresses, since both read unchanged
 memory and write different registers. An end-to-end example reorders OUTPUT 5
 with LOAD R0 from cell 10 and confirms the same registers, PC, and output.
 
+## Maximum-output proof work
+
+Three additional modules formalize parts of the maximum-output argument:
+
+- `Formalisation/Length123Optimality.lean` proves that a read-only, strictly
+  increasing halting run on inputs of lengths 1, 2, and 3 scores at most 1, 2,
+  and 3 characters respectively. It also proves these bounds are attained by
+  `[8]`, `[8,10]`, and `[8,10,8]` within that run class. This is not yet an
+  unrestricted optimum proof: jumps can loop even in short programs, and
+  stores can change padded instructions. The explicit run hypotheses matter.
+  In particular, `length3_returns_to_entry_after_two_steps` verifies that
+  `[3,15,0]` (INC R0; JNZ 0) returns to PC 0 after its first two steps.
+- `Formalisation/OutputScoreClasses.lean` proves the exact score classes:
+  values 0–9 each contribute one character, while values 10–15 each contribute
+  two. Replacing corresponding values in an already-produced output trace
+  within the same class preserves its score. It does not prove that changing
+  a program's operand preserves its execution path. A concrete length-2 family
+  `[8,x]`, `10 ≤ x`, is proved to halt with score 2.
+- `Formalisation/RegisterLoopBounds.lean` proves a symbolic countdown for the
+  two-register recurrence used by a representative length-8 winner. It shows
+  the concrete program `[1,8,10,14,4,2,4,15]` halts with 241 outputs of 10 and
+  score 482. This proves attainability and explains that loop family; it is
+  not an upper bound over all length-8 programs.
+
+The full claims that the observed winner scores for every length 1–8 are
+maximal over all programs remain open. In particular, the current results do
+not yet rule out a better program using a different control-flow or
+self-modifying pattern.
+
 ## Install Lean on macOS
 
 Lean is installed and versioned through `elan`. In Terminal, run the official

@@ -218,4 +218,16 @@ theorem length3_exact_straightLine_maximum :
   · intro score' run
     exact length3_straightLine_score_le_three rfl rfl run
 
+/-- A three-cell program can loop: INC R0 followed by JNZ 0 returns to PC 0
+after its first two instructions, with R0 advanced to 1. This is why the
+straight-line bounds above do not cover all short programs. -/
+theorem length3_returns_to_entry_after_two_steps :
+    ∃ loopState,
+      runFuel 2 (initialState [3, 15, 0]) [] = .outOfFuel loopState [] ∧
+      loopState.pc = 0 ∧ loopState.r0 = 1 := by
+  refine ⟨(step (step (initialState [3, 15, 0])).state).state, ?_⟩
+  constructor
+  · rfl
+  constructor <;> decide
+
 end Formalisation
