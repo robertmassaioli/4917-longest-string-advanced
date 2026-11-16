@@ -46,11 +46,16 @@ stack test cli4917:test:spec --test-arguments=--match=boundary
 These are executable conformance checks against the same valid-state behavior;
 they are not yet a machine-checked equivalence proof between Lean and Haskell.
 
-The full claim—programs of length at most 15 satisfying the intended
-forward-control-flow condition will halt—remains unproved. The next steps are
-to define that condition for the concrete machine, account for self-modifying
-stores, and connect zero-padding to eventual HALT. A condition on original
-instruction cells alone may not suffice if a store changes a future opcode.
+The proposed claim that every program of length at most 15 without STORE or
+jump opcodes halts is false under the machine's wrapping semantics. The Lean
+counterexample `wraparoundCounterexample` is fourteen NOPs followed by OUTPUT.
+At PC 14, OUTPUT reads the zero-padded cell 15 and advances by two modulo 16,
+returning to PC 0. The theorem `wraparoundCounterexample_step_at_pc14` checks
+that this step is not HALT, emits zero, and wraps PC to zero. Therefore PC is
+not monotonically increasing in the ordinary numeric ordering, even without
+STORE or jump instructions. A valid termination theorem needs an added
+condition that excludes executed wraparound (or otherwise accounts for it),
+then must connect forward progress to reaching a zero-padded HALT cell.
 
 The project uses Lean's standard library only; Mathlib is not needed for this
 first lemma.
