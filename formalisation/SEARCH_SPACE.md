@@ -70,3 +70,56 @@ programs have more ways to contain an executed storage or jump opcode, so this
 particular theorem covers a smaller share of the raw search space. The
 remaining candidates may still halt; they are simply outside this proof's
 precondition.
+
+## Additional reduction from proved instruction commutation
+
+The results in
+[`Formalisation/InstructionCommutation.lean`](Formalisation/InstructionCommutation.lean)
+can remove duplicate search cases by keeping one ordering for a pair of
+instructions whose effects commute. This is a different reduction from the
+termination theorem above: commutation identifies equivalent orderings; it
+does not show that those programs halt or cannot be solutions.
+
+### Exact count for one-byte register instructions
+
+The Lean classification covers the seven one-byte, silent register opcodes
+(ADD R0, SUB R0, INC R0, INC R1, DEC R0, DEC R1, and NOP). There are 49
+ordered two-instruction opcode sequences. Four unordered opcode pairs have
+state-dependent conflicts: ADD or SUB R0 paired with INC or DEC R1. The other
+17 distinct mixed pairs commute for every register state, and each of the
+seven same-opcode pairs is trivially unchanged by swapping. Therefore a search
+over just these two-instruction opcode sequences can reduce:
+
+| Local search space | Before | After keeping one order | Removed |
+|---|---:|---:|---:|
+| Ordered pairs of the 7 register opcodes | 49 | 24 | 25 (51.02%) |
+
+This is an exact percentage for that small opcode-pair space. It is not a
+51.02% reduction of all length-`n` byte vectors: a full-program canonicalizer
+would need to establish safe instruction boundaries and account for control
+flow, data operands, and later entry into the reordered bytes. The Lean pair
+classification compares the data effects; physically swapped code bytes mean
+the two whole memories are not identical.
+
+### Concrete two-byte examples
+
+Lean also checks these exact layouts end to end for two instruction steps:
+
+| Reordering | Fixed-length vectors | Proven equal after the two steps | Local reduction |
+|---|---|---|---:|
+| `OUTPUT 5; INC_R0` ↔ `INC_R0; OUTPUT 5` | `[8,5,3]` ↔ `[3,8,5]` (length 3) | registers, PC, and output `[5]` | 2 layouts → 1 (1 duplicate, 50%) |
+| `OUTPUT 5; LOAD_R0 10` ↔ `LOAD_R0 10; OUTPUT 5` | `[8,5,9,10,0,0,0,0,0,0,7]` ↔ `[9,10,8,5,0,0,0,0,0,0,7]` (length 11) | registers, PC, and output `[5]` | 2 layouts → 1 (1 duplicate, 50%) |
+
+The second example's cell 10 contains 7. The abstract theorems are broader:
+literal OUTPUT commutes with any deterministic silent data-state update, and
+LOAD R0 and LOAD R1 commute with each other for arbitrary addresses. The
+concrete encoded-program reduction still requires that both instructions
+execute as intended and that stores or control flow do not invalidate the
+instruction bytes or operands before they are fetched.
+
+These examples prove local duplicate elimination, not a global percentage for
+all length-3 or length-11 vectors. In particular, the two length-11 layouts
+are one pair among `16^11` vectors; the Lean development does not yet provide a
+program-wide canonicalizer that finds every such reorderable block. Apply the
+reduction only after a search tool has checked its premises. The termination
+table above is unchanged and remains the measured whole-vector reduction.
