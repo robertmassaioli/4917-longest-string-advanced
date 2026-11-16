@@ -14,7 +14,9 @@ events because it does not affect future machine state or termination.
 `Formalisation/PC.lean` proves a small abstract lemma: a path made entirely of
 strictly increasing PC transitions cannot return to an earlier PC
 (`no_forward_cycle`). The machine model also proves `zeroOpcodeHalts`, which
-connects opcode 0 in the concrete step function to its HALT result.
+connects opcode 0 in the concrete step function to its HALT result, and
+`runFuel_zeroOpcode_halts`, which proves fuel-bounded execution stops
+immediately when the current opcode is HALT.
 
 The full claim—programs of length at most 15 satisfying the intended
 forward-control-flow condition will halt—remains unproved. The next steps are

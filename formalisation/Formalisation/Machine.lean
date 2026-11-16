@@ -108,4 +108,15 @@ theorem zeroOpcodeHalts (s : MachineState)
     (step s).halted = true := by
   simp [step, hOpcode]
 
+/-- With at least one unit of fuel, execution at opcode 0 halts immediately
+and emits no value. -/
+theorem runFuel_zeroOpcode_halts (s : MachineState) (fuel : Nat)
+    (hFuel : 0 < fuel)
+    (hOpcode : (s.memory s.pc).val = 0) :
+    ∃ finalState, runFuel fuel s [] = .halted finalState [] := by
+  cases fuel with
+  | zero => simp at hFuel
+  | succ remaining =>
+      simp [runFuel, step, hOpcode]
+
 end Formalisation
