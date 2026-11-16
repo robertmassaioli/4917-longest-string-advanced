@@ -15,8 +15,9 @@ strictly increasing PC transitions cannot return to an earlier PC
 (`no_forward_cycle`). `Formalisation/Termination.lean` contains the concrete
 linear-reachability model and proves `shortProgram_eventuallyHalts` for
 programs of length at most 14 with no reachable STORE or jump opcode. The
-machine module also proves `zeroOpcodeHalts` and
-`runFuel_zeroOpcode_halts`.
+machine module also proves `zeroOpcodeHalts` and `runFuel_zeroOpcode_halts`.
+`Formalisation/Counterexamples.lean` contains the length-15 wraparound example
+and its Lean-checked properties.
 
 The Lean model's `Fin 16` types enforce valid nibbles and addresses. Conformance
 comparisons with Haskell therefore concern valid machine states, matching the
