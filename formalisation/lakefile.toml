@@ -1,0 +1,6 @@
+name = "formalisation"
+version = "0.1.0"
+defaultTargets = ["Formalisation"]
+
+[[lean_lib]]
+name = "Formalisation"

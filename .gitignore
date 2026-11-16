@@ -9,6 +9,9 @@
 # Haskell Stack build artifacts
 .stack-work/
 
+# Lean / Lake build artifacts
+formalisation/.lake/
+
 # Haskell compiled files
 *.hi
 *.dyn_hi
