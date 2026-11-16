@@ -19,6 +19,21 @@ machine module also proves `zeroOpcodeHalts` and `runFuel_zeroOpcode_halts`.
 `Formalisation/Counterexamples.lean` contains the length-15 wraparound example
 and its Lean-checked properties.
 
+`Formalisation/MonotoneOutput.lean` proves a trace-level accounting lemma:
+when execution starts at PC 0, each step strictly advances the PC, all visited
+addresses stay below the program length, and each step's output fits within
+its PC distance, the run prints at most twice the program length in decimal
+characters. It also proves that an OUTPUT machine step advances by two cells
+and that one nibble emits at most two decimal characters.
+
+This is the first lemma for the “longest string requires looping” argument; it
+is not yet a theorem about all concrete machine executions. The remaining
+formalization is to construct this trace from `step`/`runFuel`, prove that a
+run with a monotonically increasing PC satisfies its assumptions, and connect
+the observed best scores to verified programs or a formal maximum. The current
+exhaustive-search explainers report maxima through length 8. Those scores are
+evidence for the comparison, but are not yet Lean proofs of optimality.
+
 The Lean model's `Fin 16` types enforce valid nibbles and addresses. Conformance
 comparisons with Haskell therefore concern valid machine states, matching the
 processor contract; Haskell's `Word8` record fields can also represent invalid
