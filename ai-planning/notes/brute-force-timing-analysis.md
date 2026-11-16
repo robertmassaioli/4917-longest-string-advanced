@@ -7,7 +7,7 @@
 ## Executive Summary
 
 The current optimized C++ search completes all **1,048,576 length-5 programs in a median 73.9 ms** and all **268,435,456 length-7 programs in 25.13 s**. The length-7 run processed about **10.68 million programs per second**.
-
+p
 A measured length-5-to-length-7 growth factor extrapolates to about **18.44× per additional program slot**. On that model, length 8 takes about 7.7 minutes, length 9 about 2.4 hours, and length 16 about 196,600 years on one comparable core. These long-range estimates are highly uncertain: they extend a two-point scaling measurement, and the length-7 timing was a single run.
 
 The search CLI accepts lengths 1–16, matching the VM's 16-cell memory. Length 16 has exactly 2^64 candidate programs; the C++ search now handles that candidate count without 64-bit overflow. This makes length 16 representable, not practical to search exhaustively.
