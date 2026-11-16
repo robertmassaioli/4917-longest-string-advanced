@@ -3,15 +3,11 @@ import Formalisation.Machine
 /-!
 # Output bounds for monotonically increasing executions
 
-This is a reusable accounting lemma for the longest-output argument. A
-monotone execution that starts at PC 0 can visit each instruction address at
-most once. An OUTPUT instruction advances by two cells and emits at most two
-decimal characters, so its character contribution is bounded by the PC
-distance it consumes. Other forward steps contribute no characters.
-
-`MonotoneOutputTrace` records just those facts. The next step is to connect an
-actual machine execution to this trace, and to establish score lower bounds for
-the known loop-using winners.
+This module proves an output bound for the concrete 16-cell machine. In a run
+whose PC strictly increases, an OUTPUT step consumes two cells and emits at
+most two decimal characters. Summing that local bound gives at most 30
+characters: a non-HALT instruction can only execute below PC 15, and the
+terminal HALT may be at PC 15.
 -/
 
 namespace Formalisation
@@ -74,9 +70,9 @@ theorem stepOutputCharacterScore_le_pcDistance (s : MachineState)
       have hChars := decimalCharacterCount_le_two value
       omega
 
-/-- A finite execution of the concrete machine in which every step strictly
-increases the PC and every visited PC stays below `limit`. The score is the
-number of decimal characters emitted before HALT. -/
+/-- A finite execution of the concrete machine in which every non-HALT step
+strictly increases the PC. `limit` bounds every visited PC; for the full
+16-cell machine, use 15. The score counts characters emitted before HALT. -/
 inductive MonotoneMachineRun (limit : Nat) : MachineState → Nat → Prop where
   | halt {state : MachineState} :
       state.pc.val ≤ limit →
@@ -91,7 +87,7 @@ inductive MonotoneMachineRun (limit : Nat) : MachineState → Nat → Prop where
         (stepOutputCharacterScore (step state) + restScore)
 
 /-- Every monotone concrete machine run starting at PC 0 prints at most twice
-the program length in decimal characters. -/
+the address limit in decimal characters. -/
 theorem monotoneMachineRun_score_bound {limit score : Nat}
     {state : MachineState}
     (hStart : state.pc.val = 0)
@@ -121,14 +117,34 @@ theorem monotoneMachineRun_cannot_match_score {limit score bestScore : Nat}
   omega
 
 /-- The exhaustive-search explainers report these best scores for lengths
-4–8. Lean checks here that each reported score exceeds the monotone-run
-bound. The search results themselves are not yet derived inside Lean. -/
+4–8. Lean checks that each reported score exceeds the whole-machine monotone
+bound of 30 characters. The search results themselves are not yet derived
+inside Lean. -/
 theorem reportedBestScoresExceedMonotoneBound :
-    2 * 4 < 32 ∧
-    2 * 5 < 62 ∧
-    2 * 6 < 93 ∧
-    2 * 7 < 172 ∧
-    2 * 8 < 482 := by
+    2 * 15 < 32 ∧
+    2 * 15 < 62 ∧
+    2 * 15 < 93 ∧
+    2 * 15 < 172 ∧
+    2 * 15 < 482 := by
   omega
+
+/-- Direct length-by-length form of the comparison with the search reports:
+no monotone run can attain any reported best score for lengths 4–8. The
+existence and optimality of those scores remain facts supplied by the
+exhaustive-search results, not by this theorem. -/
+theorem noMonotoneRun_reaches_reportedBestScore :
+    (∀ {state score}, state.pc.val = 0 →
+      MonotoneMachineRun 15 state score → score < 32) ∧
+    (∀ {state score}, state.pc.val = 0 →
+      MonotoneMachineRun 15 state score → score < 62) ∧
+    (∀ {state score}, state.pc.val = 0 →
+      MonotoneMachineRun 15 state score → score < 93) ∧
+    (∀ {state score}, state.pc.val = 0 →
+      MonotoneMachineRun 15 state score → score < 172) ∧
+    (∀ {state score}, state.pc.val = 0 →
+      MonotoneMachineRun 15 state score → score < 482) := by
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩ <;>
+    intro state score hStart run <;>
+    apply monotoneMachineRun_cannot_match_score hStart run <;> omega
 
 end Formalisation

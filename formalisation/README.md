@@ -20,22 +20,19 @@ machine module also proves `zeroOpcodeHalts` and `runFuel_zeroOpcode_halts`.
 and its Lean-checked properties.
 
 `Formalisation/MonotoneOutput.lean` defines finite runs using the concrete
-machine `step` function and proves an accounting lemma: when execution starts
-at PC 0, each step strictly advances the PC, and no PC exceeds the program
-length (allowing the final HALT in zero-padded memory at exactly that address),
-the run prints at most twice the program length in decimal characters. It also
-proves that an OUTPUT machine step advances by two cells and that one nibble
-emits at most two decimal characters. The
-conditional comparison theorem rules out a monotone run whenever a known
-score exceeds that bound.
+machine `step` function and proves an accounting lemma: a run starting at PC
+0 whose PC strictly increases prints at most 30 decimal characters. This
+bound uses the whole 16-cell address space, so it also allows forward jumps
+and stores. OUTPUT advances by two cells and emits at most two characters;
+the terminal HALT may be at PC 15. A comparison theorem then rules out a
+monotone run whenever a known score exceeds 30.
 
-This is the first lemma for the “longest string requires looping” argument; it
-is not yet a theorem about all concrete machine executions. The remaining
-formalization is to connect ordinary HALT-terminated execution to this finite
-run relation and to prove the relevant best-score lower bounds from programs.
-The current exhaustive-search explainers report maxima through length 8;
-Lean checks that all reported length-4–8 scores exceed the monotone bound, but
-the exhaustive search results are not yet Lean proofs of optimality.
+The exhaustive-search explainers report maxima of 32, 62, 93, 172, and 482
+characters for lengths 4–8. Lean verifies that each number exceeds 30, so,
+assuming those exhaustive-search maxima, no program achieving them can have
+a strictly increasing PC run. The search results themselves are not yet Lean
+proofs of optimality; formalizing the exhaustive maximum claims would be a
+separate step.
 
 The Lean model's `Fin 16` types enforce valid nibbles and addresses. Conformance
 comparisons with Haskell therefore concern valid machine states, matching the
