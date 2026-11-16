@@ -1,8 +1,7 @@
 # 4917 formalisation (Lean 4)
 
-This is the starting point for proving termination properties of the 4917
-processor. It includes an executable Lean model of the machine and a first
-abstract control-flow lemma.
+This project contains an executable Lean model of the 4917 processor and
+machine-checked control-flow and termination theorems.
 
 `Formalisation/Machine.lean` models a complete machine state (16 memory cells,
 two registers, and the PC), one instruction step, and execution for a bounded
@@ -11,12 +10,13 @@ loads and stores, conditional and unconditional jumps, output events, and HALT.
 `initialState` loads a list of nibbles into zero-padded memory. Output is kept as
 events because it does not affect future machine state or termination.
 
-`Formalisation/PC.lean` proves a small abstract lemma: a path made entirely of
+`Formalisation/PC.lean` proves an abstract lemma: a path made entirely of
 strictly increasing PC transitions cannot return to an earlier PC
-(`no_forward_cycle`). The machine model also proves `zeroOpcodeHalts`, which
-connects opcode 0 in the concrete step function to its HALT result, and
-`runFuel_zeroOpcode_halts`, which proves fuel-bounded execution stops
-immediately when the current opcode is HALT.
+(`no_forward_cycle`). `Formalisation/Termination.lean` contains the concrete
+linear-reachability model and proves `shortProgram_eventuallyHalts` for
+programs of length at most 14 with no reachable STORE or jump opcode. The
+machine module also proves `zeroOpcodeHalts` and
+`runFuel_zeroOpcode_halts`.
 
 The Lean model's `Fin 16` types enforce valid nibbles and addresses. Conformance
 comparisons with Haskell therefore concern valid machine states, matching the
