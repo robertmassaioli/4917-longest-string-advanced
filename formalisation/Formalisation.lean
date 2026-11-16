@@ -6,5 +6,6 @@ import Formalisation.MonotoneOutput
 import Formalisation.PreRunChecksA
 import Formalisation.PreRunChecksB
 import Formalisation.PreRunChecksC
+import Formalisation.InstructionCommutation
 
 /-! Public imports for the Lean 4917 formalisation. -/

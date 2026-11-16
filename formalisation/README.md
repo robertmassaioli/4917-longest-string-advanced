@@ -96,6 +96,18 @@ This is a checker for a supplied certificate; it does not yet generate the
 allowed-PC set or budgets from arbitrary input programs. See
 [`pre-run-checks-c.md`](pre-run-checks-c.md) for details and commands.
 
+## Instruction reordering
+
+`Formalisation/InstructionCommutation.lean` gives an exact result for the
+one-byte, silent register instructions (opcodes 1–7). Of their 49 ordered
+pairs, precisely four fail to commute for all register values: ADD or SUB on
+R0 paired with INC or DEC on R1. In every other pair, the final register values
+are identical in either order. The proof exhaustively checks the 16×16
+register-state space and proves that these effects match `Machine.step`.
+The result does not yet classify OUTPUT, LOAD, STORE, HALT, or jump
+instructions, whose output, memory, operands, and control flow introduce
+additional dependencies.
+
 ## Install Lean on macOS
 
 Lean is installed and versioned through `elan`. In Terminal, run the official
