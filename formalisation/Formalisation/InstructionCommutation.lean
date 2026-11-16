@@ -261,6 +261,52 @@ def sequenceEffects {State Output : Type}
   let (final, secondOutput) := second middle
   (final, firstOutput ++ secondOutput)
 
+/-- Machine data excluding the program counter. -/
+structure MachineData where
+  memory : Memory
+  r0 : Nibble
+  r1 : Nibble
+
+def machineData (state : MachineState) : MachineData :=
+  ⟨state.memory, state.r0, state.r1⟩
+
+/-- Decoded data effect of LOAD R0 from a fixed memory address. -/
+def loadR0Data (address : PC) (data : MachineData) : MachineData :=
+  { data with r0 := data.memory address }
+
+/-- Decoded data effect of LOAD R1 from a fixed memory address. -/
+def loadR1Data (address : PC) (data : MachineData) : MachineData :=
+  { data with r1 := data.memory address }
+
+/-- Literal OUTPUT commutes with a decoded LOAD R0. -/
+theorem literalOutput_commutes_with_loadR0 (value : Nibble)
+    (address : PC) (data : MachineData) :
+    sequenceEffects (literalOutput value) (silentEffect (loadR0Data address)) data =
+      sequenceEffects (silentEffect (loadR0Data address))
+        (literalOutput value) data := by
+  simp [sequenceEffects, literalOutput, silentEffect]
+
+/-- Literal OUTPUT commutes with a decoded LOAD R1. -/
+theorem literalOutput_commutes_with_loadR1 (value : Nibble)
+    (address : PC) (data : MachineData) :
+    sequenceEffects (literalOutput value) (silentEffect (loadR1Data address)) data =
+      sequenceEffects (silentEffect (loadR1Data address))
+        (literalOutput value) data := by
+  simp [sequenceEffects, literalOutput, silentEffect]
+
+/-- LOAD R0 and LOAD R1 commute for arbitrary addresses: both read the same
+unchanged memory, and write different registers. -/
+theorem loadR0_loadR1_commute (r0Address r1Address : PC)
+    (data : MachineData) :
+    sequenceEffects
+        (silentEffect (Output := Nibble) (loadR0Data r0Address))
+        (silentEffect (Output := Nibble) (loadR1Data r1Address)) data =
+      sequenceEffects
+        (silentEffect (Output := Nibble) (loadR1Data r1Address))
+        (silentEffect (Output := Nibble) (loadR0Data r0Address)) data := by
+  cases data
+  simp [sequenceEffects, silentEffect, loadR0Data, loadR1Data]
+
 /-- A literal two-byte OUTPUT commutes observably with every silent data-state
 effect: the final state is the same and the output sequence is unchanged. This
 includes silent updates that read or write memory, because the output value is
@@ -298,6 +344,28 @@ theorem step_literalOutput_effect (state : MachineState)
       (step state).state.pc = pcAdd state.pc 2 ∧
       (step state).halted = false := by
   simp [step, hOpcode]
+
+/-- Concrete opcode 9 correspondence: the operand selects a memory cell, its
+value is loaded into R0, no output is produced, and PC advances by two. -/
+theorem step_loadR0_effect (state : MachineState)
+    (hOpcode : (state.memory state.pc).val = 9) :
+    machineData (step state).state =
+        loadR0Data (state.memory (pcAdd state.pc 1)) (machineData state) ∧
+      (step state).output = none ∧
+      (step state).state.pc = pcAdd state.pc 2 ∧
+      (step state).halted = false := by
+  simp [step, hOpcode, machineData, loadR0Data]
+
+/-- Concrete opcode 10 correspondence: the operand selects a memory cell, its
+value is loaded into R1, no output is produced, and PC advances by two. -/
+theorem step_loadR1_effect (state : MachineState)
+    (hOpcode : (state.memory state.pc).val = 10) :
+    machineData (step state).state =
+        loadR1Data (state.memory (pcAdd state.pc 1)) (machineData state) ∧
+      (step state).output = none ∧
+      (step state).state.pc = pcAdd state.pc 2 ∧
+      (step state).halted = false := by
+  simp [step, hOpcode, machineData, loadR1Data]
 
 /-- The user's example: printing literal 5 and incrementing R0 have the same
 final register state and exact output sequence in either order. -/
@@ -342,6 +410,21 @@ theorem machine_output5_incR0_example :
       printedThenIncremented.1.pc = incrementedThenPrinted.1.pc ∧
       printedThenIncremented.2 = incrementedThenPrinted.2 ∧
       printedThenIncremented.2 = [5] := by
+  decide
+
+/-- End-to-end LOAD example: OUTPUT 5 and LOAD R0 from cell 10, which contains
+7, yield the same registers, PC, and output when reordered. -/
+theorem machine_output5_loadR0_example :
+    let printedThenLoaded := executeTwoSteps
+      (initialState [8, 5, 9, 10, 0, 0, 0, 0, 0, 0, 7])
+    let loadedThenPrinted := executeTwoSteps
+      (initialState [9, 10, 8, 5, 0, 0, 0, 0, 0, 0, 7])
+    printedThenLoaded.1.r0 = loadedThenPrinted.1.r0 ∧
+      printedThenLoaded.1.r0 = 7 ∧
+      printedThenLoaded.1.r1 = loadedThenPrinted.1.r1 ∧
+      printedThenLoaded.1.pc = loadedThenPrinted.1.pc ∧
+      printedThenLoaded.2 = loadedThenPrinted.2 ∧
+      printedThenLoaded.2 = [5] := by
   decide
 
 /-- Instruction widths add modulo the 16-cell PC space, so the final PC after

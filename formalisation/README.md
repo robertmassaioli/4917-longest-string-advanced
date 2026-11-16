@@ -110,9 +110,9 @@ each starting at `(R0, R1) = (0, 0)`. Separate lemmas show the pattern behind
 the table: every pair among ADD/SUB/INC_R0/DEC_R0 commutes, INC_R1 and DEC_R1
 commute, independent INC/DEC operations on opposite registers commute, and
 NOP commutes with every instruction in the group.
-LOAD, STORE, HALT, and jump instructions are not yet given an exact pairwise
-classification; their memory, operand, and control-flow dependencies need
-additional rules.
+LOAD/STORE pairs with register updates, STORE pairs, HALT, and jumps are not
+yet given an exact pairwise classification; their memory, operand, and
+control-flow dependencies need additional rules.
 
 The same module now also models literal OUTPUT as an observable effect.
 `literalOutput_commutes_with_silent` proves that printing a fixed value
@@ -123,6 +123,13 @@ machine example proves that `[OUTPUT 5, INC_R0]` and `[INC_R0, OUTPUT 5]` end
 with equal registers and PC and emit `[5]`. For an encoded program, the moved
 instructions must both execute and any STORE must leave the OUTPUT opcode and
 operand intact until fetched.
+
+The same theorem applies to literal OUTPUT paired with a decoded LOAD R0 or
+LOAD R1. `step_loadR0_effect` and `step_loadR1_effect` connect those effects to
+the concrete two-byte machine instructions. The module also proves that LOAD
+R0 and LOAD R1 commute at arbitrary addresses, since both read unchanged
+memory and write different registers. An end-to-end example reorders OUTPUT 5
+with LOAD R0 from cell 10 and confirms the same registers, PC, and output.
 
 ## Install Lean on macOS
 
