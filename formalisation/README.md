@@ -59,6 +59,8 @@ execution eventually reaches HALT. `LinearReach` advances by one for opcodes
 positions, while operand cells skipped by opcodes 8–10 may contain any nibble.
 The proof shows each non-HALT step strictly increases PC below 14, preserves
 memory, and therefore cannot wrap. At PC 14 or 15 zero padding supplies HALT.
+The exact number of fixed-length search vectors covered at each size is in
+[`SEARCH_SPACE.md`](SEARCH_SPACE.md).
 
 The project uses Lean's standard library only; Mathlib is not needed for this
 first lemma.
