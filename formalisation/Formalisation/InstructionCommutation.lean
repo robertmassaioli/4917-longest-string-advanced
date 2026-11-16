@@ -132,4 +132,103 @@ theorem add_inc1_do_not_commute :
   rw [commute_iff_no_crossConflict]
   decide
 
+/-- Concrete counterexample for ADD_R0 followed by INC_R1 versus the reverse:
+from `(0, 0)` the results are `(0, 1)` and `(1, 1)`. -/
+theorem add_inc1_counterexample :
+    applyRegisterInstruction .incR1
+        (applyRegisterInstruction .addR0 ((0 : Nibble), 0)) ≠
+      applyRegisterInstruction .addR0
+        (applyRegisterInstruction .incR1 ((0 : Nibble), 0)) := by
+  decide
+
+/-- Concrete counterexample for ADD_R0 and DEC_R1, starting at `(0, 0)`. -/
+theorem add_dec1_counterexample :
+    applyRegisterInstruction .decR1
+        (applyRegisterInstruction .addR0 ((0 : Nibble), 0)) ≠
+      applyRegisterInstruction .addR0
+        (applyRegisterInstruction .decR1 ((0 : Nibble), 0)) := by
+  decide
+
+/-- Concrete counterexample for SUB_R0 and INC_R1, starting at `(0, 0)`. -/
+theorem sub_inc1_counterexample :
+    applyRegisterInstruction .incR1
+        (applyRegisterInstruction .subR0 ((0 : Nibble), 0)) ≠
+      applyRegisterInstruction .subR0
+        (applyRegisterInstruction .incR1 ((0 : Nibble), 0)) := by
+  decide
+
+/-- Concrete counterexample for SUB_R0 and DEC_R1, starting at `(0, 0)`. -/
+theorem sub_dec1_counterexample :
+    applyRegisterInstruction .decR1
+        (applyRegisterInstruction .subR0 ((0 : Nibble), 0)) ≠
+      applyRegisterInstruction .subR0
+        (applyRegisterInstruction .decR1 ((0 : Nibble), 0)) := by
+  decide
+
+/-- A compact record of the four distinct conflict patterns. Reversing either
+instruction order preserves each inequality by symmetry. -/
+theorem all_crossConflict_counterexamples :
+    (∃ registers, applyRegisterInstruction .incR1
+        (applyRegisterInstruction .addR0 registers) ≠
+      applyRegisterInstruction .addR0
+        (applyRegisterInstruction .incR1 registers)) ∧
+    (∃ registers, applyRegisterInstruction .decR1
+        (applyRegisterInstruction .addR0 registers) ≠
+      applyRegisterInstruction .addR0
+        (applyRegisterInstruction .decR1 registers)) ∧
+    (∃ registers, applyRegisterInstruction .incR1
+        (applyRegisterInstruction .subR0 registers) ≠
+      applyRegisterInstruction .subR0
+        (applyRegisterInstruction .incR1 registers)) ∧
+    (∃ registers, applyRegisterInstruction .decR1
+        (applyRegisterInstruction .subR0 registers) ≠
+      applyRegisterInstruction .subR0
+        (applyRegisterInstruction .decR1 registers)) := by
+  exact ⟨⟨(0, 0), add_inc1_counterexample⟩,
+    ⟨(0, 0), add_dec1_counterexample⟩,
+    ⟨(0, 0), sub_inc1_counterexample⟩,
+    ⟨(0, 0), sub_dec1_counterexample⟩⟩
+
+/-- ADD, SUB, INC_R0, and DEC_R0 all transform R0 while leaving R1 fixed.
+With the common R1 value held constant, every pair of these transformations
+commutes. -/
+def r0Arithmetic : RegisterInstruction → Prop
+  | .addR0 | .subR0 | .incR0 | .decR0 => True
+  | _ => False
+
+theorem r0Arithmetic_pairs_commute (first second : RegisterInstruction)
+    (hFirst : r0Arithmetic first) (hSecond : r0Arithmetic second) :
+    Commute first second := by
+  rw [commute_iff_no_crossConflict]
+  cases first <;> cases second <;> simp_all [r0Arithmetic, crossConflict]
+
+/-- INC_R1 and DEC_R1 commute with each other because they are translations
+of the same four-bit register. -/
+def r1UnitUpdate : RegisterInstruction → Prop
+  | .incR1 | .decR1 => True
+  | _ => False
+
+theorem r1UnitUpdates_commute (first second : RegisterInstruction)
+    (hFirst : r1UnitUpdate first) (hSecond : r1UnitUpdate second) :
+    Commute first second := by
+  rw [commute_iff_no_crossConflict]
+  cases first <;> cases second <;> simp_all [r1UnitUpdate, crossConflict]
+
+/-- Small independent increment/decrement changes to the two different registers always
+commute, including when either change wraps around modulo 16. -/
+theorem independentUnitUpdates_commute (first second : RegisterInstruction)
+    (hFirst : first = .incR0 ∨ first = .decR0)
+    (hSecond : second = .incR1 ∨ second = .decR1) :
+    Commute first second := by
+  rw [commute_iff_no_crossConflict]
+  rcases hFirst with rfl | rfl <;> rcases hSecond with rfl | rfl <;>
+    rfl
+
+/-- NOP commutes with every instruction in this module because it is the
+identity on registers. -/
+theorem nop_commutes (instruction : RegisterInstruction) :
+    Commute .nop instruction ∧ Commute instruction .nop := by
+  constructor <;> rw [commute_iff_no_crossConflict] <;>
+    cases instruction <;> rfl
+
 end Formalisation.InstructionCommutation

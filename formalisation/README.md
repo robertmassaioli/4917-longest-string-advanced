@@ -105,6 +105,11 @@ unordered pairs): ADD or SUB on R0 paired with INC or DEC on R1. In every
 other pair, the final register values
 are identical in either order. The proof exhaustively checks the 16×16
 register-state space and proves that these effects match `Machine.step`.
+Lean also proves concrete noncommuting witnesses for all four conflict pairs,
+each starting at `(R0, R1) = (0, 0)`. Separate lemmas show the pattern behind
+the table: every pair among ADD/SUB/INC_R0/DEC_R0 commutes, INC_R1 and DEC_R1
+commute, independent INC/DEC operations on opposite registers commute, and
+NOP commutes with every instruction in the group.
 The result does not yet classify OUTPUT, LOAD, STORE, HALT, or jump
 instructions, whose output, memory, operands, and control flow introduce
 additional dependencies.
