@@ -21,10 +21,11 @@ and its Lean-checked properties.
 
 `Formalisation/MonotoneOutput.lean` defines finite runs using the concrete
 machine `step` function and proves an accounting lemma: when execution starts
-at PC 0, each step strictly advances the PC, and every visited address stays
-below the program length, the run prints at most twice the program length in
-decimal characters. It also proves that an OUTPUT machine step advances by
-two cells and that one nibble emits at most two decimal characters. The
+at PC 0, each step strictly advances the PC, and no PC exceeds the program
+length (allowing the final HALT in zero-padded memory at exactly that address),
+the run prints at most twice the program length in decimal characters. It also
+proves that an OUTPUT machine step advances by two cells and that one nibble
+emits at most two decimal characters. The
 conditional comparison theorem rules out a monotone run whenever a known
 score exceeds that bound.
 

@@ -79,12 +79,12 @@ increases the PC and every visited PC stays below `limit`. The score is the
 number of decimal characters emitted before HALT. -/
 inductive MonotoneMachineRun (limit : Nat) : MachineState → Nat → Prop where
   | halt {state : MachineState} :
-      state.pc.val < limit →
+      state.pc.val ≤ limit →
       (step state).halted = true →
       MonotoneMachineRun limit state 0
   | next {state : MachineState} {restScore : Nat} :
       state.pc.val < (step state).state.pc.val →
-      (step state).state.pc.val < limit →
+      (step state).state.pc.val ≤ limit →
       (step state).halted = false →
       MonotoneMachineRun limit (step state).state restScore →
       MonotoneMachineRun limit state
@@ -101,7 +101,7 @@ theorem monotoneMachineRun_score_bound {limit score : Nat}
       score ≤ 2 * (limit - state.pc.val) := by
     intro state score hRun
     induction hRun with
-    | halt hPC hHalt => simp
+    | halt hPC hHalt => omega
     | @next state restScore hProgress hNextPC hNotHalt hRest ih =>
         have hLocal := stepOutputCharacterScore_le_pcDistance state hProgress
         omega
