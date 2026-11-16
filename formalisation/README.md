@@ -46,16 +46,18 @@ stack test cli4917:test:spec --test-arguments=--match=boundary
 These are executable conformance checks against the same valid-state behavior;
 they are not yet a machine-checked equivalence proof between Lean and Haskell.
 
-The proposed claim that every program of length at most 15 without STORE or
-jump opcodes halts is false under the machine's wrapping semantics. The Lean
-counterexample `wraparoundCounterexample` is fourteen NOPs followed by OUTPUT.
-At PC 14, OUTPUT reads the zero-padded cell 15 and advances by two modulo 16,
-returning to PC 0. The theorem `wraparoundCounterexample_step_at_pc14` checks
-that this step is not HALT, emits zero, and wraps PC to zero. Therefore PC is
-not monotonically increasing in the ordinary numeric ordering, even without
-STORE or jump instructions. A valid termination theorem needs an added
-condition that excludes executed wraparound (or otherwise accounts for it),
-then must connect forward progress to reaching a zero-padded HALT cell.
+The length-15 counterexample `wraparoundCounterexample` is fourteen NOPs
+followed by OUTPUT. At PC 14, OUTPUT reads padded cell 15 and advances by two
+modulo 16, returning to PC 0. The theorem `wraparoundCounterexample_step_at_pc14`
+checks that this step is not HALT, emits zero, and wraps PC to zero.
+
+For length at most 14, `shortProgram_eventuallyHalts` now proves the corrected
+claim: if no instruction reached by a linear scan from PC 0 is a STORE or jump,
+execution eventually reaches HALT. `LinearReach` advances by one for opcodes
+1–7 and by two for opcodes 8–15; the safety condition rules out 11–15 at reached
+positions, while operand cells skipped by opcodes 8–10 may contain any nibble.
+The proof shows each non-HALT step strictly increases PC below 14, preserves
+memory, and therefore cannot wrap. At PC 14 or 15 zero padding supplies HALT.
 
 The project uses Lean's standard library only; Mathlib is not needed for this
 first lemma.
