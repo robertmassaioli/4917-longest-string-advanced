@@ -51,6 +51,98 @@ The winner replay command was:
 
 It returned `termination: halted`, `steps: 1825`, and `output_characters: 678`.
 
+## Haskell CLI execution diagnostics
+
+I checked the winner with all three Haskell CLI commands relevant to execution
+and inspection. The top-level help lists `run`, `trace`, and `generalize`;
+the separate `search`, `solve`, and demo commands do not inspect this supplied
+program's execution.
+
+From `haskell-impl/`, the commands were:
+
+```sh
+stack run -- run --program 8,8,13,1,14,5,2,6,15 --max-steps 1000000
+stack run -- trace --program 8,8,13,1,14,5,2,6,15
+stack run -- generalize --program 8,8,13,1,14,5,2,6,15
+```
+
+`run` and `trace` both report HALT after **1,825 instructions** and **678
+output characters**. The trace has 1,825 instruction rows plus the initial
+state and final status. It shows no memory changes, 226 executions of each
+PRINT, and 16 times when the conditional jump at address 4 takes the DEC R0
+path. The final instructions are JNZ at address 8 falling through to HALT at
+address 10, with R0 = 0, R1 = 14, and 678 characters emitted. `generalize`
+reports the same steps and score; its memory pattern is detailed below.
+
+## Program layout and control flow
+
+The nine supplied nibbles occupy addresses 0–8. Execution continues in the
+same 16-cell memory, where the omitted cells are zero:
+
+| Address | Byte | Instruction | Effect in this program |
+| ---: | ---: | --- | --- |
+| 0 | 8 | OUTPUT | Print the next cell, 8; advance to address 2. |
+| 1 | 8 | OUTPUT | Print the next cell, 13; reached through JMP. |
+| 2 | 13 | JMP | Jump to the address stored in cell 3, which is 1. |
+| 3 | 1 | ADD R0,R1 | Set R0 to `(R0 + R1) mod 16`. |
+| 4 | 14 | JZ 5 | If R0 is zero, take address 5; otherwise skip to address 6. |
+| 5 | 5 | DEC R0 | Decrement R0 on the zero-sum path only. |
+| 6 | 2 | SUB R0,R1 | Set R0 to `(R0 - R1) mod 16`. |
+| 7 | 6 | DEC R1 | Decrement R1 modulo 16. |
+| 8 | 15 | JNZ 0 | If R0 is nonzero, return to address 0; otherwise continue at address 10. |
+| 9 | 0 | Operand | The JNZ target, address 0. |
+| 10 | 0 | HALT | Reached when JNZ falls through. |
+
+```mermaid
+flowchart TD
+    S[Start: R0=0, R1=0] --> O8[0: OUTPUT 8]
+    O8 --> J[2: JMP 1]
+    J --> O13[1: OUTPUT 13]
+    O13 --> ADD[3: ADD R0, R1]
+    ADD --> Z{4: R0 = 0?}
+    Z -- yes --> DEC[5: DEC R0]
+    Z -- no --> SUB[6: SUB R0, R1]
+    DEC --> SUB
+    SUB --> DR1[7: DEC R1]
+    DR1 --> NZ{8: R0 != 0?}
+    NZ -- yes --> O8
+    NZ -- no --> HALT[10: HALT]
+```
+
+The same control flow in pseudocode is:
+
+```text
+R0 = 0
+R1 = 0
+repeat:
+    print 8
+    print 13
+    R0 = (R0 + R1) mod 16
+    if R0 == 0:
+        R0 = (R0 - 1) mod 16
+    R0 = (R0 - R1) mod 16
+    R1 = (R1 - 1) mod 16
+until R0 == 0
+halt
+```
+
+The DEC R0 before SUB is essential: it runs only when the addition wraps to
+zero. On an ordinary round, ADD followed by SUB restores R0 to its value at
+the start of that round, while R1 decreases by one. On a zero-sum round, the
+extra decrement makes the new R0 one less than before (modulo 16). The first
+round starts at `(0,0)` and seeds R0 to 15. Thereafter each R0 value from 15
+down through 1 persists while R1 cycles until `R0 + R1` wraps to zero; that
+round lowers R0 and begins the next phase. The phase for each of those 15 R0
+values takes 15 rounds. The final zero-sum round changes R0 from 1 to 0, so
+JNZ falls through to HALT.
+
+This gives `1 + 15 × 15 = 226` rounds: one initial seed round and 15 phases
+of 15 rounds. Every round emits `(8, 13)`, giving 452 values and
+`226 × (1 + 2) = 678` output characters. Each round uses eight instructions;
+the 16 zero-sum rounds also execute DEC R0 once. Therefore the loop takes
+`226 × 8 + 16 = 1,824` instructions, followed by the one HALT instruction,
+matching the Haskell trace's 1,825-step count.
+
 ## Haskell CLI generalization
 
 The Haskell CLI generalizer was also run on the winning nine-nibble program:
