@@ -70,6 +70,7 @@ data SolveOptions = SolveOptions
 data ProgramOptions = ProgramOptions
     { suppliedProgram :: String
     , programMaxSteps :: Int
+    , programMaxStepsExplicit :: Bool
     , programDetectLoops :: Bool
     } deriving (Show, Eq)
 
@@ -201,18 +202,12 @@ runParser :: Parser Command
 runParser = Run <$> programOptions 1000
 
 traceParser :: Parser Command
-traceParser = Trace <$> (setLoopDetection <$> programOptions 10000 <*> loopDetectionOption)
+traceParser = Trace <$> (setLoopDetection <$> programOptions 10000 <*> switch
+    ( long "detect-loops"
+   <> help "Trace until HALT or a repeated machine state, even when --max-steps is supplied" ))
   where
-    setLoopDetection options detectLoops = options { programDetectLoops = detectLoops }
-
-    loopDetectionOption =
-        (\forceLoopDetection disableLoopDetection -> forceLoopDetection || not disableLoopDetection)
-            <$> switch
-                ( long "detect-loops"
-               <> help "Trace until HALT or a repeated machine state (the default)" )
-            <*> switch
-                ( long "no-detect-loops"
-               <> help "Disable loop detection and stop at --max-steps instead" )
+    setLoopDetection options forceLoopDetection = options
+        { programDetectLoops = forceLoopDetection || not (programMaxStepsExplicit options) }
 
 generalizeParser :: Parser Command
 generalizeParser = Generalize <$> (GeneralizeOptions <$> strOption
@@ -226,12 +221,12 @@ programOptions defaultMaxSteps = do
         ( long "program"
        <> metavar "BYTE,BYTE,..."
        <> help "Comma-separated memory bytes (integers 0-15, up to 16 values)" )
-    maxSteps <- option auto
+    maxSteps <- optional $ option auto
         ( long "max-steps"
        <> metavar "N"
        <> help ("Maximum instructions before stopping (default: " ++ show defaultMaxSteps ++ ")")
-       <> value defaultMaxSteps )
-    pure $ ProgramOptions program maxSteps False
+       )
+    pure $ ProgramOptions program (maybe defaultMaxSteps id maxSteps) (maybe False (const True) maxSteps) False
 
 -- | Execute a command
 runCommand :: Command -> IO ()
