@@ -89,3 +89,7 @@ countdown. It still exceeds the 482-character length-8 winner. The search
 here was a small local exploration of deletions and nibble changes, not an
 exhaustive search of all 15-nibble programs; it does not show that 962 is the
 best score at length 15, or that 1,157 cannot be reached with fewer cells.
+
+Changing the staged countdown's starting value from 10 to 15 gives the
+2,957-character length-16 candidate recorded in
+[`length-16.md`](length-16.md).
