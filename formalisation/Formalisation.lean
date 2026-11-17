@@ -12,5 +12,6 @@ import Formalisation.OutputScoreClasses
 import Formalisation.RegisterLoopBounds
 import Formalisation.R1Influence
 import Formalisation.R1Consumption
+import Formalisation.R1Erasure
 
 /-! Public imports for the Lean 4917 formalisation. -/
