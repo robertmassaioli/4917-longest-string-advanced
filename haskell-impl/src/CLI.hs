@@ -201,12 +201,18 @@ runParser :: Parser Command
 runParser = Run <$> programOptions 1000
 
 traceParser :: Parser Command
-traceParser = do
-    options <- programOptions 10000
-    detectLoops <- switch
-        ( long "detect-loops"
-       <> help "Trace until HALT or a repeated machine state; ignore --max-steps" )
-    pure $ Trace options { programDetectLoops = detectLoops }
+traceParser = Trace <$> (setLoopDetection <$> programOptions 10000 <*> loopDetectionOption)
+  where
+    setLoopDetection options detectLoops = options { programDetectLoops = detectLoops }
+
+    loopDetectionOption =
+        (\forceLoopDetection disableLoopDetection -> forceLoopDetection || not disableLoopDetection)
+            <$> switch
+                ( long "detect-loops"
+               <> help "Trace until HALT or a repeated machine state (the default)" )
+            <*> switch
+                ( long "no-detect-loops"
+               <> help "Disable loop detection and stop at --max-steps instead" )
 
 generalizeParser :: Parser Command
 generalizeParser = Generalize <$> (GeneralizeOptions <$> strOption
