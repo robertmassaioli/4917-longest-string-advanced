@@ -32,6 +32,27 @@ For the 15-print variant above, use loop detection instead of a step limit:
 stack run -- trace --program 1,8,15,14,4,2,4,15,0,10,5,5,11,11,14 --detect-loops
 ```
 
+## Haskell CLI generalization
+
+Run the CLI's dynamic memory-usage generalizer with:
+
+```sh
+stack run -- generalize --program 1,8,15,14,4,2,4,15,0,10,5,5,11,11,14
+```
+
+It reports a halted execution in 2,925 steps with 962 output characters. The
+optimized 16-cell memory pattern is:
+
+```text
+[1, 8, AnyOf(10-15), 14, 4, 2, 4, 15, 0, 10, 5, 5, 11, 11, 14, 0]
+```
+
+Every cell is required except address 2, the PRINT operand. Any value from
+10 through 15 preserves two output characters per round, so the CLI finds six
+members of this equivalence class. The generalizer counts a 16-cell memory
+image; for the length-15 program domain, the final zero is fixed padding, and
+the same six candidates sit within the `16^15` possible 15-nibble programs.
+
 ## How the storage creates a second long pass
 
 Cells 0–8 are the same modular loop used by the length-8 winner. At the end

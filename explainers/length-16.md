@@ -21,6 +21,26 @@ Run it from `haskell-impl/` with:
 stack run -- trace --program 1,8,15,14,4,2,4,15,0,9,2,5,11,2,14,2 --max-steps 11078
 ```
 
+## Haskell CLI generalization
+
+The CLI's dynamic memory-usage generalizer reports this program as halted
+after 11,078 steps with 2,957 output characters. Run it with:
+
+```sh
+stack run -- generalize --program 1,8,15,14,4,2,4,15,0,9,2,5,11,2,14,2
+```
+
+Its optimized pattern requires every cell:
+
+```text
+[1, 8, 15, 14, 4, 2, 4, 15, 0, 9, 2, 5, 11, 2, 14, 2]
+```
+
+The CLI therefore finds no generalized alternatives for this candidate: the
+reported class contains one 16-nibble program, reduced from `16^16` possible
+memory images. The changing output and counter values arise from the program
+modifying memory while it runs; they do not make any initial nibble optional.
+
 ## How it works
 
 Cells 0–7 are the length-8 modular loop. Cell 2 starts at 15 and acts as both
