@@ -10,5 +10,6 @@ import Formalisation.InstructionCommutation
 import Formalisation.Length123Optimality
 import Formalisation.OutputScoreClasses
 import Formalisation.RegisterLoopBounds
+import Formalisation.R1Influence
 
 /-! Public imports for the Lean 4917 formalisation. -/
