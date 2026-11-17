@@ -13,7 +13,6 @@ module CLI
     ) where
 
 import Options.Applicative
-import Data.Semigroup ((<>))
 import Commands.Demo (runDemoCommand)
 import Commands.OptimizeDemo (runOptimizeDemoCommand)
 import Commands.CacheDemo (runCacheDemoCommand)
@@ -71,6 +70,7 @@ data SolveOptions = SolveOptions
 data ProgramOptions = ProgramOptions
     { suppliedProgram :: String
     , programMaxSteps :: Int
+    , programDetectLoops :: Bool
     } deriving (Show, Eq)
 
 data GeneralizeOptions = GeneralizeOptions
@@ -201,7 +201,12 @@ runParser :: Parser Command
 runParser = Run <$> programOptions 1000
 
 traceParser :: Parser Command
-traceParser = Trace <$> programOptions 10000
+traceParser = do
+    options <- programOptions 10000
+    detectLoops <- switch
+        ( long "detect-loops"
+       <> help "Trace until HALT or a repeated machine state; ignore --max-steps" )
+    pure $ Trace options { programDetectLoops = detectLoops }
 
 generalizeParser :: Parser Command
 generalizeParser = Generalize <$> (GeneralizeOptions <$> strOption
@@ -210,16 +215,17 @@ generalizeParser = Generalize <$> (GeneralizeOptions <$> strOption
    <> help "Comma-separated memory bytes (integers 0-15, up to 16 values)" ))
 
 programOptions :: Int -> Parser ProgramOptions
-programOptions defaultMaxSteps = ProgramOptions
-    <$> strOption
+programOptions defaultMaxSteps = do
+    program <- strOption
         ( long "program"
        <> metavar "BYTE,BYTE,..."
        <> help "Comma-separated memory bytes (integers 0-15, up to 16 values)" )
-    <*> option auto
+    maxSteps <- option auto
         ( long "max-steps"
        <> metavar "N"
        <> help ("Maximum instructions before stopping (default: " ++ show defaultMaxSteps ++ ")")
        <> value defaultMaxSteps )
+    pure $ ProgramOptions program maxSteps False
 
 -- | Execute a command
 runCommand :: Command -> IO ()
@@ -229,5 +235,5 @@ runCommand (CacheDemo opts) = runCacheDemoCommand (cacheDemoLength opts) (cacheD
 runCommand (Search opts) = runSearchCommand (searchLength opts) (searchFresh opts) (searchCacheFile opts) (searchVerbose opts)
 runCommand (Solve opts) = runSolveCommand (solveTaskFile opts) (solveVerbose opts)
 runCommand (Run opts) = runProgramCommand (suppliedProgram opts) (programMaxSteps opts)
-runCommand (Trace opts) = runTraceCommand (suppliedProgram opts) (programMaxSteps opts)
+runCommand (Trace opts) = runTraceCommand (suppliedProgram opts) (programMaxSteps opts) (programDetectLoops opts)
 runCommand (Generalize opts) = runGeneralizeCommand (generalizeProgram opts)

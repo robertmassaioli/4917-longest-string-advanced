@@ -6,7 +6,9 @@ module Commands.ProgramExecution
     , executeProgram
     , renderRunResult
     , traceProgram
+    , traceProgramUntilHaltOrCycle
     , renderTrace
+    , renderTraceUntilHaltOrCycle
     , runProgramCommand
     , runTraceCommand
     ) where
@@ -69,15 +71,22 @@ data TraceRow = TraceRow
     , traceHalted :: Bool
     } deriving (Show, Eq)
 
-data TraceResult = TraceHalted [TraceRow] Device | TraceLimit [TraceRow] Device
+data TraceResult = TraceHalted [TraceRow] Device | TraceLimit [TraceRow] Device | TraceCycle [TraceRow] Device
     deriving (Show, Eq)
 
 traceProgram :: [Byte] -> Int -> TraceResult
-traceProgram bytes maxSteps = go initial 0 []
+traceProgram bytes maxSteps = traceProgramWithLimit (Just (max 0 maxSteps)) False bytes
+
+traceProgramUntilHaltOrCycle :: [Byte] -> TraceResult
+traceProgramUntilHaltOrCycle = traceProgramWithLimit Nothing True
+
+traceProgramWithLimit :: Maybe Int -> Bool -> [Byte] -> TraceResult
+traceProgramWithLimit maxSteps detectCycles bytes = go initial 0 [] Set.empty
   where
     initial = initProgram (createDevice bytes)
-    go device steps rows
-        | steps >= max 0 maxSteps = TraceLimit (reverse rows) device
+    go device steps rows seen
+        | maybe False (steps >=) maxSteps = TraceLimit (reverse rows) device
+        | detectCycles && Set.member (machineKey device) seen = TraceCycle (reverse rows) device
         | otherwise =
             let addr = fromIntegral (pc device)
                 inst = fromIntegral (memory device V.! addr)
@@ -85,18 +94,26 @@ traceProgram bytes maxSteps = go initial 0 []
                 (next, outputInfo, halted) = stepProgram device
                 emitted = if outputInfo == NoOutput then Nothing else Just (fromIntegral (memory device V.! ((addr + 1) `mod` 16)))
                 row = TraceRow (steps + 1) addr inst operand device next emitted halted
-            in if halted then TraceHalted (reverse (row:rows)) next else go next (steps + 1) (row:rows)
+                seen' = Set.insert (machineKey device) seen
+            in if halted then TraceHalted (reverse (row:rows)) next else go next (steps + 1) (row:rows) seen'
 
 renderTrace :: [Byte] -> Int -> [String]
 renderTrace bytes maxSteps =
     let initial = initProgram (createDevice bytes)
-        (rows, finalDevice, finished) = case traceProgram bytes maxSteps of
-            TraceHalted rs d -> (rs, d, True)
-            TraceLimit rs d -> (rs, d, False)
+    in renderTraceResult initial (traceProgram bytes maxSteps)
+
+renderTraceUntilHaltOrCycle :: [Byte] -> [String]
+renderTraceUntilHaltOrCycle bytes =
+    renderTraceResult (initProgram (createDevice bytes)) (traceProgramUntilHaltOrCycle bytes)
+
+renderTraceResult :: Device -> TraceResult -> [String]
+renderTraceResult initial result =
+    let (rows, status) = case result of
+            TraceHalted rs _ -> (rs, "halted after " ++ show (length rs) ++ " steps")
+            TraceLimit rs d -> (rs, "maximum step limit reached after " ++ show (length rs) ++ " steps; final state: " ++ renderState d)
+            TraceCycle rs d -> (rs, "loop detected after " ++ show (length rs) ++ " steps; repeated state: " ++ renderState d)
         first = "initial: " ++ renderState initial ++ "; memory: " ++ renderMemory (memory initial)
         rendered = snd (foldl renderRow (memory initial, []) rows)
-        status = if finished then "halted after " ++ show (length rows) ++ " steps"
-                 else "maximum step limit reached after " ++ show (length rows) ++ " steps; final state: " ++ renderState finalDevice
     in first : rendered ++ [status]
   where
     renderRow (previousMemory, linesSoFar) TraceRow{..} =
@@ -142,8 +159,8 @@ renderRunResult result =
     renderValues = intercalate "," . map show
     decimalChars n = if n >= 10 then 2 else 1
 
-runTraceCommand :: String -> Int -> IO ()
-runTraceCommand input maxSteps = do
+runTraceCommand :: String -> Int -> Bool -> IO ()
+runTraceCommand input maxSteps detectLoops = do
     bytes <- either die pure (parseProgramBytes input)
-    when (maxSteps < 0) (die "maximum step count must not be negative")
-    mapM_ putStrLn (renderTrace bytes maxSteps)
+    when (not detectLoops && maxSteps < 0) (die "maximum step count must not be negative")
+    mapM_ putStrLn (if detectLoops then renderTraceUntilHaltOrCycle bytes else renderTrace bytes maxSteps)
