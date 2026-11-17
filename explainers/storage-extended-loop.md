@@ -84,8 +84,15 @@ instructions with 962 output characters:
 
 ```sh
 cd haskell-impl
-stack run -- trace --program 1,8,10,14,4,2,4,15,0,10,5,5,11,11,14 --max-steps 2925
+stack run -- trace --program 1,8,10,14,4,2,4,15,0,10,5,5,11,11,14 --detect-loops
 ```
+
+Changing its fixed PRINT operand at cell 2 from 10 to 15 gives
+`[1,8,15,14,4,2,4,15,0,10,5,5,11,11,14]`. The modified candidate still halts
+after 2,925 instructions and scores 962 characters: it prints 15 instead of
+10 for the same 481 rounds. Since cell 2 is not the staged outer counter in
+this shorter program, the substitution changes the text but does not extend
+the run. The 15-print tie is documented in [`length-15.md`](length-15.md).
 
 This is a shorter program with a lower score than the 16-cell staged
 countdown. It still exceeds the 482-character length-8 winner. The search

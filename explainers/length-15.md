@@ -2,23 +2,34 @@
 
 ## Result
 
-This 15-nibble program is the best length-15 candidate found in the local
-exploration recorded here:
+This 15-nibble program is tied for the best length-15 candidate found in the
+local exploration recorded here. It changes the fixed PRINT operand from 10
+to 15 in the earlier candidate:
 
 ```text
 Address:  0  1  2   3   4  5  6   7  8  9   10 11 12 13 14
-Program: [1, 8, 10, 14, 4, 2, 4, 15, 0, 10, 5, 5, 11, 11, 14]
+Program: [1, 8, 15, 14, 4, 2, 4, 15, 0, 10, 5, 5, 11, 11, 14]
 ```
 
 The Haskell CLI trace confirms that it halts after **2,925 instructions**
-with **962 output characters**. It prints 10 for 481 rounds, so each print
-contributes two characters. This is a found candidate, not an exhaustive
-search result or a proof of the maximum for length 15.
+with **962 output characters**. It prints 15 for 481 rounds, so each print
+contributes two characters. The earlier variant prints 10 for those same 481
+rounds and ties at 962 characters. Changing the fixed printed value from 10
+to 15 does **not** make this program run longer; unlike the length-16 program,
+cell 2 is not used as a changing outer-loop counter here. This is a found
+candidate, not an exhaustive search result or a proof of the maximum for
+length 15.
 
 From `haskell-impl/`, run:
 
 ```sh
-stack run -- trace --program 1,8,10,14,4,2,4,15,0,10,5,5,11,11,14 --max-steps 2925
+stack run -- trace --program 1,8,10,14,4,2,4,15,0,10,5,5,11,11,14 --detect-loops
+```
+
+For the 15-print variant above, use loop detection instead of a step limit:
+
+```sh
+stack run -- trace --program 1,8,15,14,4,2,4,15,0,10,5,5,11,11,14 --detect-loops
 ```
 
 ## How the storage creates a second long pass
