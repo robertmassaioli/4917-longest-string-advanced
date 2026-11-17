@@ -51,6 +51,30 @@ The winner replay command was:
 
 It returned `termination: halted`, `steps: 1825`, and `output_characters: 678`.
 
+## Haskell CLI generalization
+
+The Haskell CLI generalizer was also run on the winning nine-nibble program:
+
+```sh
+cd haskell-impl
+stack run -- generalize --program 8,8,13,1,14,5,2,6,15
+```
+
+It reports a halted execution in 1,825 steps with 678 output characters. Its
+optimized 16-cell memory pattern requires addresses 0–10 and leaves addresses
+11–15 unused:
+
+```text
+[8, 8, 13, 1, 14, 5, 2, 6, 15, 0, 0, Any(0-15), Any(0-15), Any(0-15), Any(0-15), Any(0-15)]
+```
+
+The generalizer counts all 16-cell memories, so it reports `16^16` possible
+images reduced to `16^5 = 1,048,576` images. The length-9 search domain fixes
+cells 9–15 to zero padding; within that domain, every one of the first nine
+cells is required, so this pattern admits only the winning length-9 program.
+The exhaustive search above, rather than this single-run generalization, is
+what establishes the length-9 maximum.
+
 ## Interpretation
 
 The winner is a loop-based program that emits an alternating pair of values 226 times before halting. The nine-nibble layout is longer than the previously documented length-8 winners, and its unique maximum is 196 characters above length 8's 482-character maximum. This is a comparison of these two exhaustive results; it does not establish a general growth pattern.
