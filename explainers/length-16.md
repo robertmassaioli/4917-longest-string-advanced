@@ -74,4 +74,5 @@ remaining stages contribute 675.
 
 The closely related 1,157-character staged countdown and a shorter
 15-nibble, 962-character variant are documented in
-[`storage-extended-loop.md`](storage-extended-loop.md).
+[`storage-extended-loop.md`](storage-extended-loop.md) and
+[`length-15.md`](length-15.md).

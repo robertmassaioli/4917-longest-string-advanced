@@ -60,6 +60,9 @@ stack run -- trace --program 1,8,10,14,4,2,4,15,0,9,2,5,11,2,14,2 --max-steps 55
 
 ## A 15-nibble variant: 962 characters
 
+This variant is documented separately in
+[`length-15.md`](length-15.md).
+
 Removing the final operand and changing two handler nibbles gives a shorter
 program with a different self-modifying continuation:
 
