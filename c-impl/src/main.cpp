@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <new>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -238,6 +239,92 @@ int search_cmd(uint64_t length, bool json) {
     return 0;
 }
 
+void program_json(const std::array<uint8_t, I4917_MEMORY_SIZE> &program, size_t length) {
+    std::printf("[");
+    for (size_t i = 0; i < length; ++i)
+        std::printf("%s%u", i ? "," : "", static_cast<unsigned>(program[i]));
+    std::printf("]");
+}
+
+int dataset_cmd(uint64_t length, uint64_t count, uint64_t max_steps,
+                const std::string &strategy, const std::string &initial_program,
+                uint64_t seed) {
+    if (length < 1 || length > I4917_MEMORY_SIZE) {
+        std::fprintf(stderr, "dataset length must be from 1 through %u\n",
+                     static_cast<unsigned>(I4917_MEMORY_SIZE));
+        return 2;
+    }
+    if (strategy != "random" && strategy != "mutate") {
+        std::fputs("dataset strategy must be 'random' or 'mutate'\n", stderr);
+        return 2;
+    }
+
+    std::array<uint8_t, I4917_MEMORY_SIZE> incumbent{};
+    if (strategy == "mutate") {
+        size_t initial_length = 0;
+        if (!parse_csv(initial_program, incumbent, initial_length) || initial_length != length) {
+            std::fputs("mutate strategy requires --program with exactly --length nibbles\n", stderr);
+            return 2;
+        }
+    }
+
+    std::mt19937_64 random(seed);
+    std::uniform_int_distribution<unsigned> nibble(0, 15);
+    std::uniform_int_distribution<size_t> position(0, static_cast<size_t>(length - 1));
+    uint64_t incumbent_score = 0;
+    bool have_halted_incumbent = false;
+
+    for (uint64_t sample = 0; sample < count; ++sample) {
+        std::array<uint8_t, I4917_MEMORY_SIZE> candidate{};
+        if (strategy == "random") {
+            for (size_t i = 0; i < length; ++i)
+                candidate[i] = static_cast<uint8_t>(nibble(random));
+        } else if (sample == 0) {
+            candidate = incumbent;
+        } else {
+            candidate = incumbent;
+            const size_t changed = position(random);
+            uint8_t value = static_cast<uint8_t>(nibble(random));
+            if (value == candidate[changed])
+                value = static_cast<uint8_t>((value + 1U) & 15U);
+            candidate[changed] = value;
+        }
+
+        i4917_state initial;
+        i4917_init(&initial, candidate.data(), static_cast<size_t>(length));
+        const i4917_run_result result = i4917_run_bounded(&initial, max_steps);
+        const bool halted = result.termination == I4917_HALTED;
+        const char *status = halted ? "halted" :
+                             result.termination == I4917_LIMIT_REACHED ? "unresolved" :
+                             result.termination == I4917_CYCLE ? "cycle" : "error";
+        if (strategy == "mutate" && halted &&
+            (!have_halted_incumbent || result.output_characters > incumbent_score)) {
+            incumbent = candidate;
+            incumbent_score = result.output_characters;
+            have_halted_incumbent = true;
+        }
+
+        std::printf("{\"schema\":\"4917-dataset-v1\",\"sample\":\"%" PRIu64
+                    "\",\"length\":%" PRIu64 ",\"program\":",
+                    sample, length);
+        program_json(candidate, static_cast<size_t>(length));
+        std::printf(",\"strategy\":\"%s\",\"seed\":\"%" PRIu64
+                    "\",\"max_steps\":\"%" PRIu64
+                    "\",\"status\":\"%s\",\"output_characters\":",
+                    strategy.c_str(), seed, max_steps, status);
+        if (halted)
+            std::printf("\"%" PRIu64 "\"", result.output_characters);
+        else
+            std::printf("null");
+        std::printf(",\"observed_output_characters\":\"%" PRIu64
+                    "\",\"steps\":\"%" PRIu64 "\"}\n",
+                    result.output_characters, result.steps);
+        if (result.termination == I4917_RUN_ERROR)
+            return 1;
+    }
+    return 0;
+}
+
 void command_usage(const char *command) {
     std::fprintf(stderr, "Usage: 4917-cpp %s [OPTIONS]\n", command);
 }
@@ -260,6 +347,9 @@ int main(int argc, char **argv) {
     std::string memory;
     std::string length_text;
     std::string max_steps_text = "10000";
+    std::string dataset_length_text, dataset_count_text = "1000", dataset_max_steps_text = "1000000";
+    std::string strategy = "random", dataset_program;
+    std::string seed_text = "1";
     std::string r0_text = "0", r1_text = "0", pc_text = "0", output_text = "0";
     bool json = false;
 
@@ -275,6 +365,20 @@ int main(int argc, char **argv) {
     search->add_option("--length", length_text, "Program length (1-16)")
         ->required()->multi_option_policy(CLI::MultiOptionPolicy::Throw);
     search->add_flag("--json", json, "Write machine-readable JSON")
+        ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
+
+    CLI::App *dataset = app.add_subcommand("dataset", "Generate directly evaluated candidate labels as JSONL");
+    dataset->add_option("--length", dataset_length_text, "Declared program length (1-16)")
+        ->required()->multi_option_policy(CLI::MultiOptionPolicy::Throw);
+    dataset->add_option("--count", dataset_count_text, "Number of candidates to evaluate")
+        ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
+    dataset->add_option("--strategy", strategy, "Candidate source: random or mutate")
+        ->check(CLI::IsMember({"random", "mutate"}))->multi_option_policy(CLI::MultiOptionPolicy::Throw);
+    dataset->add_option("--program", dataset_program, "Mutation seed program (required for mutate)")
+        ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
+    dataset->add_option("--seed", seed_text, "Deterministic random seed")
+        ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
+    dataset->add_option("--max-steps", dataset_max_steps_text, "Per-candidate execution budget")
         ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
 
     CLI::App *step = app.add_subcommand("step", "Execute one instruction from a supplied state");
@@ -293,7 +397,7 @@ int main(int argc, char **argv) {
 
     if (argc > 1 && std::strcmp(argv[1], "--help") != 0 && std::strcmp(argv[1], "-h") != 0 &&
         std::strcmp(argv[1], "run") != 0 && std::strcmp(argv[1], "search") != 0 &&
-        std::strcmp(argv[1], "step") != 0) {
+        std::strcmp(argv[1], "step") != 0 && std::strcmp(argv[1], "dataset") != 0) {
         std::fprintf(stderr, "4917-cpp: unknown command '%s'\nUsage: 4917-cpp <command> [OPTIONS]\n",
                      argv[1]);
         return 2;
@@ -313,6 +417,15 @@ int main(int argc, char **argv) {
     if (run->parsed()) {
         if (!read_number(max_steps_text, "run", "--max-steps", limit))
             return 2;
+    }
+    if (dataset->parsed()) {
+        uint64_t length = 0, count = 0, dataset_max_steps = 0, seed = 0;
+        if (!read_number(dataset_length_text, "dataset", "--length", length) ||
+            !read_number(dataset_count_text, "dataset", "--count", count) ||
+            !read_number(dataset_max_steps_text, "dataset", "--max-steps", dataset_max_steps) ||
+            !read_number(seed_text, "dataset", "--seed", seed))
+            return 2;
+        return dataset_cmd(length, count, dataset_max_steps, strategy, dataset_program, seed);
     }
     if (run->parsed())
         return run_cmd(program, limit, json);
