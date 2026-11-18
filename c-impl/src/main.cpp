@@ -254,8 +254,16 @@ int dataset_cmd(uint64_t length, uint64_t count, uint64_t max_steps,
                      static_cast<unsigned>(I4917_MEMORY_SIZE));
         return 2;
     }
-    if (strategy != "random" && strategy != "mutate") {
-        std::fputs("dataset strategy must be 'random' or 'mutate'\n", stderr);
+    if (strategy != "random" && strategy != "mutate" && strategy != "template") {
+        std::fputs("dataset strategy must be 'random', 'mutate', or 'template'\n", stderr);
+        return 2;
+    }
+    if (strategy == "template" && length < 10) {
+        std::fputs("template strategy supports declared lengths 10 through 16\n", stderr);
+        return 2;
+    }
+    if (strategy != "mutate" && !initial_program.empty()) {
+        std::fputs("dataset --program is only valid with --strategy mutate\n", stderr);
         return 2;
     }
 
@@ -279,6 +287,15 @@ int dataset_cmd(uint64_t length, uint64_t count, uint64_t max_steps,
         if (strategy == "random") {
             for (size_t i = 0; i < length; ++i)
                 candidate[i] = static_cast<uint8_t>(nibble(random));
+        } else if (strategy == "template") {
+            // The length-16 staged counter from explainers/length-16.md. Cells
+            // 2 and 15 are exposed as template parameters; all execution is
+            // still evaluated by the direct simulator below.
+            constexpr std::array<uint8_t, I4917_MEMORY_SIZE> staged_counter = {
+                1, 8, 15, 14, 4, 2, 4, 15, 0, 9, 2, 5, 11, 2, 14, 2};
+            candidate = staged_counter;
+            candidate[2] = static_cast<uint8_t>(nibble(random));
+            candidate[15] = static_cast<uint8_t>(nibble(random));
         } else if (sample == 0) {
             candidate = incumbent;
         } else {
@@ -372,8 +389,8 @@ int main(int argc, char **argv) {
         ->required()->multi_option_policy(CLI::MultiOptionPolicy::Throw);
     dataset->add_option("--count", dataset_count_text, "Number of candidates to evaluate")
         ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
-    dataset->add_option("--strategy", strategy, "Candidate source: random or mutate")
-        ->check(CLI::IsMember({"random", "mutate"}))->multi_option_policy(CLI::MultiOptionPolicy::Throw);
+    dataset->add_option("--strategy", strategy, "Candidate source: random, mutate, or template")
+        ->check(CLI::IsMember({"random", "mutate", "template"}))->multi_option_policy(CLI::MultiOptionPolicy::Throw);
     dataset->add_option("--program", dataset_program, "Mutation seed program (required for mutate)")
         ->multi_option_policy(CLI::MultiOptionPolicy::Throw);
     dataset->add_option("--seed", seed_text, "Deterministic random seed")

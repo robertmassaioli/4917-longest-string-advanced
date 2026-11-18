@@ -56,6 +56,7 @@ validates 1–16 nibble values.
 ./build/make-release/4917-cpp dataset --length 10 --count 1000 --strategy random --seed 41 > candidates.jsonl
 ./build/make-release/4917-cpp dataset --length 15 --count 100 --strategy mutate \
   --program 1,8,15,14,4,2,4,15,0,10,5,5,11,11,14 --seed 41 > mutations.jsonl
+./build/make-release/4917-cpp dataset --length 16 --count 100 --strategy template --seed 41 > template.jsonl
 ./build/make-release/4917-cpp step --memory 8,15,0,0,0,0,0,0,0,0,0,0,0,0,0,0 --json
 ```
 
@@ -75,12 +76,19 @@ simulation result. `random` samples uniformly from the declared nibble space
 using the supplied deterministic seed. `mutate` starts with the supplied
 program, changes one nibble per proposal, and keeps a new incumbent only when
 it halts with a strictly larger output-character count. The mutation stream
-therefore provides a simple hill-climbing baseline. Both strategies accept a
-per-candidate step budget; a candidate that reaches it is labeled
+therefore provides a simple hill-climbing baseline. `template` varies the
+PRINT operand and final conditional-jump target in the staged counter pattern
+documented in `explainers/length-16.md`. For lengths below 16 it uses the
+corresponding prefix as the declared program; remaining memory is zero-padded
+by the simulator. This is a proposal source, not a pruning rule or a claim that
+these patterns are optimal. All three strategies accept a per-candidate step
+budget; a candidate that reaches it is labeled
 `unresolved`, with a null training target, rather than being assigned a score.
 Halted candidates carry the exact integer target in `output_characters`, plus
 the observed count and steps. The JSONL schema is `4917-dataset-v1`; rows keep
 the declared length, program, strategy, and random seed for reproducibility.
+For a fixed length, count, step budget, and seed, each strategy emits the same
+candidate sequence and direct-simulation labels.
 
 `step` executes one instruction from a supplied state with exactly 16 memory
 cells. Its JSON schema is `4917-step-v1`.
