@@ -1,4 +1,7 @@
-# 012: Estimate whether a 4917 program is a length-specific winner
+# Superseded proposal: Estimate whether a 4917 program is a length-specific winner
+
+This earlier proposal is retained for reference. The active search objective
+and implementation direction are in [012-program-score-and-search.md](../012-program-score-and-search.md).
 
 **Created:** 2026-11-18
 
