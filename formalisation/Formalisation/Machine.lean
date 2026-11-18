@@ -38,44 +38,44 @@ private def writeMemory (memory : Memory) (address value : Nibble) : Memory :=
   fun cell => if cell = address then value else memory cell
 
 /-- Execute exactly one instruction according to the 4917 processor contract. -/
-def step (s : MachineState) : StepResult := Id.run do
+def step (s : MachineState) : StepResult :=
   let next := pcAdd s.pc 1
   let afterOperand := pcAdd s.pc 2
   let operand := s.memory (pcAdd s.pc 1)
   let target := s.memory operand
   match (s.memory s.pc).val with
   | 0 =>
-      return ⟨{ s with pc := next }, true, none⟩
+      ⟨{ s with pc := next }, true, none⟩
   | 1 =>
-      return ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + s.r1.val), pc := next }, false, none⟩
+      ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + s.r1.val), pc := next }, false, none⟩
   | 2 =>
-      return ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + 16 - s.r1.val), pc := next }, false, none⟩
+      ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + 16 - s.r1.val), pc := next }, false, none⟩
   | 3 =>
-      return ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + 1), pc := next }, false, none⟩
+      ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + 1), pc := next }, false, none⟩
   | 4 =>
-      return ⟨{ s with r1 := Fin.ofNat 16 (s.r1.val + 1), pc := next }, false, none⟩
+      ⟨{ s with r1 := Fin.ofNat 16 (s.r1.val + 1), pc := next }, false, none⟩
   | 5 =>
-      return ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + 15), pc := next }, false, none⟩
+      ⟨{ s with r0 := Fin.ofNat 16 (s.r0.val + 15), pc := next }, false, none⟩
   | 6 =>
-      return ⟨{ s with r1 := Fin.ofNat 16 (s.r1.val + 15), pc := next }, false, none⟩
+      ⟨{ s with r1 := Fin.ofNat 16 (s.r1.val + 15), pc := next }, false, none⟩
   | 7 =>
-      return ⟨{ s with pc := next }, false, none⟩
+      ⟨{ s with pc := next }, false, none⟩
   | 8 =>
-      return ⟨{ s with pc := afterOperand }, false, some operand⟩
+      ⟨{ s with pc := afterOperand }, false, some operand⟩
   | 9 =>
-      return ⟨{ s with r0 := target, pc := afterOperand }, false, none⟩
+      ⟨{ s with r0 := target, pc := afterOperand }, false, none⟩
   | 10 =>
-      return ⟨{ s with r1 := target, pc := afterOperand }, false, none⟩
+      ⟨{ s with r1 := target, pc := afterOperand }, false, none⟩
   | 11 =>
-      return ⟨{ s with memory := writeMemory s.memory operand s.r0, pc := afterOperand }, false, none⟩
+      ⟨{ s with memory := writeMemory s.memory operand s.r0, pc := afterOperand }, false, none⟩
   | 12 =>
-      return ⟨{ s with memory := writeMemory s.memory operand s.r1, pc := afterOperand }, false, none⟩
+      ⟨{ s with memory := writeMemory s.memory operand s.r1, pc := afterOperand }, false, none⟩
   | 13 =>
-      return ⟨{ s with pc := operand }, false, none⟩
+      ⟨{ s with pc := operand }, false, none⟩
   | 14 =>
-      return ⟨{ s with pc := if s.r0.val == 0 then operand else afterOperand }, false, none⟩
+      ⟨{ s with pc := if s.r0.val == 0 then operand else afterOperand }, false, none⟩
   | _ =>
-      return ⟨{ s with pc := if s.r0.val == 0 then afterOperand else operand }, false, none⟩
+      ⟨{ s with pc := if s.r0.val == 0 then afterOperand else operand }, false, none⟩
 
 /-- A list of instruction nibbles, zero-padded and truncated to 16 cells. -/
 def initialState (program : List Nibble) : MachineState :=
