@@ -1,0 +1,64 @@
+{
+  "record_schema": "4917-search-run-record-v1",
+  "date": "2026-11-25",
+  "branch": "main",
+  "commit": "d7fbdf7",
+  "build": "fresh CMake Release build",
+  "command": "4917-metal-search --length 10 --gpu-step-limit 256 --json",
+  "wall_clock_seconds": 1281.906503,
+  "search_result": {
+    "schema": "4917-metal-search-v1",
+    "length": 10,
+    "candidate_count": "1099511627776",
+    "halted": "961335608296",
+    "cycled": "138176019480",
+    "errors": "0",
+    "exhaustive": true,
+    "best_output_characters": "1173",
+    "winner_count": "50",
+    "first_winner": [
+      1,
+      8,
+      8,
+      15,
+      6,
+      8,
+      13,
+      2,
+      5,
+      15
+    ],
+    "gpu_halted": "961283149134",
+    "gpu_cycled": "135935748795",
+    "cpu_exact_fallback": "2292729847",
+    "seconds": 1281.858119
+  },
+  "winner_replay": {
+    "program": [
+      1,
+      8,
+      8,
+      15,
+      6,
+      8,
+      13,
+      2,
+      5,
+      15
+    ],
+    "termination": "halted",
+    "steps": "2363",
+    "output_value_count": 707,
+    "output_value_counts": {
+      "8": 241,
+      "13": 241,
+      "15": 225
+    },
+    "output_characters": "1173",
+    "final_registers": {
+      "r0": 0,
+      "r1": 15
+    },
+    "final_pc": 12
+  }
+}
