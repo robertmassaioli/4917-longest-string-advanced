@@ -294,6 +294,7 @@ bool run_batch(id<MTLDevice> device, id<MTLCommandQueue> queue,
                id<MTLComputePipelineState> pipeline, uint64_t base, uint32_t count,
                uint64_t length, uint64_t step_limit, bool compact_results,
                void *host_results) {
+    @autoreleasepool {
     NSError *error = nil;
     const NSUInteger result_bytes = compact_results ? sizeof(uint32_t) * count
                                                     : sizeof(GpuResult) * count;
@@ -304,7 +305,11 @@ bool run_batch(id<MTLDevice> device, id<MTLCommandQueue> queue,
                          compact_results ? 1U : 0U};
     id<MTLBuffer> parameter_buffer = [device newBufferWithBytes:&params length:sizeof(params)
         options:MTLResourceStorageModeShared];
-    if (parameter_buffer == nil) { std::fputs("Metal parameter allocation failed\n", stderr); return false; }
+    if (parameter_buffer == nil) {
+        std::fputs("Metal parameter allocation failed\n", stderr);
+        [result_buffer release];
+        return false;
+    }
     id<MTLCommandBuffer> command = [queue commandBuffer];
     id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
     [encoder setComputePipelineState:pipeline];
@@ -318,12 +323,17 @@ bool run_batch(id<MTLDevice> device, id<MTLCommandQueue> queue,
     [command waitUntilCompleted];
     if (command.status == MTLCommandBufferStatusError) {
         error = command.error;
-            const char *message = error.localizedDescription.UTF8String;
-            std::fprintf(stderr, "Metal execution failed: %s\n", message == nullptr ? "unknown error" : message);
+        const char *message = error.localizedDescription.UTF8String;
+        std::fprintf(stderr, "Metal execution failed: %s\n", message == nullptr ? "unknown error" : message);
+        [parameter_buffer release];
+        [result_buffer release];
         return false;
     }
     std::memcpy(host_results, result_buffer.contents, result_bytes);
+    [parameter_buffer release];
+    [result_buffer release];
     return true;
+    }
 }
 
 int run_one(const std::array<uint8_t, 16> &program, uint64_t length,
