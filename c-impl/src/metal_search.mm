@@ -50,14 +50,53 @@ using namespace metal;
 
 struct Result { ulong steps; ulong output_characters; uint status; uint reserved; };
 struct Parameters { ulong base_id; ulong step_limit; uint length; uint count; };
+struct MachineState { ulong memory; uchar r0; uchar r1; uchar pc; };
 
-inline bool same_state(thread const uchar *memory, uchar r0, uchar r1, uchar pc,
-                       thread const uchar *checkpoint_memory,
-                       uchar checkpoint_r0, uchar checkpoint_r1, uchar checkpoint_pc) {
-    if (r0 != checkpoint_r0 || r1 != checkpoint_r1 || pc != checkpoint_pc) return false;
-    for (uint i = 0; i < 16; ++i)
-        if (memory[i] != checkpoint_memory[i]) return false;
-    return true;
+inline uchar read_cell(thread const MachineState &s, uchar address) {
+    return uchar((s.memory >> (4ul * ulong(address))) & 15ul);
+}
+
+inline void write_cell(thread MachineState &s, uchar address, uchar value) {
+    ulong shift = 4ul * ulong(address);
+    ulong mask = 15ul << shift;
+    s.memory = (s.memory & ~mask) | ((ulong(value) & 15ul) << shift);
+}
+
+inline bool same_state(thread const MachineState &a, thread const MachineState &b) {
+    return a.memory == b.memory && a.r0 == b.r0 && a.r1 == b.r1 && a.pc == b.pc;
+}
+
+inline bool execute(thread MachineState &s, thread ulong &output,
+                    thread bool &overflow) {
+    uchar op = read_cell(s, s.pc);
+    uchar operand_pc = uchar((uint(s.pc) + 1u) & 15u);
+    uchar after_operand = uchar((uint(s.pc) + 2u) & 15u);
+    uchar operand = read_cell(s, operand_pc);
+    uchar next = operand_pc;
+    switch (op) {
+    case 0: s.pc = next; return true;
+    case 1: s.r0 = uchar((uint(s.r0) + uint(s.r1)) & 15u); s.pc = next; break;
+    case 2: s.r0 = uchar((uint(s.r0) + 16u - uint(s.r1)) & 15u); s.pc = next; break;
+    case 3: s.r0 = uchar((uint(s.r0) + 1u) & 15u); s.pc = next; break;
+    case 4: s.r1 = uchar((uint(s.r1) + 1u) & 15u); s.pc = next; break;
+    case 5: s.r0 = uchar((uint(s.r0) - 1u) & 15u); s.pc = next; break;
+    case 6: s.r1 = uchar((uint(s.r1) - 1u) & 15u); s.pc = next; break;
+    case 7: s.pc = next; break;
+    case 8: {
+        ulong amount = operand < 10 ? 1ul : 2ul;
+        if (output > (~0ul) - amount) overflow = true;
+        else { output += amount; s.pc = after_operand; }
+        break;
+    }
+    case 9: s.r0 = read_cell(s, operand); s.pc = after_operand; break;
+    case 10: s.r1 = read_cell(s, operand); s.pc = after_operand; break;
+    case 11: write_cell(s, operand, s.r0); s.pc = after_operand; break;
+    case 12: write_cell(s, operand, s.r1); s.pc = after_operand; break;
+    case 13: s.pc = operand; break;
+    case 14: s.pc = s.r0 == 0 ? operand : after_operand; break;
+    case 15: s.pc = s.r0 != 0 ? operand : after_operand; break;
+    }
+    return false;
 }
 
 kernel void search_batch(device Result *results [[buffer(0)]],
@@ -65,69 +104,34 @@ kernel void search_batch(device Result *results [[buffer(0)]],
                          uint tid [[thread_position_in_grid]]) {
     if (tid >= params.count) return;
     ulong encoded = params.base_id + ulong(tid);
-    uchar memory[16];
-    for (uint i = 0; i < 16; ++i) memory[i] = 0;
+    MachineState state = {0ul, 0, 0, 0};
     for (uint i = 0; i < params.length; ++i) {
-        memory[params.length - i - 1] = uchar(encoded & 15ul);
+        write_cell(state, uchar(params.length - i - 1), uchar(encoded & 15ul));
         encoded >>= 4;
     }
 
-    uchar r0 = 0, r1 = 0, pc = 0;
-    uchar checkpoint_memory[16];
-    for (uint i = 0; i < 16; ++i) checkpoint_memory[i] = memory[i];
-    uchar checkpoint_r0 = r0, checkpoint_r1 = r1, checkpoint_pc = pc;
+    MachineState checkpoint = state;
     ulong power = 1ul;
     ulong distance = 0ul;
     ulong output = 0;
     ulong steps = 0;
     bool halted = false;
     bool cycled = false;
+    bool overflow = false;
     while (steps < params.step_limit) {
-        uchar op = memory[pc];
-        uchar operand_pc = uchar((uint(pc) + 1u) & 15u);
-        uchar after_operand = uchar((uint(pc) + 2u) & 15u);
-        uchar operand = memory[operand_pc];
-        uchar next = operand_pc;
-        switch (op) {
-        case 0: pc = next; halted = true; break;
-        case 1: r0 = uchar((uint(r0) + uint(r1)) & 15u); pc = next; break;
-        case 2: r0 = uchar((uint(r0) + 16u - uint(r1)) & 15u); pc = next; break;
-        case 3: r0 = uchar((uint(r0) + 1u) & 15u); pc = next; break;
-        case 4: r1 = uchar((uint(r1) + 1u) & 15u); pc = next; break;
-        case 5: r0 = uchar((uint(r0) - 1u) & 15u); pc = next; break;
-        case 6: r1 = uchar((uint(r1) - 1u) & 15u); pc = next; break;
-        case 7: pc = next; break;
-        case 8: {
-            ulong amount = operand < 10 ? 1ul : 2ul;
-            if (output > (~0ul) - amount) { steps = params.step_limit; }
-            else { output += amount; pc = after_operand; }
+        halted = execute(state, output, overflow);
+        if (halted) { ++steps; break; }
+        if (overflow) { steps = params.step_limit; break; }
+        ++steps;
+        ++distance;
+        if (same_state(state, checkpoint)) {
+            cycled = true;
             break;
         }
-        case 9: r0 = memory[operand]; pc = after_operand; break;
-        case 10: r1 = memory[operand]; pc = after_operand; break;
-        case 11: memory[operand] = r0; pc = after_operand; break;
-        case 12: memory[operand] = r1; pc = after_operand; break;
-        case 13: pc = operand; break;
-        case 14: pc = r0 == 0 ? operand : after_operand; break;
-        case 15: pc = r0 != 0 ? operand : after_operand; break;
-        }
-        if (halted) { ++steps; break; }
-        if (steps < params.step_limit) {
-            ++steps;
-            ++distance;
-            if (same_state(memory, r0, r1, pc, checkpoint_memory,
-                           checkpoint_r0, checkpoint_r1, checkpoint_pc)) {
-                cycled = true;
-                break;
-            }
-            if (distance == power) {
-                for (uint i = 0; i < 16; ++i) checkpoint_memory[i] = memory[i];
-                checkpoint_r0 = r0;
-                checkpoint_r1 = r1;
-                checkpoint_pc = pc;
-                power = power <= (~0ul) / 2ul ? power * 2ul : ~0ul;
-                distance = 0ul;
-            }
+        if (distance == power) {
+            checkpoint = state;
+            power = power <= (~0ul) / 2ul ? power * 2ul : ~0ul;
+            distance = 0ul;
         }
     }
     results[tid].steps = steps;
