@@ -131,6 +131,28 @@ R0 and LOAD R1 commute at arbitrary addresses, since both read unchanged
 memory and write different registers. An end-to-end example reorders OUTPUT 5
 with LOAD R0 from cell 10 and confirms the same registers, PC, and output.
 
+`Formalisation/SafeSwaps.lean` makes the scope of those results explicit. A
+certified swap preserves the final data state and exact output sequence for
+two decoded effects run consecutively. It lifts the exhaustive register table
+to observable effects, proves the recurring length-10 pairs SUB R0 / INC R0
+and ADD R0 / DEC R0 safe, and retains the literal OUTPUT / silent-effect and
+LOAD R0 / LOAD R1 cases. It also proves a counterexample: swapping OUTPUT 5
+with HALT changes the program's output when execution starts at the pair.
+
+This supports adding commutation-aware grouping to the generalization
+algorithm, but it does not justify freely reordering bytes in a candidate
+program. The current `generalize` command traces one concrete program and
+wildcards unused or generalized cells; it does not compare programs modulo
+instruction order. A safe extension would canonicalize *decoded adjacent
+instruction effects* only when a certificate applies and the control-flow
+analysis establishes that both execute consecutively, no jump enters the
+middle or revisits the changed cells, and no STORE changes either instruction
+before fetch. Variable-width instructions must be moved as whole opcode-plus-
+operand blocks, with operand references and jump targets accounted for. The
+new Lean module verifies the local effect rules, not this whole-program
+control-flow side condition, so the Haskell generalizer should not yet use
+these lemmas to merge arbitrary programs or prune search branches.
+
 ## Maximum-output proof work
 
 Three additional modules formalize parts of the maximum-output argument:
