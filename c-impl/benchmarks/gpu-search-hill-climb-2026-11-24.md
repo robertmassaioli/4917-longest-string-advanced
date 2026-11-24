@@ -112,3 +112,51 @@ campaign best at 10.589 s median. Continue to round 2 with CPU/GPU overlap,
 parallel fallback classification, and an exact GPU cycle-classification
 hypothesis. Preserve the current 256-step exact-fallback behavior unless a
 candidate proves a faster exact alternative.
+
+## Round 2 results
+
+Round 2 also started from the unchanged solver code at `ef10dbd`.
+
+### Candidate 1: decode candidate programs only when needed
+
+- **Branch/worktree:** `codex/hc-gpu-lazy-decode`,
+  `/Users/robertmassaioli/Code/4917-longest-string-advanced.worktrees/hc-gpu-lazy-decode`.
+- **Hypothesis:** skip reconstructing each program's nibble array when the GPU
+  has already returned a halt; decode only unresolved candidates and new-best
+  winners.
+- **Measurements:** 10.924, 10.889, and 10.079 s; median 10.889 s.
+- **Correctness:** all 5 CTest tests passed and length-7 results matched.
+- **Verdict:** reject. No improvement over baseline.
+
+### Candidate 2: parallel host classification and exact fallback
+
+- **Branch/worktree:** `codex/hc-gpu-parallel-fallback`,
+  `/Users/robertmassaioli/Code/4917-longest-string-advanced.worktrees/hc-gpu-parallel-fallback`.
+- **Change:** use 1,048,576-candidate batches and process each completed GPU
+  batch on up to 8 CPU workers. Each worker has private halt/cycle/error
+  counters and winner summary; the main thread merges summaries in candidate
+  order so tie counts and the first winner remain deterministic. Unresolved
+  candidates still use the exact existing CPU cycle detector.
+- **Measurements before integration:** 4.121, 3.672, and 3.739 s; median
+  3.739 s. All result fields matched the CPU solver.
+- **Correctness:** all 5 CTest tests passed; exhaustive length-7 CPU comparison
+  matched candidate count, terminations, best score, tie count, and first winner.
+- **Verdict:** accept. The improvement exceeds the target by a wide margin.
+
+### Integrated campaign result
+
+After cherry-picking the selected implementation as `4b69905`, a fresh Release
+build passed all 5 CTest tests. Three new integrated length-7 process-wall
+measurements were 4.075, 3.584, and 3.556 s; median **3.584 s**. This is a
+**66.2% reduction** from the 10.589 s baseline median, meeting the 50% target.
+The final run was compared directly with the CPU solver and matched exactly:
+
+- 268,435,456 candidates; 243,947,408 halts; 24,488,048 cycles; zero errors.
+- Best output 172 characters, 26 tied winners, first winner
+  `[1,8,10,14,4,1,15]`.
+- The GPU budget remains 256 instructions; every unfinished candidate still
+  receives exact CPU classification.
+
+The remaining round-2 hypotheses (overlapping GPU batches with CPU processing,
+and exact cycle classification on the GPU) were not run because the 50% target
+was already met. The campaign stopped after this accepted candidate.
