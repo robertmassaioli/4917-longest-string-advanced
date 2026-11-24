@@ -12,6 +12,11 @@ namespace i4917_detail {
 i4917_run_result run_search_program(
     const std::array<uint8_t, I4917_MEMORY_SIZE> &program);
 
+// Search aggregation only needs to distinguish halted programs from cycles.
+// The cycle result does not promise first-repeat output or final-state data.
+i4917_run_result run_search_aggregate_program(
+    const std::array<uint8_t, I4917_MEMORY_SIZE> &program);
+
 } // namespace i4917_detail
 
 #endif

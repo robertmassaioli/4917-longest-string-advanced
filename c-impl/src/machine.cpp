@@ -309,6 +309,72 @@ static i4917_run_result run_search_initialized_brent(i4917_state start) {
     return replay_execution(start, prefix + period, I4917_CYCLE);
 }
 
+/* Exhaustive search consumes only the termination class and exact output for
+   halting programs. Detect a cycle in the live Brent walk and skip prefix
+   discovery/replay. For astronomically long traces, delegate to the exact
+   search runner so its step/output overflow behavior remains unchanged. */
+static i4917_run_result run_search_initialized_aggregate(i4917_state start) {
+    i4917_state tortoise = start;
+    i4917_state hare = start;
+    uint64_t output = 0;
+    uint64_t steps = 0;
+    uint64_t power = 1;
+    uint64_t distance = 0;
+    bool output_overflow = false;
+    i4917_state overflow_state{};
+    uint64_t overflow_steps = 0;
+
+    for (;;) {
+        const uint8_t pc = hare.pc;
+        const uint8_t op = hare.memory[pc];
+        if (op == 0) {
+            if (output_overflow)
+                return result(overflow_state, overflow_steps, 0, I4917_RUN_ERROR);
+            hare.output_characters = output;
+            i4917_event event;
+            if (i4917_step(&hare, &event) != I4917_OK)
+                return result(hare, steps, 0, I4917_RUN_ERROR);
+            return result(hare, steps + 1, 0, I4917_HALTED);
+        }
+
+        if (op == 8 && !output_overflow) {
+            const uint8_t operand = hare.memory[(pc + 1U) & 15U];
+            const uint64_t amount = operand < 10U ? 1U : 2U;
+            if (output > UINT64_MAX - amount) {
+                output_overflow = true;
+                overflow_state = hare;
+                overflow_state.output_characters = output;
+                overflow_steps = steps;
+            } else {
+                output += amount;
+            }
+        }
+
+        advance_execution(&hare);
+        if (steps == UINT64_MAX)
+            return run_search_initialized_brent(start);
+        ++steps;
+        ++distance;
+
+        if (same_execution(&tortoise, &hare)) {
+            // At most two output characters are emitted per instruction. If
+            // the collision arrives by this bound, overflow cannot precede
+            // the first repeated state. Otherwise let the exact runner decide.
+            if (steps <= UINT64_MAX / 2U)
+                return result(hare, steps, 0, I4917_CYCLE);
+            return run_search_initialized_brent(start);
+        }
+
+        if (distance == power) {
+            tortoise = hare;
+            if (power > UINT64_MAX / 2U)
+                return run_search_initialized_brent(start);
+            power *= 2U;
+            distance = 0;
+        }
+    }
+}
+
 i4917_run_result i4917_run_until_halt_or_cycle(const i4917_state *initial) {
     if (initial == NULL) {
         i4917_state empty{};
@@ -327,4 +393,11 @@ i4917_run_result i4917_detail::run_search_program(
     i4917_state start{};
     std::memcpy(start.memory, program.data(), I4917_MEMORY_SIZE);
     return run_search_initialized_brent(start);
+}
+
+i4917_run_result i4917_detail::run_search_aggregate_program(
+    const std::array<uint8_t, I4917_MEMORY_SIZE> &program) {
+    i4917_state start{};
+    std::memcpy(start.memory, program.data(), I4917_MEMORY_SIZE);
+    return run_search_initialized_aggregate(start);
 }
