@@ -538,7 +538,7 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                                 static_cast<uint8_t>(encoded & 15U);
                             encoded >>= 4;
                         }
-                        const i4917_run_result exact = i4917_detail::run_search_program(program);
+                        const i4917_run_result exact = i4917_detail::run_search_aggregate_program(program);
                         ++summary.cpu_fallback;
                         output_characters = exact.output_characters;
                         did_halt = exact.termination == I4917_HALTED;
