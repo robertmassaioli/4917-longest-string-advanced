@@ -105,11 +105,12 @@ kernel void search_batch(device uchar *result_bytes [[buffer(0)]],
                          uint tid [[thread_position_in_grid]]) {
     if (tid >= params.count) return;
     ulong encoded = params.base_id + ulong(tid);
-    MachineState state = {0ul, 0, 0, 0};
+    ulong memory = 0ul;
     for (uint i = 0; i < params.length; ++i) {
-        write_cell(state, uchar(params.length - i - 1), uchar(encoded & 15ul));
+        memory = (memory << 4) | (encoded & 15ul);
         encoded >>= 4;
     }
+    MachineState state = {memory, 0, 0, 0};
 
     MachineState checkpoint = state;
     ulong power = 1ul;
