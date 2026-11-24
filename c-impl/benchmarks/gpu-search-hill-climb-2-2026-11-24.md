@@ -50,5 +50,38 @@ The `gpt-6.1-sol` review was read-only and proposed these ranked hypotheses:
 
 ## Candidate results
 
-Experiments are run serially on the shared GPU. Record each candidate's worktree,
-commit, three wall times, exact result comparison, test result, and verdict here.
+Experiments were run serially on the shared GPU. Each candidate used the same
+Release configuration and the fixed 256-step GPU budget.
+
+| Candidate | Worktree commit | Wall times | Median | Exact result / tests | Verdict |
+|---|---|---:|---:|---|---|
+| Pack the 16 memory nibbles into one `ulong` | `c4cf488` | 66.23, 65.16, 63.92 s | 65.16 s | Search totals and winners matched; all 5 CTest tests passed. | About 5.6% below baseline, short of the 15% target and within baseline run variation. Keep as an experiment only. |
+| Reuse eight host workers across batches | `f7c7a7b` | 66.43, 64.44, 64.93 s | 64.93 s | Search totals and winners matched; all 5 CTest tests passed. | About 6.0% below baseline, short of the target. Keep as an experiment only. |
+| Detect exact cycles on GPU with Brent checkpoints over full memory, registers, and PC | `c3b84d1`, promoted as `42a9a9d` | 47.31, 44.16, 56.33 s | 47.31 s | All result fields matched; all 5 CTest tests passed; exact CPU comparisons passed at lengths 4–7. | Accepted. 31.5% faster than baseline median; target met. |
+
+The cycle detector excludes output from the repeated-state key, matching the
+machine's execution-state semantics. It counts a candidate as GPU-cycled only
+when the complete state repeats; anything still unresolved at the GPU budget
+continues to the exact CPU runner. The single-program trace path still uses the
+CPU runner for cycles so it reports the exact first-repeat step count.
+
+The accepted length-8 result was identical to baseline: 4,294,967,296
+candidates; 3,858,727,572 halted; 436,239,724 cycled; zero errors; best output
+482 characters; 102 winners; first winner `[1,8,10,14,4,2,4,15]`. Of those
+cycles, 430,609,734 were proven on GPU and 5,668,400 went through exact CPU
+fallback. The integrated campaign build measured 53.64 seconds wall time and
+returned the same result.
+
+The accepted candidate was built and tested on the campaign branch after
+promotion. All five CTest tests passed. In addition, exhaustive CPU-versus-GPU
+comparisons at lengths 4, 5, 6, and 7 matched candidate count, halt/cycle/error
+totals, exhaustive status, best output, winner count, and first winner. The
+existing Metal differential test covers lengths 1–3 at GPU budgets 1, 2, and
+4096, plus wrapped PRINT, self-modifying memory, and a single-program cycle.
+
+## Outcome
+
+The 15% target was met in the first round. The campaign branch is
+`codex/gpu-search-hill-climb-2`; no merge or push was performed. Packed-state
+and persistent-worker experiments remain available on `codex/hc2-gpu-packed-state`
+and `codex/hc2-gpu-threadpool` for inspection.
