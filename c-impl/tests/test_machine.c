@@ -21,12 +21,12 @@ static void check_cycle_run(const uint8_t *program, size_t length) {
     i4917_state initial;
     i4917_init(&initial, program, length);
     i4917_state walked = initial;
-    i4917_state seen[512];
+    i4917_state seen[512] = {0};
     for (uint64_t n = 0; n < 512; ++n) {
         bool repeated = false;
         for (uint64_t i = 0; i < n; ++i)
-            if (walked.r0 == seen[i].r0 && walked.r1 == seen[i].r1 &&
-                walked.pc == seen[i].pc && memcmp(walked.memory, seen[i].memory, 16) == 0) {
+            if (walked.r0 == seen[i].r0 && walked.r1 == seen[i].r1 && walked.pc == seen[i].pc &&
+                memcmp(walked.memory, seen[i].memory, 16) == 0) {
                 repeated = true;
                 break;
             }

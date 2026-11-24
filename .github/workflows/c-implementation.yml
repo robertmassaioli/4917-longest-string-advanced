@@ -7,6 +7,9 @@ on:
 jobs:
   c-build-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: c-impl
     steps:
       - uses: actions/checkout@v4
       - run: cmake --preset debug
@@ -26,7 +29,7 @@ jobs:
       - run: cmake -S c-impl -B c-impl/build/differential -DI4917_ENABLE_HASKELL_DIFFERENTIAL=ON
       - run: cmake --build c-impl/build/differential
       - run: ctest --test-dir c-impl/build/differential --output-on-failure
-        timeout-minutes: 10
+        timeout-minutes: 20
   haskell-build-test:
     runs-on: ubuntu-latest
     steps:

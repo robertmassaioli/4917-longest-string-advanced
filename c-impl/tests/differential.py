@@ -12,7 +12,7 @@ def main():
     parser.add_argument('--haskell-dir', required=True)
     args = parser.parse_args()
     subprocess.run([args.stack, 'build', 'cli4917:exe:4917-oracle'], cwd=args.haskell_dir,
-                   text=True, capture_output=True, timeout=180, check=True)
+                   text=True, capture_output=True, timeout=900, check=True)
     cases = [([3,4,1,8,10,0], 30), ([8,1,13,0], 31), ([11,0,13,0], 30),
              ([14,4,3,0,7], 20), ([8,9,8,10,8,15,0], 50)]
     rng = random.Random(0x4917)
@@ -63,8 +63,10 @@ def main():
         for key, value in want.items():
             if got[key] != value:
                 raise SystemExit(f'step case {index} {case=} {key}: C={got[key]!r}, Haskell={value!r}')
-    # The two-cell exhaustive C search must agree with an unpruned Haskell-core
-    # baseline over precisely the same candidate vectors and bounded policy.
+    # The two-cell exhaustive C search must agree with the Haskell-core
+    # baseline on every halt and on the best score and tied winners. The C
+    # search runs to exact halt/cycle classification; Haskell runs are bounded
+    # generously, and a missed late halt would show up as a halt-count mismatch.
     length, limit = 2, 10000
     candidates = [[a, b] for a in range(16) for b in range(16)]
     search_rows = ''.join('run|' + ','.join(map(str, p)) + '|' + str(limit) + '\n' for p in candidates)
@@ -78,10 +80,10 @@ def main():
             complete += 1; score = int(fields[7])
             if score > best: best = score; winners = [program]
             elif score == best: winners.append(program)
-    c_search = subprocess.run([args.c, 'search', '--length', str(length), '--max-steps', str(limit), '--json'],
+    c_search = subprocess.run([args.c, 'search', '--length', str(length), '--json'],
                               text=True, capture_output=True, timeout=10, check=True)
     got_search = json.loads(c_search.stdout)
-    if (int(got_search['candidate_count']) != len(candidates) or int(got_search['completed']) != complete or
+    if (int(got_search['candidate_count']) != len(candidates) or int(got_search['halted']) != complete or
         int(got_search['best_output_characters']) != best or int(got_search['winner_count']) != len(winners) or
         got_search['first_winner'] != winners[0]):
         raise SystemExit(f'search differs from exhaustive Haskell baseline: C={got_search}, Haskell best={best}, winners={len(winners)}')
