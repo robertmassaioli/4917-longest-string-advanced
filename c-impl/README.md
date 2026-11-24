@@ -116,23 +116,24 @@ search by specifying a program length from 1 through 16:
 ./build/make-release/4917-metal-search --length 10 --gpu-step-limit 256 --json
 ```
 
-Every exhaustive search saves every program tied for the final best output to
-`metal-search-length-N-winners.jsonl` in the current working directory, where
-`N` is the searched program length. You can choose a different path with
-`--winners-jsonl`:
+By default, an exhaustive search reports only the best score, tie count, and
+first winner. To also save every tied best program, pass `--winners-jsonl` with
+an output path:
 
 ```sh
 ./build/make-release/4917-metal-search --length 10 --json \
   --winners-jsonl ./length-10-winners.jsonl
 ```
 
-The command creates or replaces the winner file, including when it uses the
-default path. It writes one JSON object per line, with schema
+The command creates or replaces the specified file. It writes one JSON object
+per line, with schema
 `4917-metal-winner-v1`, the program length, decimal candidate ID,
 output-character score, and program vector. Records are ordered by candidate
 ID. If a higher score appears later in the exhaustive search, lower-scoring
 records are discarded so the completed file contains only the final tied
-winners. The JSON summary reports the file path in `winners_file` and sets
+winners. Because collecting and saving candidate IDs adds overhead, leave off
+`--winners-jsonl` for normal high-throughput searches. When the option is used,
+the JSON summary reports the file path in `winners_file` and sets
 `all_winners_saved` to `true`.
 
 Each GPU thread simulates one candidate up to the GPU step budget (default
