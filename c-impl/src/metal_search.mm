@@ -336,6 +336,65 @@ bool run_batch(id<MTLDevice> device, id<MTLCommandQueue> queue,
     }
 }
 
+struct BatchSlot {
+    id<MTLBuffer> result_buffer = nil;
+    id<MTLBuffer> parameter_buffer = nil;
+    id<MTLCommandBuffer> command = nil;
+    uint64_t base = 0;
+    uint32_t count = 0;
+};
+
+bool initialize_slot(id<MTLDevice> device, BatchSlot &slot,
+                     bool compact_results) {
+    const NSUInteger bytes = compact_results ? sizeof(uint32_t) * kChunkSize
+                                             : sizeof(GpuResult) * kChunkSize;
+    slot.result_buffer = [device newBufferWithLength:bytes
+        options:MTLResourceStorageModeShared];
+    if (slot.result_buffer == nil) return false;
+    GpuParameters empty{};
+    slot.parameter_buffer = [device newBufferWithBytes:&empty length:sizeof(empty)
+        options:MTLResourceStorageModeShared];
+    return slot.parameter_buffer != nil;
+}
+
+bool submit_slot(id<MTLCommandQueue> queue, id<MTLComputePipelineState> pipeline,
+                 BatchSlot &slot,
+                 uint64_t base, uint32_t count, uint64_t length,
+                 uint64_t step_limit, bool compact_results) {
+    @autoreleasepool {
+        GpuParameters params{base, step_limit, static_cast<uint32_t>(length), count,
+                             compact_results ? 1U : 0U};
+        std::memcpy(slot.parameter_buffer.contents, &params, sizeof(params));
+        id<MTLCommandBuffer> command = [[queue commandBuffer] retain];
+        id<MTLComputeCommandEncoder> encoder = [command computeCommandEncoder];
+        [encoder setComputePipelineState:pipeline];
+        [encoder setBuffer:slot.result_buffer offset:0 atIndex:0];
+        [encoder setBuffer:slot.parameter_buffer offset:0 atIndex:1];
+        const NSUInteger width = std::min<NSUInteger>(pipeline.maxTotalThreadsPerThreadgroup, 256);
+        [encoder dispatchThreads:MTLSizeMake(count, 1, 1)
+            threadsPerThreadgroup:MTLSizeMake(width, 1, 1)];
+        [encoder endEncoding];
+        [command commit];
+        slot.command = command;
+        slot.base = base;
+        slot.count = count;
+        return true;
+    }
+}
+
+bool wait_slot(BatchSlot &slot) {
+    [slot.command waitUntilCompleted];
+    const bool ok = slot.command.status != MTLCommandBufferStatusError;
+    if (!ok) {
+        const char *message = slot.command.error.localizedDescription.UTF8String;
+        std::fprintf(stderr, "Metal execution failed: %s\n",
+                     message == nullptr ? "unknown error" : message);
+    }
+    [slot.command release];
+    slot.command = nil;
+    return ok;
+}
+
 int run_one(const std::array<uint8_t, 16> &program, uint64_t length,
             uint64_t step_limit, bool json) {
     @autoreleasepool {
@@ -402,28 +461,24 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
         Counts halted, cycled, errors, winners, gpu_halted, gpu_cycled, cpu_fallback;
         uint64_t best = 0;
         std::array<uint8_t, 16> first{};
-        std::vector<GpuResult> results(kChunkSize);
-        std::vector<uint32_t> compact_results(kChunkSize);
         const bool use_compact_results = step_limit <= (uint64_t{1} << 29);
         const unsigned worker_count = std::min<unsigned>(
             8U, std::max(1U, std::thread::hardware_concurrency()));
         WorkerPool workers(worker_count);
         const auto started = std::chrono::steady_clock::now();
-        uint64_t base = 0;
-        bool finished = false;
-        while (!finished) {
-            uint32_t count = kChunkSize;
-            if (!full_space) {
-                const uint64_t remaining = total - base;
-                count = static_cast<uint32_t>(std::min<uint64_t>(remaining, kChunkSize));
-            } else if (base > UINT64_MAX - (kChunkSize - 1U)) {
-                count = static_cast<uint32_t>(UINT64_MAX - base + 1U);
+        std::array<BatchSlot, 2> slots{};
+        for (BatchSlot &slot : slots) {
+            if (!initialize_slot(device, slot, use_compact_results)) {
+                std::fputs("Metal buffer allocation failed\n", stderr);
+                return 1;
             }
-            void *host_results = use_compact_results
-                ? static_cast<void *>(compact_results.data())
-                : static_cast<void *>(results.data());
-            if (!run_batch(device, queue, pipeline, base, count, length, step_limit,
-                           use_compact_results, host_results)) return 1;
+        }
+        auto process_slot = [&](BatchSlot &slot) {
+            if (!wait_slot(slot)) return false;
+            const uint32_t count = slot.count;
+            const uint64_t base = slot.base;
+            const auto *compact = static_cast<const uint32_t *>(slot.result_buffer.contents);
+            const auto *results = static_cast<const GpuResult *>(slot.result_buffer.contents);
             std::array<BatchSummary, 8> summaries{};
             workers.run([&](unsigned worker) {
                 const uint32_t begin = static_cast<uint32_t>(
@@ -432,46 +487,46 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                     (static_cast<uint64_t>(count) * (worker + 1U)) / worker_count);
                 BatchSummary &summary = summaries[worker];
                 for (uint32_t i = begin; i < end; ++i) {
-                        std::array<uint8_t, 16> program{};
-                        uint64_t encoded = base + i;
-                        for (uint64_t j = length; j > 0; --j) {
-                            program[static_cast<size_t>(j - 1)] = static_cast<uint8_t>(encoded & 15U);
-                            encoded >>= 4;
-                        }
-                        uint64_t output_characters;
-                        bool did_halt;
+                    std::array<uint8_t, 16> program{};
+                    uint64_t encoded = base + i;
+                    for (uint64_t j = length; j > 0; --j) {
+                        program[static_cast<size_t>(j - 1)] = static_cast<uint8_t>(encoded & 15U);
+                        encoded >>= 4;
+                    }
+                    uint64_t output_characters;
+                    bool did_halt;
                     const uint32_t gpu_status = use_compact_results
-                        ? compact_results[i] & 3U : results[i].status;
+                        ? compact[i] & 3U : results[i].status;
                     const uint64_t gpu_output = use_compact_results
-                        ? static_cast<uint64_t>(compact_results[i] >> 2)
+                        ? static_cast<uint64_t>(compact[i] >> 2)
                         : results[i].output_characters;
                     if (gpu_status == kHalted) {
-                            ++summary.gpu_halted;
+                        ++summary.gpu_halted;
                         output_characters = gpu_output;
-                            did_halt = true;
+                        did_halt = true;
                     } else if (gpu_status == kCycled) {
-                            ++summary.cycled;
-                            ++summary.gpu_cycled;
-                            continue;
-                        } else {
-                            // Bounded GPU work never decides whether an unfinished
-                            // candidate halts or cycles. Keep using exact CPU logic.
-                            const i4917_run_result exact = i4917_detail::run_search_program(program);
-                            ++summary.cpu_fallback;
-                            output_characters = exact.output_characters;
-                            did_halt = exact.termination == I4917_HALTED;
-                            if (exact.termination == I4917_CYCLE) ++summary.cycled;
-                            else if (exact.termination != I4917_HALTED) ++summary.errors;
-                        }
-                        if (!did_halt) continue;
-                        ++summary.halted;
-                        if (summary.winners == 0 || output_characters > summary.best) {
-                            summary.best = output_characters;
-                            summary.winners = 1;
-                            summary.first_program = program;
-                        } else if (output_characters == summary.best) {
-                            ++summary.winners;
-                        }
+                        ++summary.cycled;
+                        ++summary.gpu_cycled;
+                        continue;
+                    } else {
+                        // Bounded GPU work never decides whether an unfinished
+                        // candidate halts or cycles. Keep using exact CPU logic.
+                        const i4917_run_result exact = i4917_detail::run_search_program(program);
+                        ++summary.cpu_fallback;
+                        output_characters = exact.output_characters;
+                        did_halt = exact.termination == I4917_HALTED;
+                        if (exact.termination == I4917_CYCLE) ++summary.cycled;
+                        else if (exact.termination != I4917_HALTED) ++summary.errors;
+                    }
+                    if (!did_halt) continue;
+                    ++summary.halted;
+                    if (summary.winners == 0 || output_characters > summary.best) {
+                        summary.best = output_characters;
+                        summary.winners = 1;
+                        summary.first_program = program;
+                    } else if (output_characters == summary.best) {
+                        ++summary.winners;
+                    }
                 }
             });
             for (const BatchSummary &summary : summaries) {
@@ -490,12 +545,36 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                     winners.add(summary.winners);
                 }
             }
+            return true;
+        };
+        uint64_t base = 0;
+        bool finished = false;
+        bool pending = false;
+        unsigned active_slot = 0;
+        while (!finished) {
+            uint32_t count = kChunkSize;
+            if (!full_space) {
+                const uint64_t remaining = total - base;
+                count = static_cast<uint32_t>(std::min<uint64_t>(remaining, kChunkSize));
+            } else if (base > UINT64_MAX - (kChunkSize - 1U)) {
+                count = static_cast<uint32_t>(UINT64_MAX - base + 1U);
+            }
+            if (!submit_slot(queue, pipeline, slots[active_slot], base, count,
+                             length, step_limit, use_compact_results)) return 1;
+            if (pending && !process_slot(slots[active_slot ^ 1U])) return 1;
+            pending = true;
+            active_slot ^= 1U;
             const uint64_t last = base + count - 1U;
             if (full_space) {
                 if (last == UINT64_MAX) finished = true;
                 else base = last + 1U;
             } else if (last + 1U == total) finished = true;
             else base = last + 1U;
+        }
+        if (pending && !process_slot(slots[active_slot ^ 1U])) return 1;
+        for (BatchSlot &slot : slots) {
+            [slot.result_buffer release];
+            [slot.parameter_buffer release];
         }
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
         const std::string candidate_count = full_space ? "18446744073709551616" : std::to_string(total);
