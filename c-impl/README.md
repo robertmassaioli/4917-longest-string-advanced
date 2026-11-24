@@ -93,6 +93,34 @@ candidate sequence and direct-simulation labels.
 `step` executes one instruction from a supplied state with exactly 16 memory
 cells. Its JSON schema is `4917-step-v1`.
 
+On macOS, CMake also builds `4917-metal-search`, which searches batches on the
+system Metal GPU:
+
+```sh
+./build/make-release/4917-metal-search --length 5
+./build/make-release/4917-metal-search --length 5 --gpu-step-limit 256 --json
+./build/make-release/4917-metal-search --program 13,15,0,0,0,0,0,0,0,0,0,0,0,0,0,8 --json
+```
+
+Each GPU thread simulates one candidate up to the GPU step budget (default
+256). A candidate that halts in that budget is scored on the GPU. Every
+candidate that has not halted is handed to the existing exact CPU runner,
+which determines whether it later halts, cycles, or errors. Therefore, the
+budget only chooses where work runs; it does not limit the search or change its
+answer. It can still take a long time to classify an unusually long execution.
+The JSON schema is `4917-metal-search-v1`; `gpu_halted` and
+`cpu_exact_fallback` expose the split. The Apple-only CTest
+`metal-search-differential` compares the solver against CPU exhaustive results
+for lengths 1–3 using several GPU budgets, and exercises a wrapped two-byte
+PRINT at cell 15, self-modifying memory, and a cycle through the single-program
+`--program` mode.
+
+Metal is not automatically faster. The per-candidate instruction path is
+sequential and branchy, so GPU work helps only when enough candidates finish
+quickly in parallel to outweigh kernel setup and CPU fallback. Measure on the
+target Mac for the lengths and GPU budgets that matter; the CPU `search`
+command remains the portable baseline.
+
 ## Correctness checks
 
 The C property suite checks arithmetic, opcode boundaries, wrapping, output

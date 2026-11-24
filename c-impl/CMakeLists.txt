@@ -42,6 +42,21 @@ endif()
 add_executable(4917-cpp src/main.cpp)
 target_link_libraries(4917-cpp PRIVATE 4917_core CLI11::CLI11)
 
+# Apple GPU search backend. It runs bounded batches on Metal and sends every
+# candidate that did not halt within the batch budget to the exact CPU runner.
+if(APPLE)
+  enable_language(OBJCXX)
+  add_executable(4917-metal-search src/metal_search.mm)
+  target_link_libraries(4917-metal-search PRIVATE 4917_core
+    "-framework Foundation" "-framework Metal")
+  target_compile_features(4917-metal-search PRIVATE cxx_std_17)
+  set_target_properties(4917-metal-search PROPERTIES
+    OBJCXX_STANDARD 17 OBJCXX_STANDARD_REQUIRED YES)
+  if(CMAKE_OBJCXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(4917-metal-search PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+endif()
+
 if(I4917_ENABLE_SANITIZERS AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
   foreach(target 4917_core 4917-cpp)
     target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
@@ -70,6 +85,11 @@ if(I4917_BUILD_TESTS)
   if(Python3_Interpreter_FOUND)
     add_test(NAME cli-contract COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py --binary $<TARGET_FILE:4917-cpp>)
+    if(APPLE)
+      add_test(NAME metal-search-differential COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_metal_search.py
+        --metal $<TARGET_FILE:4917-metal-search> --cpu $<TARGET_FILE:4917-cpp>)
+    endif()
   endif()
   if(I4917_ENABLE_HASKELL_DIFFERENTIAL AND Python3_Interpreter_FOUND)
     find_program(STACK_EXECUTABLE stack)
