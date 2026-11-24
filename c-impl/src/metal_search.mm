@@ -234,6 +234,8 @@ struct BatchSummary {
 
 bool write_winner_jsonl(std::ofstream &output, std::vector<uint64_t> indices,
                         uint64_t length, uint64_t output_characters) {
+    if (output_characters == 0) return true;
+
     std::sort(indices.begin(), indices.end());
     for (uint64_t candidate_id : indices) {
         std::array<uint8_t, 16> program{};
