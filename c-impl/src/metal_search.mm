@@ -14,10 +14,12 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace {
 
-constexpr uint32_t kChunkSize = 262144;
+constexpr uint32_t kChunkSize = 1048576;
 constexpr uint32_t kHalted = 1;
 
 struct GpuResult {
@@ -108,8 +110,24 @@ struct Counts {
         if (low == UINT64_MAX) { low = 0; two_to_64 = true; }
         else if (!two_to_64) ++low;
     }
+    void add(uint64_t amount) {
+        if (two_to_64) return;
+        if (amount > UINT64_MAX - low) two_to_64 = true;
+        low += amount;
+    }
     bool zero() const { return low == 0 && !two_to_64; }
     std::string string() const { return two_to_64 ? "18446744073709551616" : std::to_string(low); }
+};
+
+struct BatchSummary {
+    uint64_t halted = 0;
+    uint64_t cycled = 0;
+    uint64_t errors = 0;
+    uint64_t gpu_halted = 0;
+    uint64_t cpu_fallback = 0;
+    uint64_t best = 0;
+    uint64_t winners = 0;
+    std::array<uint8_t, 16> first_program{};
 };
 
 bool parse_u64(const char *s, uint64_t &out) {
@@ -262,7 +280,7 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
         Counts halted, cycled, errors, winners, gpu_halted, cpu_fallback;
         uint64_t best = 0;
         std::array<uint8_t, 16> first{};
-        std::array<GpuResult, kChunkSize> results{};
+        std::vector<GpuResult> results(kChunkSize);
         const auto started = std::chrono::steady_clock::now();
         uint64_t base = 0;
         bool finished = false;
@@ -275,37 +293,68 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                 count = static_cast<uint32_t>(UINT64_MAX - base + 1U);
             }
             if (!run_batch(device, queue, pipeline, base, count, length, step_limit, results.data())) return 1;
-            for (uint32_t i = 0; i < count; ++i) {
-                std::array<uint8_t, 16> program{};
-                uint64_t encoded = base + i;
-                for (uint64_t j = length; j > 0; --j) {
-                    program[static_cast<size_t>(j - 1)] = static_cast<uint8_t>(encoded & 15U);
-                    encoded >>= 4;
+            const unsigned worker_count = std::min<unsigned>(
+                8U, std::max(1U, std::thread::hardware_concurrency()));
+            std::array<BatchSummary, 8> summaries{};
+            std::vector<std::thread> workers;
+            workers.reserve(worker_count);
+            for (unsigned worker = 0; worker < worker_count; ++worker) {
+                const uint32_t begin = static_cast<uint32_t>(
+                    (static_cast<uint64_t>(count) * worker) / worker_count);
+                const uint32_t end = static_cast<uint32_t>(
+                    (static_cast<uint64_t>(count) * (worker + 1U)) / worker_count);
+                workers.emplace_back([&, worker, begin, end] {
+                    BatchSummary &summary = summaries[worker];
+                    for (uint32_t i = begin; i < end; ++i) {
+                        std::array<uint8_t, 16> program{};
+                        uint64_t encoded = base + i;
+                        for (uint64_t j = length; j > 0; --j) {
+                            program[static_cast<size_t>(j - 1)] = static_cast<uint8_t>(encoded & 15U);
+                            encoded >>= 4;
+                        }
+                        uint64_t output_characters;
+                        bool did_halt;
+                        if (results[i].status == kHalted) {
+                            ++summary.gpu_halted;
+                            output_characters = results[i].output_characters;
+                            did_halt = true;
+                        } else {
+                            // Bounded GPU work never decides whether an unfinished
+                            // candidate halts or cycles. Keep using exact CPU logic.
+                            const i4917_run_result exact = i4917_detail::run_search_program(program);
+                            ++summary.cpu_fallback;
+                            output_characters = exact.output_characters;
+                            did_halt = exact.termination == I4917_HALTED;
+                            if (exact.termination == I4917_CYCLE) ++summary.cycled;
+                            else if (exact.termination != I4917_HALTED) ++summary.errors;
+                        }
+                        if (!did_halt) continue;
+                        ++summary.halted;
+                        if (summary.winners == 0 || output_characters > summary.best) {
+                            summary.best = output_characters;
+                            summary.winners = 1;
+                            summary.first_program = program;
+                        } else if (output_characters == summary.best) {
+                            ++summary.winners;
+                        }
+                    }
+                });
+            }
+            for (auto &worker : workers) worker.join();
+            for (const BatchSummary &summary : summaries) {
+                halted.add(summary.halted);
+                cycled.add(summary.cycled);
+                errors.add(summary.errors);
+                gpu_halted.add(summary.gpu_halted);
+                cpu_fallback.add(summary.cpu_fallback);
+                if (summary.winners == 0) continue;
+                if (winners.zero() || summary.best > best) {
+                    best = summary.best;
+                    winners = Counts{summary.winners, false};
+                    first = summary.first_program;
+                } else if (summary.best == best) {
+                    winners.add(summary.winners);
                 }
-                i4917_termination termination;
-                uint64_t output_characters;
-                if (results[i].status == kHalted) {
-                    termination = I4917_HALTED;
-                    output_characters = results[i].output_characters;
-                    gpu_halted.increment();
-                } else {
-                    // Bounded GPU work never decides whether an unfinished program
-                    // cycles or halts later. The existing constant-space detector
-                    // decides that exactly on the CPU.
-                    const i4917_run_result exact = i4917_detail::run_search_program(program);
-                    termination = exact.termination;
-                    output_characters = exact.output_characters;
-                    cpu_fallback.increment();
-                }
-                if (termination == I4917_HALTED) {
-                    halted.increment();
-                    if (winners.zero() || output_characters > best) {
-                        best = output_characters;
-                        winners = Counts{1, false};
-                        first = program;
-                    } else if (output_characters == best) winners.increment();
-                } else if (termination == I4917_CYCLE) cycled.increment();
-                else errors.increment();
             }
             const uint64_t last = base + count - 1U;
             if (full_space) {
