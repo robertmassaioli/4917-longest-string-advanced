@@ -112,35 +112,56 @@ kernel void search_batch(device uchar *result_bytes [[buffer(0)]],
     }
     MachineState state = {memory, 0, 0, 0};
 
-    MachineState checkpoint = state;
-    ulong power = 1ul;
-    ulong distance = 0ul;
-    ulong output = 0;
-    ulong steps = 0;
-    bool halted = false;
-    bool cycled = false;
-    bool overflow = false;
-    while (steps < params.step_limit) {
-        halted = execute(state, output, overflow);
-        if (halted) { ++steps; break; }
-        if (overflow) { steps = params.step_limit; break; }
-        ++steps;
-        ++distance;
-        if (same_state(state, checkpoint)) {
-            cycled = true;
-            break;
-        }
-        if (distance == power) {
-            checkpoint = state;
-            power = power <= (~0ul) / 2ul ? power * 2ul : ~0ul;
-            distance = 0ul;
-        }
-    }
-    uint status = halted ? 1u : (cycled ? 2u : 0u);
     if (params.compact_results != 0) {
+        // Compact-result mode is selected only for budgets <= 2^29, so these
+        // iteration counters and Brent's power/distance remain in uint range.
+        MachineState checkpoint = state;
+        uint power = 1u;
+        uint distance = 0u;
+        uint steps = 0u;
+        ulong output = 0ul;
+        bool halted = false;
+        bool cycled = false;
+        bool overflow = false;
+        while (ulong(steps) < params.step_limit) {
+            halted = execute(state, output, overflow);
+            if (halted) { ++steps; break; }
+            if (overflow) { steps = uint(params.step_limit); break; }
+            ++steps;
+            ++distance;
+            if (same_state(state, checkpoint)) { cycled = true; break; }
+            if (distance == power) {
+                checkpoint = state;
+                power *= 2u;
+                distance = 0u;
+            }
+        }
+        const uint status = halted ? 1u : (cycled ? 2u : 0u);
         device uint *packed = reinterpret_cast<device uint *>(result_bytes);
         packed[tid] = (status & 3u) | (uint(output) << 2);
     } else {
+        MachineState checkpoint = state;
+        ulong power = 1ul;
+        ulong distance = 0ul;
+        ulong output = 0ul;
+        ulong steps = 0ul;
+        bool halted = false;
+        bool cycled = false;
+        bool overflow = false;
+        while (steps < params.step_limit) {
+            halted = execute(state, output, overflow);
+            if (halted) { ++steps; break; }
+            if (overflow) { steps = params.step_limit; break; }
+            ++steps;
+            ++distance;
+            if (same_state(state, checkpoint)) { cycled = true; break; }
+            if (distance == power) {
+                checkpoint = state;
+                power = power <= (~0ul) / 2ul ? power * 2ul : ~0ul;
+                distance = 0ul;
+            }
+        }
+        const uint status = halted ? 1u : (cycled ? 2u : 0u);
         device Result *results = reinterpret_cast<device Result *>(result_bytes);
         results[tid].steps = steps;
         results[tid].output_characters = output;
