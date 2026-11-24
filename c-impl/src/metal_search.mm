@@ -559,14 +559,8 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                     } else {
                         // Bounded GPU work never decides whether an unfinished
                         // candidate halts or cycles. Keep using exact CPU logic.
-                        std::array<uint8_t, 16> program{};
-                        uint64_t encoded = base + i;
-                        for (uint64_t j = length; j > 0; --j) {
-                            program[static_cast<size_t>(j - 1)] =
-                                static_cast<uint8_t>(encoded & 15U);
-                            encoded >>= 4;
-                        }
-                        const i4917_run_result exact = i4917_detail::run_search_aggregate_program(program);
+                        const i4917_run_result exact =
+                            i4917_detail::run_search_aggregate_candidate(base + i, length);
                         ++summary.cpu_fallback;
                         output_characters = exact.output_characters;
                         did_halt = exact.termination == I4917_HALTED;

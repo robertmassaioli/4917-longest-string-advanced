@@ -25,6 +25,18 @@ static void compare(const std::array<uint8_t, I4917_MEMORY_SIZE> &memory) {
     }
 }
 
+static void compare_candidate(uint64_t id, uint64_t length,
+                              const std::array<uint8_t, I4917_MEMORY_SIZE> &memory) {
+    i4917_state initial{};
+    for (size_t i = 0; i < memory.size(); ++i)
+        initial.memory[i] = memory[i];
+    const i4917_run_result expected = i4917_run_until_halt_or_cycle(&initial);
+    const i4917_run_result actual = i4917_detail::run_search_aggregate_candidate(id, length);
+    assert(actual.termination == expected.termination);
+    if (expected.termination == I4917_HALTED)
+        assert(actual.output_characters == expected.output_characters);
+}
+
 int main() {
     // Exhaustive short domains cover each opcode, wrapped operands, and stores.
     for (uint32_t length = 1; length <= 4; ++length) {
@@ -37,6 +49,7 @@ int main() {
                 encoded >>= 4U;
             }
             compare(memory);
+            compare_candidate(id, length, memory);
         }
     }
 

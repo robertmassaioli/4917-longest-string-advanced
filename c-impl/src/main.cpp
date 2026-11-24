@@ -188,18 +188,18 @@ int search_cmd(uint64_t length, bool json) {
     uint64_t best = 0;
     std::array<uint8_t, I4917_MEMORY_SIZE> first{};
     for (uint64_t id = 0; full_space || id < total;) {
-        uint64_t encoded = id;
-        std::array<uint8_t, I4917_MEMORY_SIZE> program{};
-        for (uint64_t i = length; i > 0; --i) {
-            program[static_cast<size_t>(i - 1)] = static_cast<uint8_t>(encoded & 15U);
-            encoded >>= 4;
-        }
-        const i4917_run_result result = i4917_detail::run_search_aggregate_program(program);
+        const i4917_run_result result = i4917_detail::run_search_aggregate_candidate(id, length);
         if (result.termination == I4917_HALTED) {
             halted.increment();
             if (winners.is_zero() || result.output_characters > best) {
                 best = result.output_characters;
                 winners = SearchCount{1, false};
+                uint64_t encoded = id;
+                std::array<uint8_t, I4917_MEMORY_SIZE> program{};
+                for (uint64_t i = length; i > 0; --i) {
+                    program[static_cast<size_t>(i - 1)] = static_cast<uint8_t>(encoded & 15U);
+                    encoded >>= 4;
+                }
                 first = program;
             } else if (result.output_characters == best) {
                 winners.increment();

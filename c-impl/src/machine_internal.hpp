@@ -17,6 +17,9 @@ i4917_run_result run_search_program(
 i4917_run_result run_search_aggregate_program(
     const std::array<uint8_t, I4917_MEMORY_SIZE> &program);
 
+i4917_run_result run_search_aggregate_candidate(uint64_t candidate_id,
+                                                uint64_t length);
+
 } // namespace i4917_detail
 
 #endif
