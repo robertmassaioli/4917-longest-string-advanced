@@ -509,12 +509,6 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                     (static_cast<uint64_t>(count) * (worker + 1U)) / worker_count);
                 BatchSummary &summary = summaries[worker];
                 for (uint32_t i = begin; i < end; ++i) {
-                    std::array<uint8_t, 16> program{};
-                    uint64_t encoded = base + i;
-                    for (uint64_t j = length; j > 0; --j) {
-                        program[static_cast<size_t>(j - 1)] = static_cast<uint8_t>(encoded & 15U);
-                        encoded >>= 4;
-                    }
                     uint64_t output_characters;
                     bool did_halt;
                     const uint32_t gpu_status = use_compact_results
@@ -533,6 +527,13 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                     } else {
                         // Bounded GPU work never decides whether an unfinished
                         // candidate halts or cycles. Keep using exact CPU logic.
+                        std::array<uint8_t, 16> program{};
+                        uint64_t encoded = base + i;
+                        for (uint64_t j = length; j > 0; --j) {
+                            program[static_cast<size_t>(j - 1)] =
+                                static_cast<uint8_t>(encoded & 15U);
+                            encoded >>= 4;
+                        }
                         const i4917_run_result exact = i4917_detail::run_search_program(program);
                         ++summary.cpu_fallback;
                         output_characters = exact.output_characters;
@@ -545,6 +546,13 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                     if (summary.winners == 0 || output_characters > summary.best) {
                         summary.best = output_characters;
                         summary.winners = 1;
+                        std::array<uint8_t, 16> program{};
+                        uint64_t encoded = base + i;
+                        for (uint64_t j = length; j > 0; --j) {
+                            program[static_cast<size_t>(j - 1)] =
+                                static_cast<uint8_t>(encoded & 15U);
+                            encoded >>= 4;
+                        }
                         summary.first_program = program;
                     } else if (output_characters == summary.best) {
                         ++summary.winners;
