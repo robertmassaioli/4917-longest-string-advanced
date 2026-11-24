@@ -93,23 +93,54 @@ candidate sequence and direct-simulation labels.
 `step` executes one instruction from a supplied state with exactly 16 memory
 cells. Its JSON schema is `4917-step-v1`.
 
-On macOS, CMake also builds `4917-metal-search`, which searches batches on the
-system Metal GPU:
+## Build and run the Metal search on macOS
+
+The Metal backend requires macOS and Apple's Metal framework. Install Xcode's
+Command Line Tools if they are not already available, then configure and build
+the Release target from `c-impl/`:
 
 ```sh
-./build/make-release/4917-metal-search --length 5
-./build/make-release/4917-metal-search --length 5 --gpu-step-limit 256 --json
-./build/make-release/4917-metal-search --program 13,15,0,0,0,0,0,0,0,0,0,0,0,0,0,8 --json
+cd c-impl
+cmake --preset release
+cmake --build --preset release --target 4917-metal-search -j 8
 ```
+
+If the Xcode Command Line Tools are missing, install them once with
+`xcode-select --install` before configuring the build.
+
+The executable is `build/make-release/4917-metal-search`. Run an exhaustive
+search by specifying a program length from 1 through 16:
+
+```sh
+./build/make-release/4917-metal-search --length 9 --json
+./build/make-release/4917-metal-search --length 10 --gpu-step-limit 256 --json
+```
+
+To save every program tied for the final best output, pass `--winners-jsonl`
+with an output path:
+
+```sh
+./build/make-release/4917-metal-search --length 10 --json \
+  --winners-jsonl ./length-10-winners.jsonl
+```
+
+The command creates or replaces that file. It writes one JSON object per line,
+with schema `4917-metal-winner-v1`, the program length, decimal candidate ID,
+output-character score, and program vector. Records are ordered by candidate
+ID. If a higher score appears later in the exhaustive search, lower-scoring
+records are discarded so the completed file contains only the final tied
+winners. Without `--winners-jsonl`, the search retains its normal low-overhead
+summary: the best score, tie count, and first winner.
 
 Each GPU thread simulates one candidate up to the GPU step budget (default
 256). Candidates that halt or repeat a complete machine state in that budget
-are classified on the GPU. Every other candidate is handed to the existing
-exact CPU runner, which determines whether it later halts, cycles, or errors. Therefore, the
-budget only chooses where work runs; it does not limit the search or change its
-answer. It can still take a long time to classify an unusually long execution.
-The JSON schema is `4917-metal-search-v1`; `gpu_halted`, `gpu_cycled`, and
-`cpu_exact_fallback` expose the split. The Apple-only CTest
+are classified on the GPU. Every other candidate is handed to the exact CPU
+runner, which determines whether it later halts, cycles, or errors. The budget
+only chooses where work runs; it does not limit the search or change its
+answer. A candidate with an unusually long execution can still take a long
+time to classify. The JSON summary schema is `4917-metal-search-v1`;
+`gpu_halted`, `gpu_cycled`, and `cpu_exact_fallback` expose the split. The
+Apple-only CTest
 `metal-search-differential` compares the solver against CPU exhaustive results
 for lengths 1–3 using several GPU budgets, and exercises a wrapped two-byte
 PRINT at cell 15, self-modifying memory, and a cycle through the single-program
