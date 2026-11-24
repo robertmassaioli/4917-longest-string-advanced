@@ -1,0 +1,35 @@
+{
+  "record_schema": "4917-search-run-record-v1",
+  "date": "2026-11-25",
+  "branch": "main",
+  "commit": "0b94f5d",
+  "build": "CMake Release build refreshed before run",
+  "command": "4917-metal-search --length 9 --gpu-step-limit 256 --json --winners-jsonl c-impl/benchmarks/results/metal-search-length-9-winners-2026-11-25.jsonl",
+  "wall_clock_seconds": 138.84,
+  "winner_file": "metal-search-length-9-winners-2026-11-25.jsonl",
+  "winner_file_bytes": 133,
+  "search_result": {
+    "schema": "4917-metal-search-v1",
+    "length": 9,
+    "candidate_count": "68719476736",
+    "halted": "60931421044",
+    "cycled": "7788055692",
+    "errors": "0",
+    "exhaustive": true,
+    "best_output_characters": "678",
+    "winner_count": "1",
+    "first_winner": [8, 8, 13, 1, 14, 5, 2, 6, 15],
+    "gpu_halted": "60929847271",
+    "gpu_cycled": "7683098233",
+    "cpu_exact_fallback": "106531232",
+    "seconds": 138.783447,
+    "all_winners_saved": true,
+    "winners_file": "c-impl/benchmarks/results/metal-search-length-9-winners-2026-11-25.jsonl"
+  },
+  "winner_jsonl_validation": {
+    "record_count_matches_winner_count": true,
+    "all_records_have_best_score": true,
+    "candidate_ids_sorted_and_unique": true,
+    "candidate_ids_match_program_vectors": true
+  }
+}
