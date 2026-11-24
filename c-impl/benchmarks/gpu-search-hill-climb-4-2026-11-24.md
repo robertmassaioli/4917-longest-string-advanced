@@ -72,6 +72,29 @@ slightly slower than overlap, and combining those two would require integrating
 the reduction buffers into the double-buffered asynchronous slots. The six
 accepted optimizations already combine cleanly and pass the fixed evaluator.
 
+## Updated CPU-versus-GPU runtime estimates
+
+The CPU length-9 search remains measured at 7,558.18 s. CPU estimates for later
+lengths use the prior observed 18.44× growth per nibble. The new combined GPU
+build measured 7.637133 s at length 8. Its length-9 estimate scales the prior
+measured length-9 GPU time of 371.147 s by the length-8 improvement relative to
+the prior integrated build's 22.00 s run:
+`371.147 × (7.637133 / 22.00) = 128.84 s` (2.15 min). GPU estimates for lengths
+10–16 then use 16× growth per added nibble, matching the candidate-space growth.
+Only CPU length 9 and GPU length 8 are measured for the current comparison;
+other values are projections.
+
+| Length | Candidates | CPU time | GPU time | Projected speedup |
+|---:|---:|---:|---:|---:|
+| 9 | 68.7 billion | 2.10 h measured | 2.15 min projected | 58.7× |
+| 10 | 1.10 trillion | 1.61 days | 34.36 min | 67.6× |
+| 11 | 17.6 trillion | 29.75 days | 9.16 h | 77.9× |
+| 12 | 281.5 trillion | 1.50 years | 6.11 days | 89.8× |
+| 13 | 4.50 quadrillion | 27.7 years | 97.73 days | 103.5× |
+| 14 | 72.06 quadrillion | 510.6 years | 4.3 years | 119.3× |
+| 15 | 1.15 quintillion | 9,416.3 years | 68.5 years | 137.5× |
+| 16 | 18.45 quintillion | 173,636 years | 1,095.9 years | 158.4× |
+
 ## Worktrees
 
 The campaign branch is `codex/gpu-search-hill-climb-4` at
