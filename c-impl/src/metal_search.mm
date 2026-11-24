@@ -38,10 +38,11 @@ struct GpuParameters {
     uint64_t step_limit;
     uint32_t length;
     uint32_t count;
+    uint32_t compact_results;
 };
 
 static_assert(sizeof(GpuResult) == 24, "MSL result layout must match host layout");
-static_assert(sizeof(GpuParameters) == 24, "MSL parameter layout must match host layout");
+static_assert(sizeof(GpuParameters) == 32, "MSL parameter layout must match host layout");
 
 NSString *shader_source() {
     return @R"METAL(
@@ -49,7 +50,7 @@ NSString *shader_source() {
 using namespace metal;
 
 struct Result { ulong steps; ulong output_characters; uint status; uint reserved; };
-struct Parameters { ulong base_id; ulong step_limit; uint length; uint count; };
+struct Parameters { ulong base_id; ulong step_limit; uint length; uint count; uint compact_results; };
 struct MachineState { ulong memory; uchar r0; uchar r1; uchar pc; };
 
 inline uchar read_cell(thread const MachineState &s, uchar address) {
@@ -99,7 +100,7 @@ inline bool execute(thread MachineState &s, thread ulong &output,
     return false;
 }
 
-kernel void search_batch(device Result *results [[buffer(0)]],
+kernel void search_batch(device uchar *result_bytes [[buffer(0)]],
                          constant Parameters &params [[buffer(1)]],
                          uint tid [[thread_position_in_grid]]) {
     if (tid >= params.count) return;
@@ -134,10 +135,17 @@ kernel void search_batch(device Result *results [[buffer(0)]],
             distance = 0ul;
         }
     }
-    results[tid].steps = steps;
-    results[tid].output_characters = output;
-    results[tid].status = halted ? 1u : (cycled ? 2u : 0u);
-    results[tid].reserved = 0;
+    uint status = halted ? 1u : (cycled ? 2u : 0u);
+    if (params.compact_results != 0) {
+        device uint *packed = reinterpret_cast<device uint *>(result_bytes);
+        packed[tid] = (status & 3u) | (uint(output) << 2);
+    } else {
+        device Result *results = reinterpret_cast<device Result *>(result_bytes);
+        results[tid].steps = steps;
+        results[tid].output_characters = output;
+        results[tid].status = status;
+        results[tid].reserved = 0;
+    }
 }
 )METAL";
 }
@@ -284,12 +292,16 @@ id<MTLComputePipelineState> make_pipeline(id<MTLDevice> device, NSError **error)
 
 bool run_batch(id<MTLDevice> device, id<MTLCommandQueue> queue,
                id<MTLComputePipelineState> pipeline, uint64_t base, uint32_t count,
-               uint64_t length, uint64_t step_limit, GpuResult *host_results) {
+               uint64_t length, uint64_t step_limit, bool compact_results,
+               void *host_results) {
     NSError *error = nil;
-    id<MTLBuffer> result_buffer = [device newBufferWithLength:sizeof(GpuResult) * count
+    const NSUInteger result_bytes = compact_results ? sizeof(uint32_t) * count
+                                                    : sizeof(GpuResult) * count;
+    id<MTLBuffer> result_buffer = [device newBufferWithLength:result_bytes
         options:MTLResourceStorageModeShared];
     if (result_buffer == nil) { std::fputs("Metal buffer allocation failed\n", stderr); return false; }
-    GpuParameters params{base, step_limit, static_cast<uint32_t>(length), count};
+    GpuParameters params{base, step_limit, static_cast<uint32_t>(length), count,
+                         compact_results ? 1U : 0U};
     id<MTLBuffer> parameter_buffer = [device newBufferWithBytes:&params length:sizeof(params)
         options:MTLResourceStorageModeShared];
     if (parameter_buffer == nil) { std::fputs("Metal parameter allocation failed\n", stderr); return false; }
@@ -310,7 +322,7 @@ bool run_batch(id<MTLDevice> device, id<MTLCommandQueue> queue,
             std::fprintf(stderr, "Metal execution failed: %s\n", message == nullptr ? "unknown error" : message);
         return false;
     }
-    std::memcpy(host_results, result_buffer.contents, sizeof(GpuResult) * count);
+    std::memcpy(host_results, result_buffer.contents, result_bytes);
     return true;
 }
 
@@ -332,7 +344,7 @@ int run_one(const std::array<uint8_t, 16> &program, uint64_t length,
         uint64_t encoded = 0;
         for (uint64_t i = 0; i < length; ++i) encoded = (encoded << 4) | program[static_cast<size_t>(i)];
         GpuResult gpu{};
-        if (!run_batch(device, queue, pipeline, encoded, 1, length, step_limit, &gpu)) return 1;
+        if (!run_batch(device, queue, pipeline, encoded, 1, length, step_limit, false, &gpu)) return 1;
         i4917_termination termination;
         uint64_t steps;
         uint64_t output_characters;
@@ -381,6 +393,8 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
         uint64_t best = 0;
         std::array<uint8_t, 16> first{};
         std::vector<GpuResult> results(kChunkSize);
+        std::vector<uint32_t> compact_results(kChunkSize);
+        const bool use_compact_results = step_limit <= (uint64_t{1} << 29);
         const unsigned worker_count = std::min<unsigned>(
             8U, std::max(1U, std::thread::hardware_concurrency()));
         WorkerPool workers(worker_count);
@@ -395,7 +409,11 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
             } else if (base > UINT64_MAX - (kChunkSize - 1U)) {
                 count = static_cast<uint32_t>(UINT64_MAX - base + 1U);
             }
-            if (!run_batch(device, queue, pipeline, base, count, length, step_limit, results.data())) return 1;
+            void *host_results = use_compact_results
+                ? static_cast<void *>(compact_results.data())
+                : static_cast<void *>(results.data());
+            if (!run_batch(device, queue, pipeline, base, count, length, step_limit,
+                           use_compact_results, host_results)) return 1;
             std::array<BatchSummary, 8> summaries{};
             workers.run([&](unsigned worker) {
                 const uint32_t begin = static_cast<uint32_t>(
@@ -412,11 +430,16 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                         }
                         uint64_t output_characters;
                         bool did_halt;
-                        if (results[i].status == kHalted) {
+                    const uint32_t gpu_status = use_compact_results
+                        ? compact_results[i] & 3U : results[i].status;
+                    const uint64_t gpu_output = use_compact_results
+                        ? static_cast<uint64_t>(compact_results[i] >> 2)
+                        : results[i].output_characters;
+                    if (gpu_status == kHalted) {
                             ++summary.gpu_halted;
-                            output_characters = results[i].output_characters;
+                        output_characters = gpu_output;
                             did_halt = true;
-                        } else if (results[i].status == kCycled) {
+                    } else if (gpu_status == kCycled) {
                             ++summary.cycled;
                             ++summary.gpu_cycled;
                             continue;
