@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <cinttypes>
@@ -197,6 +198,7 @@ struct BatchSummary {
     uint64_t cpu_fallback = 0;
     uint64_t best = 0;
     uint64_t winners = 0;
+    uint64_t first_index = UINT64_MAX;
     std::array<uint8_t, 16> first_program{};
 };
 
@@ -482,6 +484,7 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
         const uint64_t total = full_space ? 0 : (uint64_t{1} << (4 * length));
         Counts halted, cycled, errors, winners, gpu_halted, gpu_cycled, cpu_fallback;
         uint64_t best = 0;
+        uint64_t first_winner_index = UINT64_MAX;
         std::array<uint8_t, 16> first{};
         const bool use_compact_results = step_limit <= (uint64_t{1} << 29);
         const unsigned worker_count = std::min<unsigned>(
@@ -502,13 +505,14 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
             const auto *compact = static_cast<const uint32_t *>(slot.result_buffer.contents);
             const auto *results = static_cast<const GpuResult *>(slot.result_buffer.contents);
             std::array<BatchSummary, 8> summaries{};
+            std::atomic<uint32_t> next_candidate{0};
             workers.run([&](unsigned worker) {
-                const uint32_t begin = static_cast<uint32_t>(
-                    (static_cast<uint64_t>(count) * worker) / worker_count);
-                const uint32_t end = static_cast<uint32_t>(
-                    (static_cast<uint64_t>(count) * (worker + 1U)) / worker_count);
                 BatchSummary &summary = summaries[worker];
-                for (uint32_t i = begin; i < end; ++i) {
+                for (;;) {
+                    const uint32_t begin = next_candidate.fetch_add(4096, std::memory_order_relaxed);
+                    if (begin >= count) break;
+                    const uint32_t end = std::min<uint32_t>(count, begin + 4096);
+                    for (uint32_t i = begin; i < end; ++i) {
                     uint64_t output_characters;
                     bool did_halt;
                     const uint32_t gpu_status = use_compact_results
@@ -546,6 +550,7 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                     if (summary.winners == 0 || output_characters > summary.best) {
                         summary.best = output_characters;
                         summary.winners = 1;
+                        summary.first_index = base + i;
                         std::array<uint8_t, 16> program{};
                         uint64_t encoded = base + i;
                         for (uint64_t j = length; j > 0; --j) {
@@ -556,6 +561,18 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                         summary.first_program = program;
                     } else if (output_characters == summary.best) {
                         ++summary.winners;
+                        if (base + i < summary.first_index) {
+                            summary.first_index = base + i;
+                            std::array<uint8_t, 16> program{};
+                            uint64_t encoded = base + i;
+                            for (uint64_t j = length; j > 0; --j) {
+                                program[static_cast<size_t>(j - 1)] =
+                                    static_cast<uint8_t>(encoded & 15U);
+                                encoded >>= 4;
+                            }
+                            summary.first_program = program;
+                        }
+                    }
                     }
                 }
             });
@@ -570,9 +587,14 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                 if (winners.zero() || summary.best > best) {
                     best = summary.best;
                     winners = Counts{summary.winners, false};
+                    first_winner_index = summary.first_index;
                     first = summary.first_program;
                 } else if (summary.best == best) {
                     winners.add(summary.winners);
+                    if (summary.first_index < first_winner_index) {
+                        first_winner_index = summary.first_index;
+                        first = summary.first_program;
+                    }
                 }
             }
             return true;
