@@ -309,66 +309,118 @@ static i4917_run_result run_search_initialized_brent(i4917_state start) {
     return replay_execution(start, prefix + period, I4917_CYCLE);
 }
 
-/* Exhaustive search consumes only the termination class and exact output for
-   halting programs. Detect a cycle in the live Brent walk and skip prefix
-   discovery/replay. For astronomically long traces, delegate to the exact
-   search runner so its step/output overflow behavior remains unchanged. */
-static i4917_run_result run_search_initialized_aggregate(i4917_state start) {
-    i4917_state tortoise = start;
-    i4917_state hare = start;
+struct PackedSearchState {
+    uint64_t memory;
+    uint8_t r0;
+    uint8_t r1;
+    uint8_t pc;
+};
+
+static uint8_t packed_cell(const PackedSearchState &state, uint8_t address) {
+    return static_cast<uint8_t>((state.memory >> (4U * address)) & 15U);
+}
+
+static void packed_write(PackedSearchState &state, uint8_t address, uint8_t value) {
+    const uint32_t shift = 4U * address;
+    const uint64_t mask = uint64_t{15} << shift;
+    state.memory = (state.memory & ~mask) | (static_cast<uint64_t>(value & 15U) << shift);
+}
+
+static bool same_packed_execution(const PackedSearchState &left,
+                                  const PackedSearchState &right) {
+    return left.memory == right.memory && left.r0 == right.r0 &&
+           left.r1 == right.r1 && left.pc == right.pc;
+}
+
+static i4917_state unpack_packed_state(const PackedSearchState &packed, uint64_t output) {
+    i4917_state state{};
+    for (uint8_t cell = 0; cell < I4917_MEMORY_SIZE; ++cell)
+        state.memory[cell] = packed_cell(packed, cell);
+    state.r0 = packed.r0;
+    state.r1 = packed.r1;
+    state.pc = packed.pc;
+    state.output_characters = output;
+    return state;
+}
+
+static i4917_run_result packed_result(const PackedSearchState &state, uint64_t output,
+                                      uint64_t steps, i4917_termination termination) {
+    return result(unpack_packed_state(state, output), steps, 0, termination);
+}
+
+static i4917_run_result run_search_initialized_packed_aggregate(uint64_t memory) {
+    const PackedSearchState start{memory, 0, 0, 0};
+    PackedSearchState tortoise = start;
+    PackedSearchState hare = start;
+    PackedSearchState overflow_state{};
     uint64_t output = 0;
+    uint64_t overflow_output = 0;
     uint64_t steps = 0;
+    uint64_t overflow_steps = 0;
     uint64_t power = 1;
     uint64_t distance = 0;
     bool output_overflow = false;
-    i4917_state overflow_state{};
-    uint64_t overflow_steps = 0;
 
     for (;;) {
         const uint8_t pc = hare.pc;
-        const uint8_t op = hare.memory[pc];
+        const uint8_t op = packed_cell(hare, pc);
+        const uint8_t operand_pc = static_cast<uint8_t>((pc + 1U) & 15U);
+        const uint8_t after_operand = static_cast<uint8_t>((pc + 2U) & 15U);
+        const uint8_t operand = packed_cell(hare, operand_pc);
         if (op == 0) {
             if (output_overflow)
-                return result(overflow_state, overflow_steps, 0, I4917_RUN_ERROR);
-            hare.output_characters = output;
-            i4917_event event;
-            if (i4917_step(&hare, &event) != I4917_OK)
-                return result(hare, steps, 0, I4917_RUN_ERROR);
-            return result(hare, steps + 1, 0, I4917_HALTED);
+                return packed_result(overflow_state, overflow_output,
+                                     overflow_steps, I4917_RUN_ERROR);
+            hare.pc = operand_pc;
+            return packed_result(hare, output, steps + 1, I4917_HALTED);
         }
 
-        if (op == 8 && !output_overflow) {
-            const uint8_t operand = hare.memory[(pc + 1U) & 15U];
+        switch (op) {
+        case 1: hare.r0 = static_cast<uint8_t>((hare.r0 + hare.r1) & 15U); hare.pc = operand_pc; break;
+        case 2: hare.r0 = static_cast<uint8_t>((hare.r0 + 16U - hare.r1) & 15U); hare.pc = operand_pc; break;
+        case 3: hare.r0 = static_cast<uint8_t>((hare.r0 + 1U) & 15U); hare.pc = operand_pc; break;
+        case 4: hare.r1 = static_cast<uint8_t>((hare.r1 + 1U) & 15U); hare.pc = operand_pc; break;
+        case 5: hare.r0 = static_cast<uint8_t>((hare.r0 - 1U) & 15U); hare.pc = operand_pc; break;
+        case 6: hare.r1 = static_cast<uint8_t>((hare.r1 - 1U) & 15U); hare.pc = operand_pc; break;
+        case 7: hare.pc = operand_pc; break;
+        case 8: {
             const uint64_t amount = operand < 10U ? 1U : 2U;
-            if (output > UINT64_MAX - amount) {
+            if (!output_overflow && output > UINT64_MAX - amount) {
                 output_overflow = true;
                 overflow_state = hare;
-                overflow_state.output_characters = output;
+                overflow_output = output;
                 overflow_steps = steps;
-            } else {
+            } else if (!output_overflow) {
                 output += amount;
             }
+            hare.pc = after_operand;
+            break;
+        }
+        case 9: hare.r0 = packed_cell(hare, operand); hare.pc = after_operand; break;
+        case 10: hare.r1 = packed_cell(hare, operand); hare.pc = after_operand; break;
+        case 11: packed_write(hare, operand, hare.r0); hare.pc = after_operand; break;
+        case 12: packed_write(hare, operand, hare.r1); hare.pc = after_operand; break;
+        case 13: hare.pc = operand; break;
+        case 14: hare.pc = hare.r0 == 0 ? operand : after_operand; break;
+        case 15: hare.pc = hare.r0 != 0 ? operand : after_operand; break;
+        default: return packed_result(hare, output, steps, I4917_RUN_ERROR);
         }
 
-        advance_execution(&hare);
         if (steps == UINT64_MAX)
-            return run_search_initialized_brent(start);
+            return run_search_initialized_brent(unpack_packed_state(start, 0));
         ++steps;
         ++distance;
 
-        if (same_execution(&tortoise, &hare)) {
-            // At most two output characters are emitted per instruction. If
-            // the collision arrives by this bound, overflow cannot precede
-            // the first repeated state. Otherwise let the exact runner decide.
+        if (same_packed_execution(tortoise, hare)) {
             if (steps <= UINT64_MAX / 2U)
-                return result(hare, steps, 0, I4917_CYCLE);
-            return run_search_initialized_brent(start);
+                return packed_result(hare, 0, steps, I4917_CYCLE);
+            return run_search_initialized_brent(unpack_packed_state(start, 0));
         }
 
         if (distance == power) {
             tortoise = hare;
             if (power > UINT64_MAX / 2U)
-                return run_search_initialized_brent(start);
+                return run_search_initialized_brent(unpack_packed_state(start, 0));
             power *= 2U;
             distance = 0;
         }
@@ -397,7 +449,25 @@ i4917_run_result i4917_detail::run_search_program(
 
 i4917_run_result i4917_detail::run_search_aggregate_program(
     const std::array<uint8_t, I4917_MEMORY_SIZE> &program) {
-    i4917_state start{};
-    std::memcpy(start.memory, program.data(), I4917_MEMORY_SIZE);
-    return run_search_initialized_aggregate(start);
+    uint64_t memory = 0;
+    for (uint8_t cell = 0; cell < I4917_MEMORY_SIZE; ++cell)
+        memory |= static_cast<uint64_t>(program[cell] & 15U) << (4U * cell);
+    return run_search_initialized_packed_aggregate(memory);
+}
+
+i4917_run_result i4917_detail::run_search_aggregate_candidate(
+    uint64_t candidate_id, uint64_t length) {
+    if (length < 1 || length > I4917_MEMORY_SIZE ||
+        (length < I4917_MEMORY_SIZE &&
+         candidate_id >= (uint64_t{1} << (4U * static_cast<uint32_t>(length))))) {
+        i4917_state empty{};
+        return result(empty, 0, 0, I4917_RUN_ERROR);
+    }
+    uint64_t memory = 0;
+    for (uint64_t cell = 0; cell < length; ++cell) {
+        const uint32_t shift = static_cast<uint32_t>(4U * cell);
+        const uint32_t source_shift = static_cast<uint32_t>(4U * (length - cell - 1U));
+        memory |= ((candidate_id >> source_shift) & 15U) << shift;
+    }
+    return run_search_initialized_packed_aggregate(memory);
 }
