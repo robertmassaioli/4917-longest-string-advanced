@@ -9,10 +9,13 @@
 #include <charconv>
 #include <chrono>
 #include <cinttypes>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -161,6 +164,66 @@ struct BatchSummary {
     uint64_t best = 0;
     uint64_t winners = 0;
     std::array<uint8_t, 16> first_program{};
+};
+
+class WorkerPool {
+public:
+    explicit WorkerPool(unsigned count) {
+        threads_.reserve(count);
+        for (unsigned i = 0; i < count; ++i)
+            threads_.emplace_back([this, i] { worker_loop(i); });
+    }
+
+    ~WorkerPool() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+            ++generation_;
+        }
+        ready_.notify_all();
+        for (auto &thread : threads_) thread.join();
+    }
+
+    void run(std::function<void(unsigned)> task) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        task_ = std::move(task);
+        remaining_ = static_cast<unsigned>(threads_.size());
+        ++generation_;
+        ready_.notify_all();
+        complete_.wait(lock, [this] { return remaining_ == 0; });
+        task_ = {};
+    }
+
+private:
+    void worker_loop(unsigned id) {
+        uint64_t seen_generation = 0;
+        for (;;) {
+            std::function<void(unsigned)> task;
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                ready_.wait(lock, [this, &seen_generation] {
+                    return stopping_ || generation_ != seen_generation;
+                });
+                if (stopping_) return;
+                seen_generation = generation_;
+                task = task_;
+            }
+            task(id);
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (--remaining_ == 0) complete_.notify_one();
+            }
+        }
+    }
+
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    std::condition_variable complete_;
+    std::vector<std::thread> threads_;
+    std::function<void(unsigned)> task_;
+    uint64_t generation_ = 0;
+    unsigned remaining_ = 0;
+    bool stopping_ = false;
 };
 
 bool parse_u64(const char *s, uint64_t &out) {
@@ -314,6 +377,9 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
         uint64_t best = 0;
         std::array<uint8_t, 16> first{};
         std::vector<GpuResult> results(kChunkSize);
+        const unsigned worker_count = std::min<unsigned>(
+            8U, std::max(1U, std::thread::hardware_concurrency()));
+        WorkerPool workers(worker_count);
         const auto started = std::chrono::steady_clock::now();
         uint64_t base = 0;
         bool finished = false;
@@ -326,19 +392,14 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                 count = static_cast<uint32_t>(UINT64_MAX - base + 1U);
             }
             if (!run_batch(device, queue, pipeline, base, count, length, step_limit, results.data())) return 1;
-            const unsigned worker_count = std::min<unsigned>(
-                8U, std::max(1U, std::thread::hardware_concurrency()));
             std::array<BatchSummary, 8> summaries{};
-            std::vector<std::thread> workers;
-            workers.reserve(worker_count);
-            for (unsigned worker = 0; worker < worker_count; ++worker) {
+            workers.run([&](unsigned worker) {
                 const uint32_t begin = static_cast<uint32_t>(
                     (static_cast<uint64_t>(count) * worker) / worker_count);
                 const uint32_t end = static_cast<uint32_t>(
                     (static_cast<uint64_t>(count) * (worker + 1U)) / worker_count);
-                workers.emplace_back([&, worker, begin, end] {
-                    BatchSummary &summary = summaries[worker];
-                    for (uint32_t i = begin; i < end; ++i) {
+                BatchSummary &summary = summaries[worker];
+                for (uint32_t i = begin; i < end; ++i) {
                         std::array<uint8_t, 16> program{};
                         uint64_t encoded = base + i;
                         for (uint64_t j = length; j > 0; --j) {
@@ -374,10 +435,8 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                         } else if (output_characters == summary.best) {
                             ++summary.winners;
                         }
-                    }
-                });
-            }
-            for (auto &worker : workers) worker.join();
+                }
+            });
             for (const BatchSummary &summary : summaries) {
                 halted.add(summary.halted);
                 cycled.add(summary.cycled);
