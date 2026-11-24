@@ -21,6 +21,7 @@ namespace {
 
 constexpr uint32_t kChunkSize = 1048576;
 constexpr uint32_t kHalted = 1;
+constexpr uint32_t kCycled = 2;
 
 struct GpuResult {
     uint64_t steps;
@@ -47,6 +48,15 @@ using namespace metal;
 struct Result { ulong steps; ulong output_characters; uint status; uint reserved; };
 struct Parameters { ulong base_id; ulong step_limit; uint length; uint count; };
 
+inline bool same_state(thread const uchar *memory, uchar r0, uchar r1, uchar pc,
+                       thread const uchar *checkpoint_memory,
+                       uchar checkpoint_r0, uchar checkpoint_r1, uchar checkpoint_pc) {
+    if (r0 != checkpoint_r0 || r1 != checkpoint_r1 || pc != checkpoint_pc) return false;
+    for (uint i = 0; i < 16; ++i)
+        if (memory[i] != checkpoint_memory[i]) return false;
+    return true;
+}
+
 kernel void search_batch(device Result *results [[buffer(0)]],
                          constant Parameters &params [[buffer(1)]],
                          uint tid [[thread_position_in_grid]]) {
@@ -60,9 +70,15 @@ kernel void search_batch(device Result *results [[buffer(0)]],
     }
 
     uchar r0 = 0, r1 = 0, pc = 0;
+    uchar checkpoint_memory[16];
+    for (uint i = 0; i < 16; ++i) checkpoint_memory[i] = memory[i];
+    uchar checkpoint_r0 = r0, checkpoint_r1 = r1, checkpoint_pc = pc;
+    ulong power = 1ul;
+    ulong distance = 0ul;
     ulong output = 0;
     ulong steps = 0;
     bool halted = false;
+    bool cycled = false;
     while (steps < params.step_limit) {
         uchar op = memory[pc];
         uchar operand_pc = uchar((uint(pc) + 1u) & 15u);
@@ -93,11 +109,27 @@ kernel void search_batch(device Result *results [[buffer(0)]],
         case 15: pc = r0 != 0 ? operand : after_operand; break;
         }
         if (halted) { ++steps; break; }
-        if (steps < params.step_limit) ++steps;
+        if (steps < params.step_limit) {
+            ++steps;
+            ++distance;
+            if (same_state(memory, r0, r1, pc, checkpoint_memory,
+                           checkpoint_r0, checkpoint_r1, checkpoint_pc)) {
+                cycled = true;
+                break;
+            }
+            if (distance == power) {
+                for (uint i = 0; i < 16; ++i) checkpoint_memory[i] = memory[i];
+                checkpoint_r0 = r0;
+                checkpoint_r1 = r1;
+                checkpoint_pc = pc;
+                power = power <= (~0ul) / 2ul ? power * 2ul : ~0ul;
+                distance = 0ul;
+            }
+        }
     }
     results[tid].steps = steps;
     results[tid].output_characters = output;
-    results[tid].status = halted ? 1u : 0u;
+    results[tid].status = halted ? 1u : (cycled ? 2u : 0u);
     results[tid].reserved = 0;
 }
 )METAL";
@@ -124,6 +156,7 @@ struct BatchSummary {
     uint64_t cycled = 0;
     uint64_t errors = 0;
     uint64_t gpu_halted = 0;
+    uint64_t gpu_cycled = 0;
     uint64_t cpu_fallback = 0;
     uint64_t best = 0;
     uint64_t winners = 0;
@@ -277,7 +310,7 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
 
         const bool full_space = length == 16;
         const uint64_t total = full_space ? 0 : (uint64_t{1} << (4 * length));
-        Counts halted, cycled, errors, winners, gpu_halted, cpu_fallback;
+        Counts halted, cycled, errors, winners, gpu_halted, gpu_cycled, cpu_fallback;
         uint64_t best = 0;
         std::array<uint8_t, 16> first{};
         std::vector<GpuResult> results(kChunkSize);
@@ -318,6 +351,10 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                             ++summary.gpu_halted;
                             output_characters = results[i].output_characters;
                             did_halt = true;
+                        } else if (results[i].status == kCycled) {
+                            ++summary.cycled;
+                            ++summary.gpu_cycled;
+                            continue;
                         } else {
                             // Bounded GPU work never decides whether an unfinished
                             // candidate halts or cycles. Keep using exact CPU logic.
@@ -346,6 +383,7 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                 cycled.add(summary.cycled);
                 errors.add(summary.errors);
                 gpu_halted.add(summary.gpu_halted);
+                gpu_cycled.add(summary.gpu_cycled);
                 cpu_fallback.add(summary.cpu_fallback);
                 if (summary.winners == 0) continue;
                 if (winners.zero() || summary.best > best) {
@@ -374,16 +412,19 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
                         errors.string().c_str(), errors.zero() ? "true" : "false", best, winners.string().c_str());
             for (uint64_t i = 0; i < length; ++i)
                 std::printf("%s%u", i ? "," : "", static_cast<unsigned>(first[static_cast<size_t>(i)]));
-            std::printf("],\"gpu_halted\":\"%s\",\"cpu_exact_fallback\":\"%s\",\"seconds\":%.6f}\n",
-                        gpu_halted.string().c_str(), cpu_fallback.string().c_str(), seconds);
+            std::printf("],\"gpu_halted\":\"%s\",\"gpu_cycled\":\"%s\","
+                        "\"cpu_exact_fallback\":\"%s\",\"seconds\":%.6f}\n",
+                        gpu_halted.string().c_str(), gpu_cycled.string().c_str(),
+                        cpu_fallback.string().c_str(), seconds);
         } else {
             std::printf("GPU: %s (%s)\ncandidates: %s\nhalted: %s\ncycled: %s\nerrors: %s\n"
                         "exhaustive: %s\nbest output characters: %" PRIu64 "\nwinner count: %s\n"
-                        "GPU halted: %s\nCPU exact fallback: %s\nelapsed seconds: %.3f\n",
+                        "GPU halted: %s\nGPU cycled: %s\nCPU exact fallback: %s\nelapsed seconds: %.3f\n",
                         device.name.UTF8String, "Metal", candidate_count.c_str(),
                         halted.string().c_str(), cycled.string().c_str(), errors.string().c_str(),
                         errors.zero() ? "yes" : "no", best, winners.string().c_str(),
-                        gpu_halted.string().c_str(), cpu_fallback.string().c_str(), seconds);
+                        gpu_halted.string().c_str(), gpu_cycled.string().c_str(),
+                        cpu_fallback.string().c_str(), seconds);
         }
     }
     return 0;

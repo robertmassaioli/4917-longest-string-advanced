@@ -34,7 +34,7 @@ def main():
                     f"length {length}, GPU budget {limit}, field {key}: "
                     f"Metal={actual[key]!r}, CPU={expected[key]!r}"
                 )
-            assert int(actual["gpu_halted"]) + int(actual["cpu_exact_fallback"]) == int(
+            assert int(actual["gpu_halted"]) + int(actual.get("gpu_cycled", 0)) + int(actual["cpu_exact_fallback"]) == int(
                 actual["candidate_count"]
             )
             if limit == 1:

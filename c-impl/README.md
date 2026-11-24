@@ -103,12 +103,12 @@ system Metal GPU:
 ```
 
 Each GPU thread simulates one candidate up to the GPU step budget (default
-256). A candidate that halts in that budget is scored on the GPU. Every
-candidate that has not halted is handed to the existing exact CPU runner,
-which determines whether it later halts, cycles, or errors. Therefore, the
+256). Candidates that halt or repeat a complete machine state in that budget
+are classified on the GPU. Every other candidate is handed to the existing
+exact CPU runner, which determines whether it later halts, cycles, or errors. Therefore, the
 budget only chooses where work runs; it does not limit the search or change its
 answer. It can still take a long time to classify an unusually long execution.
-The JSON schema is `4917-metal-search-v1`; `gpu_halted` and
+The JSON schema is `4917-metal-search-v1`; `gpu_halted`, `gpu_cycled`, and
 `cpu_exact_fallback` expose the split. The Apple-only CTest
 `metal-search-differential` compares the solver against CPU exhaustive results
 for lengths 1–3 using several GPU budgets, and exercises a wrapped two-byte
