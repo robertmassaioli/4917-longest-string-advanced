@@ -45,6 +45,34 @@ benefit.
 
 ## Candidate results
 
-Record each independent candidate's commit, repeated wall times, exact-result
-comparison, tests, and verdict here. Candidate timing and correctness checks are
-run serially because the M4 Pro has one shared Metal GPU.
+Candidate timing and correctness checks were run serially because the M4 Pro
+has one shared Metal GPU.
+
+| Candidate | Commit | Wall times | Median | Correctness / tests | Verdict |
+|---|---|---:|---:|---|---|
+| Compact exhaustive GPU results into 32-bit records | `8e9e8b0`, promoted as `c1f61b2` | 21.19, 21.01, 23.12 s | 21.19 s | Exact length-8 totals and winners; all 5 CTest tests; generic large-budget path matched CPU exhaustively at length 1. | Accepted. 44.8% faster than the 38.40 s baseline median, exceeding the 2% threshold. |
+
+The integrated campaign build ran length 8 in 22.00 seconds and returned the
+same 4,294,967,296-candidate result: 3,858,727,572 halts, 436,239,724 cycles,
+zero errors, best output 482, 102 winners, first winner
+`[1,8,10,14,4,2,4,15]`. It classified 3,858,689,162 halts and 430,609,734
+cycles on GPU; the exact CPU fallback handled 5,668,400 candidates.
+
+The compact format stores the status in two low bits and the halted output
+count in the remaining 30 bits. A halted candidate within a budget of at most
+`2^29` instructions can emit at most `2 × (budget - 1)` characters, so the
+encoding is lossless. Larger budgets keep the original 24-byte result layout;
+the single-program interface also keeps that layout so it can report exact
+instruction counts. At length 8, the search result buffer and host copy shrink
+from 96 GiB to 16 GiB across all batches.
+
+The 2% acceptance threshold was reached in the first round, so the campaign
+stopped without running the remaining ideas. Separate clean worktrees remain
+available for the untried lazy-decode candidate at
+`codex/hc3-lazy-decode` and search-only CPU Brent candidate at
+`codex/hc3-search-brent`.
+
+## Outcome
+
+The campaign branch is `codex/gpu-search-hill-climb-3`. The accepted commit is
+`c1f61b2`; no merge or push was performed.
