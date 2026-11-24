@@ -64,7 +64,51 @@ baseline. The final result fields matched across all runs.
 | 128 | 10.966 s | 243,795,924 | 24,639,532 | Reject: slightly slower. |
 | 256 | 10.354 s | 243,945,960 | 24,489,496 | Current best; consistent with baseline spread. |
 
-## Detailed candidate log
+## Round 1 results
 
-No source candidates have been accepted yet. Each candidate will record its
-commit, exact command, repeated wall times, correctness result, and verdict.
+All candidates started from code baseline `ef10dbd` plus the campaign-record
+commit `097f5b3`. Each was built in its own worktree, evaluated serially, and
+compared against the same length-7 result fields. The evaluator used three
+serial process runs at GPU budget 256.
+
+### Candidate 1: larger Metal batches
+
+- **Branch/worktree:** `codex/hc-gpu-batch`,
+  `/Users/robertmassaioli/Code/4917-longest-string-advanced.worktrees/hc-gpu-batch`.
+- **Hypothesis:** raising the batch from 262,144 to 1,048,576 reduces Metal
+  command submissions, buffer allocations, and waits.
+- **Initial result:** the 24 MiB stack-allocated result array crashed with
+  `SIGSEGV`; CTest had passed. Moved that array to the heap and reran.
+- **Final measurements:** 10.941, 10.439, and 10.564 s; median 10.564 s.
+- **Correctness:** all 5 CTest tests passed; length-7 counts and winners matched
+  the baseline exactly.
+- **Verdict:** reject. The median improves by only 0.2%, within noise, and is
+  far from the 50% goal. The larger heap buffer adds memory usage.
+
+### Candidate 2: 512-thread threadgroups
+
+- **Branch/worktree:** `codex/hc-gpu-threadgroup`,
+  `/Users/robertmassaioli/Code/4917-longest-string-advanced.worktrees/hc-gpu-threadgroup`.
+- **Hypothesis:** increasing threadgroup width from 256 to 512 improves GPU
+  occupancy and latency hiding.
+- **Measurements:** 10.797, 11.305, and 11.333 s; median 11.305 s.
+- **Correctness:** all 5 CTest tests passed; length-7 counts and winners matched
+  the baseline exactly.
+- **Verdict:** reject. It regressed by 6.8% at the median.
+
+### Candidate 3: lower GPU step budgets
+
+- **Branch/worktree:** `codex/gpu-solver`, baseline code, parameter-only sweep.
+- **Hypothesis:** lower budgets avoid wasting GPU cycles on loops that need
+  exact CPU cycle classification anyway.
+- **Measurements:** recorded above for budgets 8–256.
+- **Correctness:** all budgets returned identical exact length-7 outcomes.
+- **Verdict:** reject. Every budget below 256 was slower; budget 8 took 17.619 s.
+
+### Round 1 decision
+
+No candidate produced a meaningful improvement. The baseline remains the
+campaign best at 10.589 s median. Continue to round 2 with CPU/GPU overlap,
+parallel fallback classification, and an exact GPU cycle-classification
+hypothesis. Preserve the current 256-step exact-fallback behavior unless a
+candidate proves a faster exact alternative.
