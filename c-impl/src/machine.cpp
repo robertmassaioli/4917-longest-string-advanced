@@ -257,6 +257,58 @@ static i4917_run_result run_initialized(i4917_state start) {
     return replay_execution(start, prefix + period, I4917_CYCLE);
 }
 
+/* Search-only variant: Brent finds the cycle length with fewer state
+   transitions than Floyd. The final replay keeps the public first-repeat
+   output semantics exactly. */
+static i4917_run_result run_search_initialized_brent(i4917_state start) {
+    i4917_state probe = start;
+    for (uint64_t n = 0;; ++n) {
+        const uint8_t old_pc = probe.pc;
+        i4917_event event;
+        if (i4917_step(&probe, &event) != I4917_OK)
+            return result(probe, n, 0, I4917_RUN_ERROR);
+        if (event.halted)
+            return result(probe, n + 1, 0, I4917_HALTED);
+        if (probe.pc <= old_pc)
+            break;
+    }
+
+    i4917_state tortoise = start;
+    i4917_state hare = start;
+    advance_execution(&hare);
+    uint64_t power = 1;
+    uint64_t period = 1;
+    while (!same_execution(&tortoise, &hare)) {
+        if (power == period) {
+            tortoise = hare;
+            if (power > UINT64_MAX / 2)
+                return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+            power *= 2;
+            period = 0;
+        }
+        advance_execution(&hare);
+        if (period == UINT64_MAX)
+            return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+        ++period;
+    }
+
+    uint64_t prefix = 0;
+    tortoise = start;
+    hare = start;
+    for (uint64_t n = 0; n < period; ++n)
+        advance_execution(&hare);
+    while (!same_execution(&tortoise, &hare)) {
+        advance_execution(&tortoise);
+        advance_execution(&hare);
+        if (prefix == UINT64_MAX)
+            return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+        ++prefix;
+    }
+    if (prefix > UINT64_MAX - period)
+        return replay_execution(start, UINT64_MAX, I4917_RUN_ERROR);
+    return replay_execution(start, prefix + period, I4917_CYCLE);
+}
+
 i4917_run_result i4917_run_until_halt_or_cycle(const i4917_state *initial) {
     if (initial == NULL) {
         i4917_state empty{};
@@ -274,5 +326,5 @@ i4917_run_result i4917_detail::run_search_program(
     const std::array<uint8_t, I4917_MEMORY_SIZE> &program) {
     i4917_state start{};
     std::memcpy(start.memory, program.data(), I4917_MEMORY_SIZE);
-    return run_initialized(start);
+    return run_search_initialized_brent(start);
 }
