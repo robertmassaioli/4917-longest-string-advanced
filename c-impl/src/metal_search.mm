@@ -101,6 +101,36 @@ inline bool execute(thread MachineState &s, thread ulong &output,
     return false;
 }
 
+// Compact mode is used only below 2^29 steps. Even if each instruction emits
+// two characters, its output is at most 2^30 - 2 and fits the 30 payload bits
+// left after the two status bits in the packed result.
+inline bool execute_compact(thread MachineState &s, thread uint &output) {
+    uchar op = read_cell(s, s.pc);
+    uchar operand_pc = uchar((uint(s.pc) + 1u) & 15u);
+    uchar after_operand = uchar((uint(s.pc) + 2u) & 15u);
+    uchar operand = read_cell(s, operand_pc);
+    uchar next = operand_pc;
+    switch (op) {
+    case 0: s.pc = next; return true;
+    case 1: s.r0 = uchar((uint(s.r0) + uint(s.r1)) & 15u); s.pc = next; break;
+    case 2: s.r0 = uchar((uint(s.r0) + 16u - uint(s.r1)) & 15u); s.pc = next; break;
+    case 3: s.r0 = uchar((uint(s.r0) + 1u) & 15u); s.pc = next; break;
+    case 4: s.r1 = uchar((uint(s.r1) + 1u) & 15u); s.pc = next; break;
+    case 5: s.r0 = uchar((uint(s.r0) - 1u) & 15u); s.pc = next; break;
+    case 6: s.r1 = uchar((uint(s.r1) - 1u) & 15u); s.pc = next; break;
+    case 7: s.pc = next; break;
+    case 8: output += operand < 10 ? 1u : 2u; s.pc = after_operand; break;
+    case 9: s.r0 = read_cell(s, operand); s.pc = after_operand; break;
+    case 10: s.r1 = read_cell(s, operand); s.pc = after_operand; break;
+    case 11: write_cell(s, operand, s.r0); s.pc = after_operand; break;
+    case 12: write_cell(s, operand, s.r1); s.pc = after_operand; break;
+    case 13: s.pc = operand; break;
+    case 14: s.pc = s.r0 == 0 ? operand : after_operand; break;
+    case 15: s.pc = s.r0 != 0 ? operand : after_operand; break;
+    }
+    return false;
+}
+
 kernel void search_batch(device uchar *result_bytes [[buffer(0)]],
                          constant Parameters &params [[buffer(1)]],
                          uint tid [[thread_position_in_grid]]) {
@@ -114,20 +144,18 @@ kernel void search_batch(device uchar *result_bytes [[buffer(0)]],
     MachineState state = {memory, 0, 0, 0};
 
     if (params.compact_results != 0) {
-        // Compact-result mode is selected only for budgets <= 2^29, so these
+        // Compact-result mode is selected only for budgets < 2^29, so these
         // iteration counters and Brent's power/distance remain in uint range.
         MachineState checkpoint = state;
         uint power = 1u;
         uint distance = 0u;
         uint steps = 0u;
-        ulong output = 0ul;
+        uint output = 0u;
         bool halted = false;
         bool cycled = false;
-        bool overflow = false;
         while (ulong(steps) < params.step_limit) {
-            halted = execute(state, output, overflow);
+            halted = execute_compact(state, output);
             if (halted) { ++steps; break; }
-            if (overflow) { steps = uint(params.step_limit); break; }
             ++steps;
             ++distance;
             if (same_state(state, checkpoint)) { cycled = true; break; }
@@ -486,7 +514,7 @@ int search(uint64_t length, uint64_t step_limit, bool json) {
         uint64_t best = 0;
         uint64_t first_winner_index = UINT64_MAX;
         std::array<uint8_t, 16> first{};
-        const bool use_compact_results = step_limit <= (uint64_t{1} << 29);
+        const bool use_compact_results = step_limit < (uint64_t{1} << 29);
         const unsigned worker_count = std::min<unsigned>(
             8U, std::max(1U, std::thread::hardware_concurrency()));
         WorkerPool workers(worker_count);
