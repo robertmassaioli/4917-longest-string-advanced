@@ -39,6 +39,16 @@ def main():
             )
             if limit == 1:
                 assert int(actual["cpu_exact_fallback"]) > 0
+    # The compact result encoding reserves two low bits for status and only
+    # uses uint output below 2^29 steps. Check both sides of that cutoff.
+    expected = run(args.cpu, ["search", "--length", "1"])
+    for limit in ((1 << 29) - 1, 1 << 29):
+        actual = run(args.metal, ["--length", "1", "--gpu-step-limit", str(limit)])
+        for key in compared:
+            assert actual[key] == expected[key], (
+                f"length 1, GPU budget {limit}, field {key}: "
+                f"Metal={actual[key]!r}, CPU={expected[key]!r}"
+            )
     wrapped_print = run(
         args.metal,
         ["--program", "13,15,0,0,0,0,0,0,0,0,0,0,0,0,0,8", "--gpu-step-limit", "16"],
