@@ -72,7 +72,43 @@ available for the untried lazy-decode candidate at
 `codex/hc3-lazy-decode` and search-only CPU Brent candidate at
 `codex/hc3-search-brent`.
 
+## Full length-9 validation and updated runtime estimates
+
+The first length-9 attempt was killed by macOS memory pressure before it
+returned a result. The system log identified the search process at about
+221 GB compressed memory. `run_batch` allocated a new Metal result buffer per
+batch without releasing the retained buffer. Commit `3a6df8e` releases the
+result and parameter buffers after each batch and drains per-batch autoreleased
+Metal command objects. All five CTest tests passed after this fix; length 8
+still completed with the accepted exact result.
+
+The successful full GPU run took 371.147 seconds (6 min 11.15 s) for all
+68,719,476,736 length-9 candidates. It exactly matched the recorded CPU result:
+60,931,421,044 halted, 7,788,055,692 cycled, zero errors, best output 678,
+one winner `[8,8,13,1,14,5,2,6,15]`. GPU classification handled 60,929,847,271
+halts and 7,683,098,233 cycles; exact CPU fallback classified 106,531,232.
+The length-8-based 5.65-minute projection was about 9.5% low, so the estimates
+below use the measured length-9 GPU runtime as their anchor.
+
+The CPU length-9 runtime of 7,558.18 seconds (2.10 hours) is measured in
+[`explainers/length-9.md`](../../explainers/length-9.md). CPU times after
+length 9 project the documented 18.44× growth per extra nibble; GPU times
+after length 9 project 16× per added nibble, matching candidate-space growth.
+Only length 9 is measured for both solvers in this table.
+
+| Length | Candidates | CPU-only time | Combined GPU time | Projected speedup |
+|---:|---:|---:|---:|---:|
+| 9 | 68.7 billion | 2.10 h measured | 6.19 min measured | 20.4× |
+| 10 | 1.10 trillion | 1.61 days | 1.65 h | 23.5× |
+| 11 | 17.6 trillion | 29.75 days | 1.10 days | 27.0× |
+| 12 | 281.5 trillion | 1.50 years | 17.60 days | 31.2× |
+| 13 | 4.50 quadrillion | 27.69 years | 281.52 days | 35.9× |
+| 14 | 72.1 quadrillion | 510.64 years | 12.33 years | 41.4× |
+| 15 | 1.15 quintillion | 9,416 years | 197.32 years | 47.7× |
+| 16 | 18.45 quintillion | 173,636 years | 3,157 years | 55.0× |
+
 ## Outcome
 
-The campaign branch is `codex/gpu-search-hill-climb-3`. The accepted commit is
-`c1f61b2`; no merge or push was performed.
+The campaign branch is `codex/gpu-search-hill-climb-3`, with compact results
+accepted as `c1f61b2` and the per-batch Metal resource fix as `3a6df8e`. No
+merge or push was performed.
