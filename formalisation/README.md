@@ -31,20 +31,25 @@ or a STORE can overwrite it before a later visit. The checked example
 `skipsSecondCell` uses an unconditional jump from PC 0 back to PC 0 and loops
 there, despite its second cell being zero.
 
-The general finite-state argument is that a deterministic machine with `N`
-possible states either halts during its first `N` transitions or has `N + 1`
-nonhalting states among the first `N + 1` visits. Two visits must then be the
-same state by the pigeonhole principle. Determinism makes every subsequent
-state repeat with the same period, so that execution cycles and never halts.
-For this processor, the state includes all 16 memory nibbles, both register
-nibbles, and the PC, giving `16^19` possible states. The Lean module formalizes
-the zero-opcode and conditional reachability facts; the generic pigeonhole
-argument is documented here, not represented as a Lean theorem. Since this
-cycle result applies to every program, it adds no specific pruning power for
-cell 1. In a longest-string search with a positive incumbent, entry-zero
-programs can be pruned because they halt immediately with empty output. A
-second-cell zero alone justifies no static pruning: the program may loop, or
-may reach and halt at that cell only after producing output.
+The module now formalizes the finite pigeonhole step. Given a list that covers
+the states at every visit through its length, `machine_halts_or_repeats_within_cover`
+proves either a HALT occurs in that interval or two non-HALT visits have the
+same complete `MachineState`. `repeated_state_visits_cycle` proves that equal
+visits remain equal at every later offset. The example
+`skipsSecondCell_finiteCover_repeat_or_halt` checks the result for the one-state
+self-jump loop.
+
+The theorem is conditional on the supplied list covering those visits. This
+module does not construct an exhaustive cover of every machine configuration
+or prove its size. Mathematically, there are `16^19` configurations (16 memory
+nibbles, two register nibbles, and the PC), so the usual unconditional
+repeat-or-halt argument applies; formalizing that exact bound still requires
+an exhaustive finite encoding of the function-valued memory. Therefore this
+Lean result alone does not add specific pruning power for cell 1. In a
+longest-string search with a positive incumbent, entry-zero programs can be
+pruned because they halt immediately with empty output. A second-cell zero
+alone justifies no static pruning: the program may loop, or may reach and halt
+at that cell only after producing output.
 
 `Formalisation/MonotoneOutput.lean` defines finite runs using the concrete
 machine `step` function and proves an accounting lemma: a run starting at PC
