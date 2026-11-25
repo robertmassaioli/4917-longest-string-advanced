@@ -44,12 +44,23 @@ module does not construct an exhaustive cover of every machine configuration
 or prove its size. Mathematically, there are `16^19` configurations (16 memory
 nibbles, two register nibbles, and the PC), so the usual unconditional
 repeat-or-halt argument applies; formalizing that exact bound still requires
-an exhaustive finite encoding of the function-valued memory. Therefore this
-Lean result alone does not add specific pruning power for cell 1. In a
-longest-string search with a positive incumbent, entry-zero programs can be
-pruned because they halt immediately with empty output. A second-cell zero
-alone justifies no static pruning: the program may loop, or may reach and halt
-at that cell only after producing output.
+an exhaustive finite encoding of the function-valued memory. The Lean
+finite-cover result therefore remains conditional and does not itself justify
+unconditional pruning for arbitrary cell-1-zero programs.
+
+The stronger reset prefix `memory[1] = memory[2] = 0` has an exact checked
+case split in `reset_twoZero_caseSplit`. If cell 0 contains opcode 13 or 14,
+the first transition returns to the identical state without output; opcode 14
+takes that branch because reset `R0` is zero. `reset_twoZero_loop_forever`
+proves every subsequent state is the same and every step is silent and
+non-HALT. For every other opcode, `reset_twoZero_halts_nonJump` proves that
+execution halts within two instructions with output character score at most
+one. The only possible output is opcode 8 at cell 0, which emits the zero in
+cell 1 before the zero at cell 2 halts. Thus, in a search for halting
+programs, if the incumbent score is greater than one, candidates with this
+two-zero prefix cannot tie or improve it. A zero in cell 1 alone still gives
+only the conditional `reachingCellOneZero_halts_next` result: execution need
+not reach cell 1, and other cells may permit further execution after it.
 
 `Formalisation/MonotoneOutput.lean` defines finite runs using the concrete
 machine `step` function and proves an accounting lemma: a run starting at PC

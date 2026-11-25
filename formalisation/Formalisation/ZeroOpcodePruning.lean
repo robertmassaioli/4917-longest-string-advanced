@@ -1,4 +1,4 @@
-import Formalisation.Machine
+import Formalisation.MonotoneOutput
 import Init.Omega
 
 /-!
@@ -26,6 +26,16 @@ state component of `step`, whether or not an earlier step reported HALT. -/
 def stateAfter (program : List Nibble) : Nat → MachineState
   | 0 => initialState program
   | n + 1 => (step (stateAfter program n)).state
+
+/-- A fixed first step leaves the deterministic state trajectory at that same
+state forever. -/
+theorem stateAfter_fixedPoint (program : List Nibble)
+    (hFixed : (step (initialState program)).state = initialState program) :
+    ∀ n, stateAfter program n = initialState program := by
+  intro n
+  induction n with
+  | zero => rfl
+  | succ n ih => simpa [stateAfter, hFixed, ih]
 
 /-- A list containing every member of a nodup list must be at least as long. -/
 theorem nodup_length_le_of_mem {α : Type} [BEq α] [LawfulBEq α]
@@ -191,9 +201,118 @@ theorem reachingCellOneZero_halts_next (program : List Nibble) (n : Nat)
   apply zeroOpcodeHalts
   simpa [hPC] using hZero
 
+/-- If the reset opcode is not one of the two jumps back to cell 0, the
+program halts within two steps and its output score is at most one. -/
+theorem reset_twoZero_halts_nonJump (program : List Nibble)
+    (hCell1 : (initialState program).memory 1 = 0)
+    (hCell2 : (initialState program).memory 2 = 0)
+    (hNot13 : ((initialState program).memory 0).val ≠ 13)
+    (hNot14 : ((initialState program).memory 0).val ≠ 14) :
+    ∃ finalState outputRev,
+      runFuel 2 (initialState program) [] = .halted finalState outputRev ∧
+      outputCharacterScore outputRev ≤ 1 := by
+  let initial := initialState program
+  let opcode := (initial.memory 0).val
+  have hCases : opcode = 0 ∨ opcode = 1 ∨ opcode = 2 ∨ opcode = 3 ∨
+      opcode = 4 ∨ opcode = 5 ∨ opcode = 6 ∨ opcode = 7 ∨ opcode = 8 ∨
+      opcode = 9 ∨ opcode = 10 ∨ opcode = 11 ∨ opcode = 12 ∨ opcode = 13 ∨
+      opcode = 14 ∨ opcode = 15 := by
+    have hRange := (initial.memory 0).isLt
+    omega
+  rcases hCases with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7 | h8 | h9 | h10 | h11 | h12 | h13 | h14 | h15
+  all_goals
+    refine ⟨if (step (initialState program)).halted then
+        (step (initialState program)).state
+      else (step ((step (initialState program)).state)).state,
+      ((step (initialState program)).output).toList, ?_⟩
+    constructor
+    · simp_all [runFuel, step, initial, opcode, initialState, pcAdd,
+        writeMemory_preserves_unequal]
+    · simp_all [step, initial, opcode, initialState, pcAdd,
+        outputCharacterScore, decimalCharacterCount]
+
+/-- Exact reset case split when cells 1 and 2 are both HALT. Opcode 13 and
+opcode 14 take a non-HALT, silent transition back to the identical reset state
+(the latter because reset R0 is zero). Every other opcode halts within two
+instructions with score at most one. -/
+theorem reset_twoZero_caseSplit (program : List Nibble)
+    (hCell1 : (initialState program).memory 1 = 0)
+    (hCell2 : (initialState program).memory 2 = 0) :
+    (((initialState program).memory 0).val = 13 ∧
+      (step (initialState program)).halted = false ∧
+      (step (initialState program)).output = none ∧
+      (step (initialState program)).state = initialState program) ∨
+    (((initialState program).memory 0).val = 14 ∧
+      (step (initialState program)).halted = false ∧
+      (step (initialState program)).output = none ∧
+      (step (initialState program)).state = initialState program) ∨
+    (∃ finalState outputRev,
+      runFuel 2 (initialState program) [] = .halted finalState outputRev ∧
+      outputCharacterScore outputRev ≤ 1) := by
+  let initial := initialState program
+  let opcode := (initial.memory 0).val
+  simp [initialState] at hCell1 hCell2
+  by_cases h13 : opcode = 13
+  · left
+    refine ⟨?_, ?_, ?_, ?_⟩
+    · simpa [initial, opcode, initialState] using h13
+    · have h13' : (program[0]?.getD 0).val = 13 := by simpa [initial, opcode, initialState] using h13
+      simp [step, initialState, h13', hCell1, pcAdd]
+    · have h13' : (program[0]?.getD 0).val = 13 := by simpa [initial, opcode, initialState] using h13
+      simp [step, initialState, h13', hCell1, pcAdd]
+    · have h13' : (program[0]?.getD 0).val = 13 := by simpa [initial, opcode, initialState] using h13
+      simp [step, initialState, h13', hCell1, pcAdd]
+  · by_cases h14 : opcode = 14
+    · right; left
+      refine ⟨?_, ?_, ?_, ?_⟩
+      · simpa [initial, opcode, initialState] using h14
+      · have h14' : (program[0]?.getD 0).val = 14 := by simpa [initial, opcode, initialState] using h14
+        simp [step, initialState, h14', hCell1, pcAdd]
+      · have h14' : (program[0]?.getD 0).val = 14 := by simpa [initial, opcode, initialState] using h14
+        simp [step, initialState, h14', hCell1, pcAdd]
+      · have h14' : (program[0]?.getD 0).val = 14 := by simpa [initial, opcode, initialState] using h14
+        simp [step, initialState, h14', hCell1, pcAdd]
+    · right; right
+      exact reset_twoZero_halts_nonJump program hCell1 hCell2
+        (by simpa [initial, opcode] using h13)
+        (by simpa [initial, opcode] using h14)
+
+/-- Under the opcode-13/14 branches, every state visit remains the reset state
+and every fetched instruction is silent and non-HALT. -/
+theorem reset_twoZero_loop_forever (program : List Nibble)
+    (hCell1 : (initialState program).memory 1 = 0)
+    (hLoop : ((initialState program).memory 0).val = 13 ∨
+      ((initialState program).memory 0).val = 14) :
+    ∀ n, stateAfter program n = initialState program ∧
+      (step (stateAfter program n)).halted = false ∧
+      (step (stateAfter program n)).output = none := by
+  simp [initialState] at hCell1
+  have hFixed : (step (initialState program)).state = initialState program := by
+    rcases hLoop with h13 | h14
+    · have h13' : (program[0]?.getD 0).val = 13 := by simpa [initialState] using h13
+      simp [step, initialState, h13', hCell1, pcAdd]
+    · have h14' : (program[0]?.getD 0).val = 14 := by simpa [initialState] using h14
+      simp [step, initialState, h14', hCell1, pcAdd]
+  have hStep : (step (initialState program)).halted = false ∧
+      (step (initialState program)).output = none := by
+    rcases hLoop with h13 | h14
+    · have h13' : (program[0]?.getD 0).val = 13 := by simpa [initialState] using h13
+      simp [step, initialState, h13', hCell1, pcAdd]
+    · have h14' : (program[0]?.getD 0).val = 14 := by simpa [initialState] using h14
+      simp [step, initialState, h14', hCell1, pcAdd]
+  intro n
+  rw [stateAfter_fixedPoint program hFixed n]
+  exact ⟨rfl, hStep.1, hStep.2⟩
+
 /-- Example: the first instruction jumps to cell 0, skipping a zero at cell 1
 forever. -/
 def skipsSecondCell : List Nibble := [13, 0, 0]
+
+/-- Opcode 15 uses reset R0 = 0, so it falls through to cell 2. -/
+theorem opcode15_reset_falls_through_and_halts :
+    (step (initialState [15, 0, 0])).state.pc = 2 ∧
+      (step ((step (initialState [15, 0, 0])).state)).halted = true := by
+  decide
 
 theorem skipsSecondCell_hasZeroAtOne :
     (initialState skipsSecondCell).memory 1 = 0 := by

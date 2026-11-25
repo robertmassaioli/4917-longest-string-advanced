@@ -37,6 +37,11 @@ structure StepResult where
 private def writeMemory (memory : Memory) (address value : Nibble) : Memory :=
   fun cell => if cell = address then value else memory cell
 
+/-- Writing one memory cell leaves every distinct cell unchanged. -/
+theorem writeMemory_preserves_unequal (memory : Memory) (address value cell : Nibble)
+    (hCell : cell ≠ address) : writeMemory memory address value cell = memory cell := by
+  simp [writeMemory, hCell]
+
 /-- Execute exactly one instruction according to the 4917 processor contract. -/
 def step (s : MachineState) : StepResult :=
   let next := pcAdd s.pc 1
