@@ -7,6 +7,7 @@ import Formalisation.PreRunChecksA
 import Formalisation.PreRunChecksB
 import Formalisation.PreRunChecksC
 import Formalisation.InstructionCommutation
+import Formalisation.SafeSwaps
 import Formalisation.Length123Optimality
 import Formalisation.OutputScoreClasses
 import Formalisation.RegisterLoopBounds
