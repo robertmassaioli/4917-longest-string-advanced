@@ -41,10 +41,10 @@ nibbles, and the PC, giving `16^19` possible states. The Lean module formalizes
 the zero-opcode and conditional reachability facts; the generic pigeonhole
 argument is documented here, not represented as a Lean theorem. Since this
 cycle result applies to every program, it adds no specific pruning power for
-cell 1. For a longest-string search, only programs proved to halt are
-discardable; entry-zero programs can be removed when searching for a
-nonhalting program, while a second-cell zero alone justifies no static
-pruning.
+cell 1. In a longest-string search with a positive incumbent, entry-zero
+programs can be pruned because they halt immediately with empty output. A
+second-cell zero alone justifies no static pruning: the program may loop, or
+may reach and halt at that cell only after producing output.
 
 `Formalisation/MonotoneOutput.lean` defines finite runs using the concrete
 machine `step` function and proves an accounting lemma: a run starting at PC
