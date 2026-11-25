@@ -229,6 +229,7 @@ struct BatchSummary {
     uint64_t winners = 0;
     uint64_t first_index = UINT64_MAX;
     std::array<uint8_t, 16> first_program{};
+    std::vector<uint64_t> best_indices;
 };
 
 void write_candidate_record(std::ofstream &output, uint64_t candidate_id,
@@ -629,23 +630,12 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                     }
                     if (!did_halt) continue;
                     ++summary.halted;
-                    uint64_t seen = best_seen.load(std::memory_order_relaxed);
-                    while (output_characters > seen &&
-                           !best_seen.compare_exchange_weak(
-                               seen, output_characters, std::memory_order_relaxed)) {}
-                    if (output_characters > 10 &&
-                        output_characters >= best_seen.load(std::memory_order_relaxed)) {
-                        std::lock_guard<std::mutex> lock(output_mutex);
-                        if (output_characters >= best_seen.load(std::memory_order_relaxed)) {
-                            write_candidate_record(winner_output, base + i, length,
-                                                  output_characters);
-                            if (winner_output) ++provisional_records;
-                            else output_failed = true;
-                        }
-                    }
                     if (summary.winners == 0 || output_characters > summary.best) {
                         summary.best = output_characters;
                         summary.winners = 1;
+                        summary.best_indices.clear();
+                        if (output_characters > 10)
+                            summary.best_indices.push_back(base + i);
                         summary.first_index = base + i;
                         std::array<uint8_t, 16> program{};
                         uint64_t encoded = base + i;
@@ -657,6 +647,8 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                         summary.first_program = program;
                     } else if (output_characters == summary.best) {
                         ++summary.winners;
+                        if (output_characters > 10)
+                            summary.best_indices.push_back(base + i);
                         if (base + i < summary.first_index) {
                             summary.first_index = base + i;
                             std::array<uint8_t, 16> program{};
@@ -676,6 +668,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             uint64_t batch_winner_count = 0;
             uint64_t batch_first_index = UINT64_MAX;
             std::array<uint8_t, 16> batch_first_program{};
+            std::vector<uint64_t> batch_best_indices;
             for (const BatchSummary &summary : summaries) {
                 halted.add(summary.halted);
                 cycled.add(summary.cycled);
@@ -689,15 +682,33 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                     batch_winner_count = summary.winners;
                     batch_first_index = summary.first_index;
                     batch_first_program = summary.first_program;
+                    batch_best_indices = summary.best_indices;
                 } else if (summary.best == batch_best) {
                     batch_winner_count += summary.winners;
                     if (summary.first_index < batch_first_index) {
                         batch_first_index = summary.first_index;
                         batch_first_program = summary.first_program;
                     }
+                    batch_best_indices.insert(batch_best_indices.end(),
+                                              summary.best_indices.begin(),
+                                              summary.best_indices.end());
                 }
             }
             if (batch_winner_count == 0) return true;
+
+            uint64_t seen = best_seen.load(std::memory_order_relaxed);
+            while (batch_best > seen &&
+                   !best_seen.compare_exchange_weak(
+                       seen, batch_best, std::memory_order_relaxed)) {}
+            if (batch_best > 10 &&
+                batch_best >= best_seen.load(std::memory_order_relaxed)) {
+                std::lock_guard<std::mutex> lock(output_mutex);
+                for (uint64_t candidate_id : batch_best_indices) {
+                    write_candidate_record(winner_output, candidate_id, length, batch_best);
+                    if (winner_output) ++provisional_records;
+                    else output_failed = true;
+                }
+            }
 
             const bool new_global_best = winners.zero() || batch_best > best;
             const bool ties_global_best = batch_best == best;
