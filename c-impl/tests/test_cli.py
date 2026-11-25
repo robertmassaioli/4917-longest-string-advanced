@@ -41,9 +41,12 @@ def main():
     assert '"termination":"step_limit"' in succeeds(
         "run", "--program", "7", "--max-steps", "0", "--json"
     )
-    assert '"candidate_count":"16"' in succeeds(
-        "search", "--length", "1", "--json"
-    )
+    length_one_search = succeeds("search", "--length", "1", "--json")
+    assert '"candidate_count":"15"' in length_one_search
+    assert '"search_space_count":"16"' in length_one_search
+    assert '"skipped_candidate_count":"1"' in length_one_search
+    assert '"best_output_characters":"1"' in length_one_search
+    assert '"first_winner":[8]' in length_one_search
     assert '"schema":"4917-step-v1"' in succeeds(
         "step", "--memory", "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0", "--json"
     )
