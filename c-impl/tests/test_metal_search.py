@@ -17,6 +17,8 @@ def main():
     args = parser.parse_args()
     compared = (
         "candidate_count",
+        "search_space_count",
+        "skipped_candidate_count",
         "halted",
         "cycled",
         "errors",
@@ -34,6 +36,9 @@ def main():
                     f"length {length}, GPU budget {limit}, field {key}: "
                     f"Metal={actual[key]!r}, CPU={expected[key]!r}"
                 )
+            assert int(actual["candidate_count"]) + int(actual["skipped_candidate_count"]) == int(
+                actual["search_space_count"]
+            )
             assert int(actual["gpu_halted"]) + int(actual.get("gpu_cycled", 0)) + int(actual["cpu_exact_fallback"]) == int(
                 actual["candidate_count"]
             )

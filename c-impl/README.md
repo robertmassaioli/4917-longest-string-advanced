@@ -65,11 +65,15 @@ schema is `4917-run-v1`; output values and final machine state are included.
 Exit codes are 0 for a completed or limited run, 1 for an execution error, and
 2 for invalid arguments or input.
 
-`search` enumerates every N-cell nibble vector in lexicographic order, padded
-to 16 memory cells. Length is restricted to 1–5. Each candidate runs until it
-halts or a repeated execution state is found. HALT candidates can win; cycles
-are counted separately. The result is exhaustive if no candidate errors. Its
-JSON schema is `4917-search-v2`.
+`search` examines N-cell nibble vectors in lexicographic order, padded to 16
+memory cells. Programs whose first nibble is zero halt immediately with output
+zero, so the search skips that contiguous ID prefix. The result reports
+`candidate_count` as the number actually searched, `search_space_count` as
+the full space size, and `skipped_candidate_count` as the excluded prefix.
+Each searched candidate runs until it halts or a repeated execution state is
+found. HALT candidates can win; cycles are counted separately. The result is
+exhaustive if no searched candidate errors. Its JSON schema is
+`4917-search-v2`.
 
 `dataset` emits one JSON object per line with the candidate and its direct
 simulation result. `random` samples uniformly from the declared nibble space
@@ -136,6 +140,9 @@ the final tied winners, keep rows whose `output_characters` equals
 `best_output_characters` in the search summary. The summary reports the file
 path, entry count, and `candidate_log_saved: true`. The `--program` trace mode
 does not create a search log.
+
+The Metal summary uses the same `candidate_count`, `search_space_count`, and
+`skipped_candidate_count` meanings as the CPU summary.
 
 Each GPU thread simulates one candidate up to the GPU step budget (default
 256). Candidates that halt or repeat a complete machine state in that budget

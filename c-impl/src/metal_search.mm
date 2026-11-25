@@ -573,6 +573,10 @@ int search(uint64_t length, uint64_t step_limit, bool json,
 
         const bool full_space = length == 16;
         const uint64_t total = full_space ? 0 : (uint64_t{1} << (4 * length));
+        // IDs are lexicographic nibble vectors. Every program whose first
+        // nibble is zero occupies this contiguous prefix and halts at once.
+        const uint64_t skipped = uint64_t{1} << (4 * (length - 1));
+        const uint64_t searched = full_space ? (uint64_t{15} << 60) : total - skipped;
         Counts halted, cycled, errors, winners, gpu_halted, gpu_cycled, cpu_fallback;
         uint64_t best = 0;
         uint64_t first_winner_index = UINT64_MAX;
@@ -735,7 +739,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
 
             return !output_failed;
         };
-        uint64_t base = 0;
+        uint64_t base = skipped;
         bool finished = false;
         bool pending = false;
         unsigned active_slot = 0;
@@ -760,6 +764,12 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             else base = last + 1U;
         }
         if (pending && !process_slot(slots[active_slot ^ 1U])) return 1;
+        // Immediate halts tie for best only when no output was produced by
+        // any searched candidate; ID zero is then the first winner.
+        if (best == 0) {
+            winners.add(skipped);
+            first_winner_index = 0;
+        }
         if (save_candidate_log) {
             winner_output.flush();
             if (!winner_output || output_failed) {
@@ -773,13 +783,16 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             [slot.parameter_buffer release];
         }
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-        const std::string candidate_count = full_space ? "18446744073709551616" : std::to_string(total);
+        const std::string candidate_count = std::to_string(searched);
+        const std::string search_space_count = full_space ? "18446744073709551616" : std::to_string(total);
         if (json) {
             std::printf("{\"schema\":\"4917-metal-search-v1\",\"length\":%" PRIu64
-                        ",\"candidate_count\":\"%s\",\"halted\":\"%s\",\"cycled\":\"%s\","
+                        ",\"candidate_count\":\"%s\",\"search_space_count\":\"%s\","
+                        "\"skipped_candidate_count\":\"%s\",\"halted\":\"%s\",\"cycled\":\"%s\","
                         "\"errors\":\"%s\",\"exhaustive\":%s,\"best_output_characters\":\"%" PRIu64
                         "\",\"winner_count\":\"%s\",\"first_winner\":[",
-                        length, candidate_count.c_str(), halted.string().c_str(), cycled.string().c_str(),
+                        length, candidate_count.c_str(), search_space_count.c_str(),
+                        std::to_string(skipped).c_str(), halted.string().c_str(), cycled.string().c_str(),
                         errors.string().c_str(), errors.zero() ? "true" : "false", best, winners.string().c_str());
             for (uint64_t i = 0; i < length; ++i)
                 std::printf("%s%u", i ? "," : "", static_cast<unsigned>(first[static_cast<size_t>(i)]));
@@ -795,10 +808,11 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             }
             std::puts("}");
         } else {
-            std::printf("GPU: %s (%s)\ncandidates: %s\nhalted: %s\ncycled: %s\nerrors: %s\n"
+            std::printf("GPU: %s (%s)\nsearched candidates: %s\nsearch space: %s\n"
+                        "skipped immediate-zero candidates: %" PRIu64 "\nhalted: %s\ncycled: %s\nerrors: %s\n"
                         "exhaustive: %s\nbest output characters: %" PRIu64 "\nwinner count: %s\n"
                         "GPU halted: %s\nGPU cycled: %s\nCPU exact fallback: %s\nelapsed seconds: %.3f\n",
-                        device.name.UTF8String, "Metal", candidate_count.c_str(),
+                        device.name.UTF8String, "Metal", candidate_count.c_str(), search_space_count.c_str(), skipped,
                         halted.string().c_str(), cycled.string().c_str(), errors.string().c_str(),
                         errors.zero() ? "yes" : "no", best, winners.string().c_str(),
                         gpu_halted.string().c_str(), gpu_cycled.string().c_str(),

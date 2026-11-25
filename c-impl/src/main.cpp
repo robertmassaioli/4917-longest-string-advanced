@@ -29,6 +29,12 @@ struct SearchCount {
         }
     }
 
+    void add(uint64_t amount) {
+        if (is_two_to_64) return;
+        if (amount > UINT64_MAX - low) is_two_to_64 = true;
+        low += amount;
+    }
+
     bool is_zero() const { return low == 0 && !is_two_to_64; }
 
     std::string text() const {
@@ -184,10 +190,14 @@ int search_cmd(uint64_t length, bool json) {
     }
     const bool full_space = length == I4917_MEMORY_SIZE;
     const uint64_t total = full_space ? 0 : (uint64_t{1} << (4 * length));
+    // A zero first opcode halts immediately with output zero. Those IDs form
+    // one contiguous prefix of the lexicographic candidate space.
+    const uint64_t skipped = uint64_t{1} << (4 * (length - 1));
+    const uint64_t searched = full_space ? (uint64_t{15} << 60) : total - skipped;
     SearchCount halted, cycled, errors, winners;
     uint64_t best = 0;
     std::array<uint8_t, I4917_MEMORY_SIZE> first{};
-    for (uint64_t id = 0; full_space || id < total;) {
+    for (uint64_t id = skipped; full_space || id < total;) {
         const i4917_run_result result = i4917_detail::run_search_aggregate_candidate(id, length);
         if (result.termination == I4917_HALTED) {
             halted.increment();
@@ -213,27 +223,35 @@ int search_cmd(uint64_t length, bool json) {
             break;
         ++id;
     }
-    const std::string candidate_count = full_space ? "18446744073709551616" : std::to_string(total);
+    // If zero is still the best score, the skipped immediate halts tie for
+    // best and ID zero remains the first winner.
+    if (best == 0) winners.add(skipped);
+    const std::string candidate_count = std::to_string(searched);
+    const std::string search_space_count = full_space ? "18446744073709551616" : std::to_string(total);
     const std::string halted_text = halted.text();
     const std::string cycled_text = cycled.text();
     const std::string errors_text = errors.text();
     const std::string winners_text = winners.text();
     if (json) {
         std::printf("{\"schema\":\"4917-search-v2\",\"length\":%" PRIu64
-                    ",\"candidate_count\":\"%s\",\"halted\":\"%s"
+                    ",\"candidate_count\":\"%s\",\"search_space_count\":\"%s\","
+                    "\"skipped_candidate_count\":\"%s\",\"halted\":\"%s"
                     "\",\"cycled\":\"%s\",\"errors\":\"%s\",\"exhaustive\":%s,"
                     "\"best_output_characters\":\"%" PRIu64 "\",\"winner_count\":\"%s"
                     "\",\"first_winner\":[",
-                    length, candidate_count.c_str(), halted_text.c_str(), cycled_text.c_str(),
+                    length, candidate_count.c_str(), search_space_count.c_str(),
+                    std::to_string(skipped).c_str(), halted_text.c_str(), cycled_text.c_str(),
                     errors_text.c_str(), errors.is_zero() ? "true" : "false", best, winners_text.c_str());
         for (uint64_t i = 0; i < length; ++i)
             std::printf("%s%u", i ? "," : "", static_cast<unsigned>(first[static_cast<size_t>(i)]));
         std::puts("]}");
     } else {
-        std::printf("candidates: %s\nhalted: %s\ncycled: %s"
+        std::printf("searched candidates: %s\nsearch space: %s\nskipped immediate-zero candidates: %" PRIu64
+                    "\nhalted: %s\ncycled: %s"
                     "\nerrors: %s\nexhaustive: %s\nbest output characters: %" PRIu64
                     "\nwinner count: %s\n",
-                    candidate_count.c_str(), halted_text.c_str(), cycled_text.c_str(), errors_text.c_str(),
+                    candidate_count.c_str(), search_space_count.c_str(), skipped,
+                    halted_text.c_str(), cycled_text.c_str(), errors_text.c_str(),
                     errors.is_zero() ? "yes" : "no", best, winners_text.c_str());
     }
     return 0;
