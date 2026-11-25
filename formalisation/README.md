@@ -19,6 +19,33 @@ machine module also proves `zeroOpcodeHalts` and `runFuel_zeroOpcode_halts`.
 `Formalisation/Counterexamples.lean` contains the length-15 wraparound example
 and its Lean-checked properties.
 
+`Formalisation/ZeroOpcodePruning.lean` records the precise pruning claims for
+zero opcodes. `firstCellZero_halts` proves that a zero in cell 0 makes every
+reset execution halt on its first instruction (the claim needs no minimum
+program length because short lists are zero-padded). For a zero in cell 1,
+`reachingCellOneZero_halts_next` proves the conditional claim: if the
+deterministic state sequence reaches PC 1 while that memory cell is still zero,
+the next instruction halts. It does not prove that PC 1 is reached or that the
+cell remains unchanged; for example, the first instruction can jump over it,
+or a STORE can overwrite it before a later visit. The checked example
+`skipsSecondCell` uses an unconditional jump from PC 0 back to PC 0 and loops
+there, despite its second cell being zero.
+
+The general finite-state argument is that a deterministic machine with `N`
+possible states either halts during its first `N` transitions or has `N + 1`
+nonhalting states among the first `N + 1` visits. Two visits must then be the
+same state by the pigeonhole principle. Determinism makes every subsequent
+state repeat with the same period, so that execution cycles and never halts.
+For this processor, the state includes all 16 memory nibbles, both register
+nibbles, and the PC, giving `16^19` possible states. The Lean module formalizes
+the zero-opcode and conditional reachability facts; the generic pigeonhole
+argument is documented here, not represented as a Lean theorem. Since this
+cycle result applies to every program, it adds no specific pruning power for
+cell 1. For a longest-string search, only programs proved to halt are
+discardable; entry-zero programs can be removed when searching for a
+nonhalting program, while a second-cell zero alone justifies no static
+pruning.
+
 `Formalisation/MonotoneOutput.lean` defines finite runs using the concrete
 machine `step` function and proves an accounting lemma: a run starting at PC
 0 whose PC strictly increases prints at most 30 decimal characters. This
