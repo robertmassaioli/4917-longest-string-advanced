@@ -116,25 +116,26 @@ search by specifying a program length from 1 through 16:
 ./build/make-release/4917-metal-search --length 10 --gpu-step-limit 256 --json
 ```
 
-By default, an exhaustive search reports only the best score, tie count, and
-first winner. To also save every tied best program, pass `--winners-jsonl` with
-an output path:
+Every exhaustive search writes provisional best candidates to a JSONL file.
+By default the file is named
+`metal-search-length-N-provisional-winners.jsonl` in the current directory,
+where `N` is the searched program length. Pass `--winners-jsonl` to choose a
+different path:
 
 ```sh
 ./build/make-release/4917-metal-search --length 10 --json \
   --winners-jsonl ./length-10-winners.jsonl
 ```
 
-The command creates or replaces the specified file. It writes one JSON object
-per line, with schema
-`4917-metal-winner-v1`, the program length, decimal candidate ID,
-output-character score, and program vector. Records are ordered by candidate
-ID. If a higher score appears later in the exhaustive search, lower-scoring
-records are discarded so the completed file contains only the final tied
-winners. Because collecting and saving candidate IDs adds overhead, leave off
-`--winners-jsonl` for normal high-throughput searches. When the option is used,
-the JSON summary reports the file path in `winners_file` and sets
-`all_winners_saved` to `true`.
+The command creates or replaces the file. It writes one JSON object per line,
+with schema `4917-metal-candidate-log-v1`, the program length, decimal
+candidate ID, output-character score, and program vector. The log contains
+provisional candidates that matched or exceeded the best score observed so far;
+it can include lower-scoring candidates that were later surpassed. To extract
+the final tied winners, keep rows whose `output_characters` equals
+`best_output_characters` in the search summary. The summary reports the file
+path, entry count, and `candidate_log_saved: true`. The `--program` trace mode
+does not create a search log.
 
 Each GPU thread simulates one candidate up to the GPU step budget (default
 256). Candidates that halt or repeat a complete machine state in that budget

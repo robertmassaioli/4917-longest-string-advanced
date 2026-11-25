@@ -370,7 +370,7 @@ void print_usage() {
     std::puts("Usage: 4917-metal-search --length N [--gpu-step-limit N] [--winners-jsonl PATH] [--json]\n"
               "Exhaustively searches programs of 1-16 nibbles. GPU execution is bounded;\n"
               "every candidate not halted by the GPU budget is classified by the exact CPU runner.\n"
-              "Optionally save every tied best program with --winners-jsonl PATH.\n"
+              "Always saves provisional best candidates to a JSONL file; --winners-jsonl overrides its path.\n"
               "       4917-metal-search --program NIBBLES [--gpu-step-limit N] [--json]\n"
               "The --program form traces one candidate and is useful for checking edge cases.\n"
               "Default GPU budget: 256 instructions per candidate.");
@@ -542,9 +542,9 @@ int run_one(const std::array<uint8_t, 16> &program, uint64_t length,
 int search(uint64_t length, uint64_t step_limit, bool json,
            const std::string &winner_jsonl_path) {
     @autoreleasepool {
-        const bool save_all_winners = !winner_jsonl_path.empty();
+        const bool save_candidate_log = !winner_jsonl_path.empty();
         std::ofstream winner_output;
-        if (save_all_winners) {
+        if (save_candidate_log) {
             winner_output.open(winner_jsonl_path, std::ios::out | std::ios::trunc);
             if (!winner_output) {
                 std::fprintf(stderr, "could not open winners JSONL file: %s\n",
@@ -635,7 +635,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                     if (summary.winners == 0 || output_characters > summary.best) {
                         summary.best = output_characters;
                         summary.winners = 1;
-                        if (save_all_winners) {
+                        if (save_candidate_log) {
                             summary.best_indices.clear();
                             if (output_characters > 10)
                                 summary.best_indices.push_back(base + i);
@@ -651,7 +651,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                         summary.first_program = program;
                     } else if (output_characters == summary.best) {
                         ++summary.winners;
-                        if (save_all_winners && output_characters > 10)
+                        if (save_candidate_log && output_characters > 10)
                             summary.best_indices.push_back(base + i);
                         if (base + i < summary.first_index) {
                             summary.first_index = base + i;
@@ -686,7 +686,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                     batch_winner_count = summary.winners;
                     batch_first_index = summary.first_index;
                     batch_first_program = summary.first_program;
-                    if (save_all_winners)
+                    if (save_candidate_log)
                         batch_best_indices = summary.best_indices;
                 } else if (summary.best == batch_best) {
                     batch_winner_count += summary.winners;
@@ -694,7 +694,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                         batch_first_index = summary.first_index;
                         batch_first_program = summary.first_program;
                     }
-                    if (save_all_winners)
+                    if (save_candidate_log)
                         batch_best_indices.insert(batch_best_indices.end(),
                                                   summary.best_indices.begin(),
                                                   summary.best_indices.end());
@@ -702,7 +702,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             }
             if (batch_winner_count == 0) return true;
 
-            if (save_all_winners) {
+            if (save_candidate_log) {
                 uint64_t seen = best_seen.load(std::memory_order_relaxed);
                 while (batch_best > seen &&
                        !best_seen.compare_exchange_weak(
@@ -760,7 +760,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             else base = last + 1U;
         }
         if (pending && !process_slot(slots[active_slot ^ 1U])) return 1;
-        if (save_all_winners) {
+        if (save_candidate_log) {
             winner_output.flush();
             if (!winner_output || output_failed) {
                 std::fprintf(stderr, "could not write provisional candidate log: %s\n",
@@ -787,7 +787,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                         "\"cpu_exact_fallback\":\"%s\",\"seconds\":%.6f",
                         gpu_halted.string().c_str(), gpu_cycled.string().c_str(),
                         cpu_fallback.string().c_str(), seconds);
-            if (save_all_winners) {
+            if (save_candidate_log) {
                 const std::string winners_file_json = json_quote(winner_jsonl_path);
                 std::printf(",\"candidate_log_saved\":true,\"candidate_log_entries\":\"%" PRIu64
                             "\",\"candidate_log_file\":%s",
@@ -803,7 +803,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                         errors.zero() ? "yes" : "no", best, winners.string().c_str(),
                         gpu_halted.string().c_str(), gpu_cycled.string().c_str(),
                         cpu_fallback.string().c_str(), seconds);
-            if (save_all_winners)
+            if (save_candidate_log)
                 std::printf("provisional candidate records: %" PRIu64 "\nfile: %s\n",
                             provisional_records.load(), winner_jsonl_path.c_str());
         }
@@ -855,5 +855,9 @@ int main(int argc, char **argv) {
         return run_one(program, length, step_limit, json);
     }
     if (length < 1 || length > 16) { std::fputs("--length must be from 1 through 16\n", stderr); return 2; }
+    if (winner_jsonl_path.empty()) {
+        winner_jsonl_path = "metal-search-length-" + std::to_string(length) +
+                            "-provisional-winners.jsonl";
+    }
     return search(length, step_limit, json, winner_jsonl_path);
 }
