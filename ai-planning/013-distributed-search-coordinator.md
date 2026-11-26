@@ -2,86 +2,7 @@
 
 ## Open questions
 
-### Q1. What completeness policy should the first campaign use before reporting an optimum?
-
-**Why it matters:** Replaying submitted candidates proves those candidates are valid, but it cannot prove a worker found every best candidate in its range. The policy determines which status the coordinator may publish.
-
-**Worked example:** Every accepted range reports a best program that replays correctly, but one client omits a better program from its range. The campaign has full reported coverage and valid submissions, yet its displayed maximum is wrong if worker summaries are trusted as complete.
-
-**Options:**
-
-- **A — Worker-reported summaries with server replay of returned programs:** Fastest initial deployment. Publish the score as worker-reported and never set `optimum_established`.
-- **B — Random full-chunk audits:** Recompute a selected fraction of ranges. This can detect faults and estimate confidence, but unaudited ranges still prevent an exhaustive optimum claim.
-- **C — Full independent recomputation:** Recompute every chunk on a trusted server or under a defined independent-worker policy. This supports an optimum claim after all ranges and outcomes are verified, at substantially higher compute cost.
-
-**Recommendation: A — Worker-reported summaries with replayed candidates.** This is the least expensive first deployment and matches the proposal's staged rollout. Keep the optimum flag false until a later campaign uses a completeness policy that checks every chunk.
-
-### Q2. How should the coordinator transfer large positive-score tie manifests?
-
-**Why it matters:** A chunk may contain many programs tied at its best positive output. A single unbounded response can exceed client memory, server request limits, or database transaction limits; dropping ties makes the export incomplete.
-
-**Worked example:** A task finds hundreds of thousands of programs with the same positive score. If the client sends one JSON response, the server rejects it for size. If the client silently caps the list, the score may be valid but the campaign loses tied winners and cannot claim a complete tie set.
-
-**Options:**
-
-- **A — Exact, bounded pages staged before acceptance:** Upload every positive-score tie in bounded pages, bind pages to one immutable result digest, and finalize only after all pages validate. This preserves exact ties but uses more storage and transfer time.
-- **B — Capped manifest plus exact tie count:** Keep a fixed-size sample of tied programs and the exact count. This bounds storage but cannot export or independently replay every tied winner.
-- **C — Only return one representative winner per chunk:** Minimizes traffic but discards ties and weakens the stated goal of reporting them.
-
-**Recommendation: A — Exact paged manifests.** It preserves the stated tie-reporting goal while bounding individual requests. The transfer can still be large. Zero-output programs stay out of the winner log under the accepted rule; their exact counts remain recorded.
-
-### Q3. How should clients enroll and receive revocable credentials?
-
-**Why it matters:** The coordinator needs to authenticate remote workers and revoke one compromised or retired client without disabling the whole fleet.
-
-**Worked example:** An operator copies one shared token to ten machines. One laptop is lost, but revoking the shared token stops all ten clients; keeping it active leaves the lost laptop authorized.
-
-**Options:**
-
-- **A — One-time enrollment token exchanged for a per-client credential:** Simple onboarding with separate revocation and rotation per client; requires credential issuance and secure storage.
-- **B — Mutual TLS client certificates:** Strong client identity at the connection layer; requires certificate issuance, renewal, and a device trust-store workflow.
-
-**Recommendation: A — One-time enrollment followed by per-client credentials.** It fits an opt-in fleet with varied owner-managed devices and allows individual revocation. The coordinator must protect credential issuance and provide rotation.
-
-### Q4. What operational budget should bound candidate execution and server replay?
-
-**Why it matters:** Exact CPU fallback and replay can run much longer than the chunk target. Without a deterministic bound, pause requests, leases, and validation capacity have no predictable limit; treating a budget stop as a cycle would produce false results.
-
-**Worked example:** A worker spends hours on one candidate after its lease expires, while the server starts a retry. Later, both attempts submit. The system needs a defined rule for cancellation, unresolved accounting, and whether the server can finish validating the result.
-
-**Options:**
-
-- **A — Fixed evaluator and replay budgets:** Stop at deterministic limits, mark the candidate unresolved, and allow retry under an explicitly versioned larger budget. This bounds resource use but may delay completion.
-- **B — Adaptive budgets based on observed runtimes:** Extend budgets for promising or unusually slow candidates. This can reduce unnecessary unresolved results but makes resource use and completion estimates less predictable.
-- **C — No automatic candidate limit:** Preserve exact evaluation attempts until completion or manual cancellation. This avoids policy-based unresolved outcomes but can hold workers, leases, and server capacity indefinitely.
-
-**Recommendation: A — Fixed, versioned budgets with an unresolved outcome.** It gives cancellation and replay a clear bound without misclassifying incomplete work. An optimum claim must wait until every unresolved candidate is resolved under an accepted policy.
-
-### Q5. Which fair scheduler should allocate work among length queues?
-
-**Why it matters:** A scheduler that repeatedly favors cheap or abundant queues can leave some lengths with no progress, even though the campaign is intended to cover them all.
-
-**Worked example:** Length-1 tasks complete quickly and refill continuously, while length-16 tasks take longer. A scheduler that chooses the shortest available work can report rapid progress while length 16 remains starved.
-
-**Options:**
-
-- **A — Weighted round-robin:** Easy to inspect and tune with fixed shares, but service shares do not automatically reflect changing task costs.
-- **B — Deficit round-robin:** Carries unused service credit across queues and can account for estimated task cost; it is more complex to tune and explain.
-
-**Recommendation: B — Deficit round-robin with equal initial shares.** The campaign spans lengths with widely different measured costs. A deficit can preserve fairness as estimates change; equal starting shares avoid encoding unsupported priorities.
-
-### Q6. Which database should back the first shared coordinator deployment?
-
-**Why it matters:** Lease allocation and result acceptance require durable, serialized updates. A local prototype has different concurrency and operational needs from a coordinator serving multiple machines.
-
-**Worked example:** Two workers request the last range concurrently. If the persistence layer cannot serialize the cursor update, both may receive the same range and the coverage ledger can become inconsistent.
-
-**Options:**
-
-- **A — PostgreSQL from the first shared deployment:** Supports concurrent clients and transactional allocation, with database operations to run and maintain.
-- **B — SQLite for the initial coordinator, then migrate:** Low setup cost for local development, but requires careful single-writer behavior and a migration before multi-client service.
-
-**Recommendation: A — PostgreSQL for any shared coordinator; use SQLite only for a local prototype.** This aligns persistence with concurrent leases and avoids validating production behavior against a different transaction model.
+None currently identified.
 
 **Status:** Proposed  
 **Created:** 2026-11-24
@@ -216,8 +137,11 @@ calibration rate per length and execution backend. The coordinator chooses
 configured minimum and maximum counts, and checks it against the remaining
 range. Bound calibration work so enrollment itself cannot become a long search.
 Use recent completed chunks to adjust the estimate. Keep a maximum lease
-duration and extend it on periodic heartbeats for a healthy client. See Q4 for
-operational execution and replay budgets.
+duration and extend it on periodic heartbeats for a healthy client. Use fixed,
+evaluator-versioned execution and replay budgets. Work stopped by a budget is
+unresolved, not a cycle; retry it only under an explicitly versioned larger
+budget. These limits bound cancellation and server validation work without
+misclassifying incomplete candidates.
 
 Candidate cost can vary substantially with program behavior. Chunk duration is
 therefore an estimate, not a hard real-time limit. In particular, the existing
@@ -238,7 +162,7 @@ requests cannot both claim coverage. A heartbeat from a stale attempt cannot
 revive it. Use server time for deadline decisions; do not rely on client clocks.
 
 Keep one work queue per length. Use deficit round-robin with equal initial
-shares across nonempty queues (Q5), so length 16 cannot starve the smaller
+shares across nonempty queues, so length 16 cannot starve the smaller
 searches and a steady flow of easy small-length tasks cannot prevent longer
 lengths from receiving workers. Persist per-length candidate coverage and show
 progress independently. Clients may advertise supported backends;
@@ -248,8 +172,9 @@ are proposed additions.
 
 ## Client-server protocol
 
-Use a versioned HTTPS JSON API for the first implementation, with one-time
-enrollment followed by per-client credentials (Q3). Do not expose an
+Use a versioned HTTPS JSON API for the first implementation. Exchange a
+one-time enrollment token for a per-client credential so an operator can
+revoke and rotate one worker without disabling the fleet. Do not expose an
 unauthenticated task-submit endpoint. Keep messages bounded and validate all
 fields before database writes.
 
@@ -270,7 +195,7 @@ Suggested exchange:
    is zero; for a zero maximum, preserve the exact tie count but leave the
    program manifest empty, following the established zero-output logging rule.
    For positive maxima, upload the full tie manifest in bounded pages or staged
-   objects before finalizing the result (Q2). A page being received is not
+   objects before finalizing the result. A page being received is not
    accepted range coverage.
 5. `ACK`: server returns pending-validation, accepted, duplicate, retry, or
    rejected status and includes the next task when one is available.
@@ -294,7 +219,7 @@ The client is a small service or foreground process that:
   distinctly;
 - retains the exact count of candidates tied for the chunk's greatest halted
   output count and exports every positive-score tie without unbounded RAM;
-  zero-output program records are omitted while their counts remain exact (Q2);
+  zero-output program records are omitted while their counts remain exact;
 - submits a result only after accounting for the full assigned range;
 - checkpoints task-local progress so a client crash can resume if the lease is
   still valid, otherwise it archives its local checkpoint as unaccepted and
@@ -334,7 +259,7 @@ leaderboard:
    only if it halts and the recomputed output-character count equals the
    submitted count. Replay must start from reset registers/PC and zero-padded
    memory, using full mutable state for cycle equality. If replay reaches an
-   operational budget or representational limit (Q4), leave the result pending
+   operational budget or representational limit, leave the result pending
    or return an explicit retry/unresolved validation status; do not accept the
    score or assert that the worker lied. A completed replay with a different
    outcome or score rejects the claim.
@@ -385,8 +310,8 @@ lower-scoring one. Therefore distinguish:
   status/export so the trust assumption is visible. Agreement between workers
   running the same code is still subject to shared implementation defects.
 
-For initial deployment, use the worker-reported mode recommended in Q1: mark
-returned programs as server-validated, but keep `optimum_established` false.
+For initial deployment, mark returned programs as server-validated worker
+reports, but keep `optimum_established` false.
 Random full-chunk audits may detect errors but do not establish exhaustive
 optimality. To claim independently checked optimality, recompute every chunk
 on a trusted server or use an explicitly chosen redundant-worker policy.
@@ -395,12 +320,17 @@ contain no omitted winner.
 
 ## Durable state and operations
 
-Use a relational database as the source of truth for campaigns, per-length
-cursors, tasks, leases, clients, accepted summaries, candidate winners, and
-audit records. Use PostgreSQL for a shared deployment and reserve SQLite for a
-local prototype (Q6). Allocate a task and
-advance its length cursor in one transaction. Accept a submission and update
-its task/aggregate in one transaction. Make task IDs stable and result
+Persist campaign, length-queue, task, lease-attempt, client, accepted-summary,
+winner-manifest, and audit state as independently keyed, versioned JSON
+documents. Keep documents backend-neutral and put persistence behind an
+interface that supports atomic conditional writes and transactions for cursor
+allocation, lease transitions, and result acceptance. Use PostgreSQL JSONB for
+the first shared deployment; a later DynamoDB adapter can store the same
+documents without making database-specific fields authoritative. Keep indexes
+and query projections rebuildable from these documents. Do not put an entire
+campaign in one blob: keep task and lease records separately addressable.
+Allocate a task and advance its length cursor atomically. Accept a submission
+and update its task/aggregate atomically. Make task IDs stable and result
 acceptance idempotent.
 
 Store the normalized campaign configuration, machine semantics revision,
