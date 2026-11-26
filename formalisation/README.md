@@ -19,6 +19,49 @@ machine module also proves `zeroOpcodeHalts` and `runFuel_zeroOpcode_halts`.
 `Formalisation/Counterexamples.lean` contains the length-15 wraparound example
 and its Lean-checked properties.
 
+`Formalisation/ZeroOpcodePruning.lean` records the precise pruning claims for
+zero opcodes. `firstCellZero_halts` proves that a zero in cell 0 makes every
+reset execution halt on its first instruction (the claim needs no minimum
+program length because short lists are zero-padded). For a zero in cell 1,
+`reachingCellOneZero_halts_next` proves the conditional claim: if the
+deterministic state sequence reaches PC 1 while that memory cell is still zero,
+the next instruction halts. It does not prove that PC 1 is reached or that the
+cell remains unchanged; for example, the first instruction can jump over it,
+or a STORE can overwrite it before a later visit. The checked example
+`skipsSecondCell` uses an unconditional jump from PC 0 back to PC 0 and loops
+there, despite its second cell being zero.
+
+The module now formalizes the finite pigeonhole step. Given a list that covers
+the states at every visit through its length, `machine_halts_or_repeats_within_cover`
+proves either a HALT occurs in that interval or two non-HALT visits have the
+same complete `MachineState`. `repeated_state_visits_cycle` proves that equal
+visits remain equal at every later offset. The example
+`skipsSecondCell_finiteCover_repeat_or_halt` checks the result for the one-state
+self-jump loop.
+
+The theorem is conditional on the supplied list covering those visits. This
+module does not construct an exhaustive cover of every machine configuration
+or prove its size. Mathematically, there are `16^19` configurations (16 memory
+nibbles, two register nibbles, and the PC), so the usual unconditional
+repeat-or-halt argument applies; formalizing that exact bound still requires
+an exhaustive finite encoding of the function-valued memory. The Lean
+finite-cover result therefore remains conditional and does not itself justify
+unconditional pruning for arbitrary cell-1-zero programs.
+
+The stronger reset prefix `memory[1] = memory[2] = 0` has an exact checked
+case split in `reset_twoZero_caseSplit`. If cell 0 contains opcode 13 or 14,
+the first transition returns to the identical state without output; opcode 14
+takes that branch because reset `R0` is zero. `reset_twoZero_loop_forever`
+proves every subsequent state is the same and every step is silent and
+non-HALT. For every other opcode, `reset_twoZero_halts_nonJump` proves that
+execution halts within two instructions with output character score at most
+one. The only possible output is opcode 8 at cell 0, which emits the zero in
+cell 1 before the zero at cell 2 halts. Thus, in a search for halting
+programs, if the incumbent score is greater than one, candidates with this
+two-zero prefix cannot tie or improve it. A zero in cell 1 alone still gives
+only the conditional `reachingCellOneZero_halts_next` result: execution need
+not reach cell 1, and other cells may permit further execution after it.
+
 `Formalisation/MonotoneOutput.lean` defines finite runs using the concrete
 machine `step` function and proves an accounting lemma: a run starting at PC
 0 whose PC strictly increases prints at most 30 decimal characters. This

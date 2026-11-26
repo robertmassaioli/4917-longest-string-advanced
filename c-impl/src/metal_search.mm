@@ -229,32 +229,24 @@ struct BatchSummary {
     uint64_t winners = 0;
     uint64_t first_index = UINT64_MAX;
     std::array<uint8_t, 16> first_program{};
-    std::vector<uint64_t> winner_indices;
+    std::vector<uint64_t> best_indices;
 };
 
-bool write_winner_jsonl(std::ofstream &output, std::vector<uint64_t> indices,
-                        uint64_t length, uint64_t output_characters) {
-    if (output_characters == 0) return true;
-
-    std::sort(indices.begin(), indices.end());
-    for (uint64_t candidate_id : indices) {
-        std::array<uint8_t, 16> program{};
-        uint64_t encoded = candidate_id;
-        for (uint64_t i = length; i > 0; --i) {
-            program[static_cast<size_t>(i - 1)] = static_cast<uint8_t>(encoded & 15U);
-            encoded >>= 4;
-        }
-        output << "{\"schema\":\"4917-metal-winner-v1\",\"length\":" << length
-               << ",\"candidate_id\":\"" << candidate_id
-               << "\",\"output_characters\":\"" << output_characters
-               << "\",\"program\":[";
-        for (uint64_t i = 0; i < length; ++i)
-            output << (i == 0 ? "" : ",") << static_cast<unsigned>(program[static_cast<size_t>(i)]);
-        output << "]}\n";
-        if (!output) return false;
+void write_candidate_record(std::ofstream &output, uint64_t candidate_id,
+                            uint64_t length, uint64_t output_characters) {
+    std::array<uint8_t, 16> program{};
+    uint64_t encoded = candidate_id;
+    for (uint64_t i = length; i > 0; --i) {
+        program[static_cast<size_t>(i - 1)] = static_cast<uint8_t>(encoded & 15U);
+        encoded >>= 4;
     }
-    output.flush();
-    return static_cast<bool>(output);
+    output << "{\"schema\":\"4917-metal-candidate-log-v1\",\"length\":" << length
+           << ",\"candidate_id\":\"" << candidate_id
+           << "\",\"output_characters\":\"" << output_characters
+           << "\",\"program\":[";
+    for (uint64_t i = 0; i < length; ++i)
+        output << (i == 0 ? "" : ",") << static_cast<unsigned>(program[static_cast<size_t>(i)]);
+    output << "]}\n";
 }
 
 std::string json_quote(const std::string &value) {
@@ -378,7 +370,7 @@ void print_usage() {
     std::puts("Usage: 4917-metal-search --length N [--gpu-step-limit N] [--winners-jsonl PATH] [--json]\n"
               "Exhaustively searches programs of 1-16 nibbles. GPU execution is bounded;\n"
               "every candidate not halted by the GPU budget is classified by the exact CPU runner.\n"
-              "Optionally save every tied best program with --winners-jsonl PATH.\n"
+              "Always saves provisional best candidates to a JSONL file; --winners-jsonl overrides its path.\n"
               "       4917-metal-search --program NIBBLES [--gpu-step-limit N] [--json]\n"
               "The --program form traces one candidate and is useful for checking edge cases.\n"
               "Default GPU budget: 256 instructions per candidate.");
@@ -550,9 +542,9 @@ int run_one(const std::array<uint8_t, 16> &program, uint64_t length,
 int search(uint64_t length, uint64_t step_limit, bool json,
            const std::string &winner_jsonl_path) {
     @autoreleasepool {
-        const bool save_all_winners = !winner_jsonl_path.empty();
+        const bool save_candidate_log = !winner_jsonl_path.empty();
         std::ofstream winner_output;
-        if (save_all_winners) {
+        if (save_candidate_log) {
             winner_output.open(winner_jsonl_path, std::ios::out | std::ios::trunc);
             if (!winner_output) {
                 std::fprintf(stderr, "could not open winners JSONL file: %s\n",
@@ -560,6 +552,12 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                 return 1;
             }
         }
+        // Streaming log retains only batch-local ties that could still meet
+        // the monotonically increasing provisional score threshold.
+        std::atomic<uint64_t> best_seen{10};
+        std::atomic<uint64_t> provisional_records{0};
+        std::mutex output_mutex;
+        bool output_failed = false;
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
         if (device == nil) { std::fputs("no Metal GPU is available\n", stderr); return 1; }
         NSError *error = nil;
@@ -575,6 +573,10 @@ int search(uint64_t length, uint64_t step_limit, bool json,
 
         const bool full_space = length == 16;
         const uint64_t total = full_space ? 0 : (uint64_t{1} << (4 * length));
+        // IDs are lexicographic nibble vectors. Every program whose first
+        // nibble is zero occupies this contiguous prefix and halts at once.
+        const uint64_t skipped = uint64_t{1} << (4 * (length - 1));
+        const uint64_t searched = full_space ? (uint64_t{15} << 60) : total - skipped;
         Counts halted, cycled, errors, winners, gpu_halted, gpu_cycled, cpu_fallback;
         uint64_t best = 0;
         uint64_t first_winner_index = UINT64_MAX;
@@ -637,11 +639,12 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                     if (summary.winners == 0 || output_characters > summary.best) {
                         summary.best = output_characters;
                         summary.winners = 1;
-                        summary.first_index = base + i;
-                        if (save_all_winners) {
-                            summary.winner_indices.clear();
-                            summary.winner_indices.push_back(base + i);
+                        if (save_candidate_log) {
+                            summary.best_indices.clear();
+                            if (output_characters > 10)
+                                summary.best_indices.push_back(base + i);
                         }
+                        summary.first_index = base + i;
                         std::array<uint8_t, 16> program{};
                         uint64_t encoded = base + i;
                         for (uint64_t j = length; j > 0; --j) {
@@ -652,8 +655,8 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                         summary.first_program = program;
                     } else if (output_characters == summary.best) {
                         ++summary.winners;
-                        if (save_all_winners)
-                            summary.winner_indices.push_back(base + i);
+                        if (save_candidate_log && output_characters > 10)
+                            summary.best_indices.push_back(base + i);
                         if (base + i < summary.first_index) {
                             summary.first_index = base + i;
                             std::array<uint8_t, 16> program{};
@@ -673,7 +676,7 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             uint64_t batch_winner_count = 0;
             uint64_t batch_first_index = UINT64_MAX;
             std::array<uint8_t, 16> batch_first_program{};
-            std::vector<uint64_t> batch_winner_indices;
+            std::vector<uint64_t> batch_best_indices;
             for (const BatchSummary &summary : summaries) {
                 halted.add(summary.halted);
                 cycled.add(summary.cycled);
@@ -687,20 +690,37 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                     batch_winner_count = summary.winners;
                     batch_first_index = summary.first_index;
                     batch_first_program = summary.first_program;
-                    if (save_all_winners)
-                        batch_winner_indices = summary.winner_indices;
+                    if (save_candidate_log)
+                        batch_best_indices = summary.best_indices;
                 } else if (summary.best == batch_best) {
                     batch_winner_count += summary.winners;
                     if (summary.first_index < batch_first_index) {
                         batch_first_index = summary.first_index;
                         batch_first_program = summary.first_program;
                     }
-                    if (save_all_winners)
-                        batch_winner_indices.insert(batch_winner_indices.end(),
-                            summary.winner_indices.begin(), summary.winner_indices.end());
+                    if (save_candidate_log)
+                        batch_best_indices.insert(batch_best_indices.end(),
+                                                  summary.best_indices.begin(),
+                                                  summary.best_indices.end());
                 }
             }
             if (batch_winner_count == 0) return true;
+
+            if (save_candidate_log) {
+                uint64_t seen = best_seen.load(std::memory_order_relaxed);
+                while (batch_best > seen &&
+                       !best_seen.compare_exchange_weak(
+                           seen, batch_best, std::memory_order_relaxed)) {}
+                if (batch_best > 10 &&
+                    batch_best >= best_seen.load(std::memory_order_relaxed)) {
+                    std::lock_guard<std::mutex> lock(output_mutex);
+                    for (uint64_t candidate_id : batch_best_indices) {
+                        write_candidate_record(winner_output, candidate_id, length, batch_best);
+                        if (winner_output) ++provisional_records;
+                        else output_failed = true;
+                    }
+                }
+            }
 
             const bool new_global_best = winners.zero() || batch_best > best;
             const bool ties_global_best = batch_best == best;
@@ -717,26 +737,9 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                 }
             }
 
-            if (save_all_winners && (new_global_best || ties_global_best)) {
-                if (new_global_best) {
-                    winner_output.close();
-                    winner_output.open(winner_jsonl_path, std::ios::out | std::ios::trunc);
-                    if (!winner_output) {
-                        std::fprintf(stderr, "could not reset winners JSONL file: %s\n",
-                                     winner_jsonl_path.c_str());
-                        return false;
-                    }
-                }
-                if (!write_winner_jsonl(winner_output, std::move(batch_winner_indices),
-                                        length, best)) {
-                    std::fprintf(stderr, "could not write winners JSONL file: %s\n",
-                                 winner_jsonl_path.c_str());
-                    return false;
-                }
-            }
-            return true;
+            return !output_failed;
         };
-        uint64_t base = 0;
+        uint64_t base = skipped;
         bool finished = false;
         bool pending = false;
         unsigned active_slot = 0;
@@ -761,18 +764,35 @@ int search(uint64_t length, uint64_t step_limit, bool json,
             else base = last + 1U;
         }
         if (pending && !process_slot(slots[active_slot ^ 1U])) return 1;
+        // Immediate halts tie for best only when no output was produced by
+        // any searched candidate; ID zero is then the first winner.
+        if (best == 0) {
+            winners.add(skipped);
+            first_winner_index = 0;
+        }
+        if (save_candidate_log) {
+            winner_output.flush();
+            if (!winner_output || output_failed) {
+                std::fprintf(stderr, "could not write provisional candidate log: %s\n",
+                             winner_jsonl_path.c_str());
+                return 1;
+            }
+        }
         for (BatchSlot &slot : slots) {
             [slot.result_buffer release];
             [slot.parameter_buffer release];
         }
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-        const std::string candidate_count = full_space ? "18446744073709551616" : std::to_string(total);
+        const std::string candidate_count = std::to_string(searched);
+        const std::string search_space_count = full_space ? "18446744073709551616" : std::to_string(total);
         if (json) {
             std::printf("{\"schema\":\"4917-metal-search-v1\",\"length\":%" PRIu64
-                        ",\"candidate_count\":\"%s\",\"halted\":\"%s\",\"cycled\":\"%s\","
+                        ",\"candidate_count\":\"%s\",\"search_space_count\":\"%s\","
+                        "\"skipped_candidate_count\":\"%s\",\"halted\":\"%s\",\"cycled\":\"%s\","
                         "\"errors\":\"%s\",\"exhaustive\":%s,\"best_output_characters\":\"%" PRIu64
                         "\",\"winner_count\":\"%s\",\"first_winner\":[",
-                        length, candidate_count.c_str(), halted.string().c_str(), cycled.string().c_str(),
+                        length, candidate_count.c_str(), search_space_count.c_str(),
+                        std::to_string(skipped).c_str(), halted.string().c_str(), cycled.string().c_str(),
                         errors.string().c_str(), errors.zero() ? "true" : "false", best, winners.string().c_str());
             for (uint64_t i = 0; i < length; ++i)
                 std::printf("%s%u", i ? "," : "", static_cast<unsigned>(first[static_cast<size_t>(i)]));
@@ -780,23 +800,26 @@ int search(uint64_t length, uint64_t step_limit, bool json,
                         "\"cpu_exact_fallback\":\"%s\",\"seconds\":%.6f",
                         gpu_halted.string().c_str(), gpu_cycled.string().c_str(),
                         cpu_fallback.string().c_str(), seconds);
-            if (save_all_winners) {
+            if (save_candidate_log) {
                 const std::string winners_file_json = json_quote(winner_jsonl_path);
-                std::printf(",\"all_winners_saved\":true,\"winners_file\":%s",
-                            winners_file_json.c_str());
+                std::printf(",\"candidate_log_saved\":true,\"candidate_log_entries\":\"%" PRIu64
+                            "\",\"candidate_log_file\":%s",
+                            provisional_records.load(), winners_file_json.c_str());
             }
             std::puts("}");
         } else {
-            std::printf("GPU: %s (%s)\ncandidates: %s\nhalted: %s\ncycled: %s\nerrors: %s\n"
+            std::printf("GPU: %s (%s)\nsearched candidates: %s\nsearch space: %s\n"
+                        "skipped immediate-zero candidates: %" PRIu64 "\nhalted: %s\ncycled: %s\nerrors: %s\n"
                         "exhaustive: %s\nbest output characters: %" PRIu64 "\nwinner count: %s\n"
                         "GPU halted: %s\nGPU cycled: %s\nCPU exact fallback: %s\nelapsed seconds: %.3f\n",
-                        device.name.UTF8String, "Metal", candidate_count.c_str(),
+                        device.name.UTF8String, "Metal", candidate_count.c_str(), search_space_count.c_str(), skipped,
                         halted.string().c_str(), cycled.string().c_str(), errors.string().c_str(),
                         errors.zero() ? "yes" : "no", best, winners.string().c_str(),
                         gpu_halted.string().c_str(), gpu_cycled.string().c_str(),
                         cpu_fallback.string().c_str(), seconds);
-            if (save_all_winners)
-                std::printf("all tied best programs written to: %s\n", winner_jsonl_path.c_str());
+            if (save_candidate_log)
+                std::printf("provisional candidate records: %" PRIu64 "\nfile: %s\n",
+                            provisional_records.load(), winner_jsonl_path.c_str());
         }
     }
     return 0;
@@ -846,5 +869,9 @@ int main(int argc, char **argv) {
         return run_one(program, length, step_limit, json);
     }
     if (length < 1 || length > 16) { std::fputs("--length must be from 1 through 16\n", stderr); return 2; }
+    if (winner_jsonl_path.empty()) {
+        winner_jsonl_path = "metal-search-length-" + std::to_string(length) +
+                            "-provisional-winners.jsonl";
+    }
     return search(length, step_limit, json, winner_jsonl_path);
 }

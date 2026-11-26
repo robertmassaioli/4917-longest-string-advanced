@@ -1,0 +1,29 @@
+{
+  "schema": "4917-metal-search-v1",
+  "length": 9,
+  "candidate_count": "68719476736",
+  "halted": "60931421044",
+  "cycled": "7788055692",
+  "errors": "0",
+  "exhaustive": true,
+  "best_output_characters": "678",
+  "winner_count": "1",
+  "first_winner": [
+    8,
+    8,
+    13,
+    1,
+    14,
+    5,
+    2,
+    6,
+    15
+  ],
+  "gpu_halted": "60929847271",
+  "gpu_cycled": "7683098233",
+  "cpu_exact_fallback": "106531232",
+  "seconds": 75.909608,
+  "candidate_log_saved": true,
+  "candidate_log_entries": "311",
+  "candidate_log_file": "c-impl/benchmarks/results/metal-search-length-9-provisional-winners-2026-11-25.jsonl"
+}
